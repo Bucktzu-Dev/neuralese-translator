@@ -38,7 +38,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     tr_p = sub.add_parser("translate", help="gloss a code stream using a sealed pack")
     tr_p.add_argument("pack", type=Path)
     tr_p.add_argument("stream", type=Path)
-    tr_p.add_argument("--policy", default="default", help="certification policy: default|strict|integrity")
+    tr_p.add_argument("--policy", default="default", help="certification policy: default|strict")
     tr_p.add_argument(
         "--allow-uncertified",
         action="store_true",
@@ -55,6 +55,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     audit_p.add_argument("--tau-residual", type=float, default=0.55)
     audit_p.add_argument("--allow-unglossed", action="store_true")
     audit_p.add_argument("--policy", default="default")
+    audit_p.add_argument(
+        "--observations",
+        type=Path,
+        default=None,
+        help="JSONL observations used to recompute evidence hashes",
+    )
 
     cert_p = sub.add_parser("certify", help="certify a pack; optionally fail closed")
     cert_p.add_argument("pack", type=Path)
@@ -62,6 +68,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     cert_p.add_argument("--tau-residual", type=float, default=0.55)
     cert_p.add_argument("--allow-unglossed", action="store_true")
     cert_p.add_argument("--policy", default="default")
+    cert_p.add_argument(
+        "--observations",
+        type=Path,
+        default=None,
+        help="JSONL observations used to recompute evidence hashes",
+    )
 
     args = parser.parse_args(argv)
 
@@ -108,15 +120,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         except UncertifiedPackError as exc:
             print(json.dumps(exc.certificate.to_dict(), indent=2, sort_keys=True))
             return 1
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
         print(json.dumps([g.to_dict() for g in glosses], indent=2))
         return 0
 
     pack = load_pack(args.pack)
+    observations = (
+        load_observations_jsonl(args.observations) if args.observations else None
+    )
     cert = certify(
         pack,
         require_gloss=not args.allow_unglossed,
         tau_residual=args.tau_residual,
         policy=args.policy,
+        observations=observations,
     )
     print(json.dumps(cert.to_dict(), indent=2, sort_keys=True))
     if args.cmd == "certify" and args.fail_on_undecodable and not cert.passed:
