@@ -32,6 +32,26 @@ def _int_keyed(d: Dict[Any, Any]) -> Dict[int, int]:
     return {int(k): int(v) for k, v in d.items()}
 
 
+def _mapping(value: Any) -> Dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _present_str(data: Dict[str, Any], key: str, default: str) -> str:
+    if key not in data:
+        return default
+    value = data[key]
+    return "" if value is None else str(value)
+
+
+def _load_decision(data: Dict[str, Any], metadata: Dict[str, Any]) -> str:
+    if "decision" in data:
+        return _present_str(data, "decision", "")
+    if "decision" in metadata:
+        value = metadata.get("decision")
+        return "" if value is None else str(value)
+    return "accept"
+
+
 def normalize_aliases(raw: Any) -> AliasTables:
     """Accept legacy {code: code} or versioned {source_checksum: {old: new}}."""
     if not raw:
@@ -253,6 +273,7 @@ class SymbolPack:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SymbolPack":
         guards_raw = data.get("guards")
+        metadata = _mapping(data.get("metadata"))
         return cls(
             pack_id=str(data["pack_id"]),
             symbols=[Symbol.from_dict(s) for s in data.get("symbols") or []],
@@ -266,10 +287,10 @@ class SymbolPack:
             guards=None if not guards_raw else GuardSnapshot.from_dict(guards_raw),
             mdl_bits=float(data.get("mdl_bits") or 0.0),
             timestamp=float(data.get("timestamp") or 0.0),
-            metadata=dict(data.get("metadata") or {}),
+            metadata=metadata,
             evidence={str(k): str(v) for k, v in (data.get("evidence") or {}).items()},
-            decoder_version=str(data.get("decoder_version") or DECODER_VERSION),
-            decision=str(data.get("decision") or data.get("metadata", {}).get("decision") or "accept"),
+            decoder_version=_present_str(data, "decoder_version", DECODER_VERSION),
+            decision=_load_decision(data, metadata),
             include_private=bool(data.get("include_private") or False),
         )
 
