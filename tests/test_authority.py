@@ -301,3 +301,46 @@ def test_numpy_embedding_can_be_hashed():
     obs = Observation(observation_id="obs-1", embedding=vec, text="hello")
     assert obs.content_hash() == digest
     assert obs.embedding == [1.0, 0.0, 0.25]
+
+
+def test_unknown_decision_fails_integrity_schema():
+    pack = make_pack(decision="garbage")
+    cert = certify(pack, policy="integrity")
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("decision" in f for f in cert.failures)
+
+
+def test_empty_decoder_version_is_preserved_and_fails_integrity():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["decoder_version"] = ""
+    loaded = pack.from_dict(data)
+    assert loaded.decoder_version == ""
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert any("decoder_version" in f for f in cert.failures)
+
+
+def test_empty_decision_is_not_coerced_to_accept():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["decision"] = ""
+    loaded = pack.from_dict(data)
+    assert loaded.decision == ""
+    loaded.seal()
+    cert = certify(loaded, policy="integrity")
+    assert not cert.integrity_valid
+    assert any("decision" in f for f in cert.failures)
+
+
+def test_null_metadata_loads_as_empty_mapping():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["metadata"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.metadata == {}
+    loaded.seal()
+    cert = certify(loaded)
+    assert cert.passed
