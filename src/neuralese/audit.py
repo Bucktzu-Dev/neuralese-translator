@@ -282,6 +282,8 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
     if pack.reconstruction_error < 0:
         failures.append("reconstruction_error must be >= 0")
     for symbol in pack.symbols:
+        if not isinstance(symbol.quarantined, bool):
+            failures.append(f"class {symbol.class_id} quarantined is not a boolean")
         if not (0.0 <= float(symbol.confidence) <= 1.0):
             failures.append(f"class {symbol.class_id} confidence out of [0, 1]")
         if not (0.0 <= float(symbol.survival) <= 1.0):
