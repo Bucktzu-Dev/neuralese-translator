@@ -53,6 +53,27 @@ def test_certify_fails_without_gloss():
     assert not cert.gloss_bound
 
 
+def test_certify_fails_unglossed_sentinel():
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0, 0.0],
+                observation_ids=["obs-1"],
+                definition="[unglossed]",
+                confidence=0.0,
+            )
+        ]
+    )
+    cert = certify(pack)
+    assert not cert.passed
+    assert not cert.gloss_bound
+    allowed = certify(pack, require_gloss=False)
+    assert allowed.gloss_bound
+    assert allowed.passed
+
+
 def test_certify_detects_checksum_tamper():
     pack = make_pack()
     pack.symbols[0].definition = "mutated after seal"
