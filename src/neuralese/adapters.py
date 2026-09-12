@@ -51,6 +51,10 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
                 data = json.loads(raw)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{path}:{line_no} invalid JSON") from exc
+            if not isinstance(data, dict):
+                raise ValueError(
+                    f"{path}:{line_no} observation record must be a JSON object"
+                )
             if "observation_id" not in data:
                 data["observation_id"] = f"obs-{line_no}"
             rows.append(Observation.from_dict(data))
