@@ -4,7 +4,7 @@ Inner representations are not a mythical language. They are a **compact symbol s
 
 If a code cannot be unfolded to the observations that produced it, it is residue — not a symbol.
 
-Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what v0.1 does not claim.
+Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what v0.1.1 does not claim.
 
 ## Why this exists
 
@@ -13,10 +13,10 @@ People talk about model internals as if they were an unknowable boogieman. That 
 This package gives auditors, researchers, and other model operators a public function:
 
 1. Learn a compact alphabet from embeddings and/or text (`neuralese learn`).
-2. Translate a code stream into English glosses (`neuralese translate`).
-3. Certify that every live symbol is addressable, unfoldable, and bound to a receipt (`neuralese certify`).
+2. Certify that every live symbol is addressable, unfoldable, and bound to a receipt (`neuralese certify`).
+3. Translate a code stream into English glosses (`neuralese translate`) — **refused** unless certification passes.
 
-English here is a **receipt**, not a vibe. An LLM may help write a gloss; it cannot replace the certificate.
+English here is a **receipt**, not a vibe. An LLM may help write a gloss; it cannot replace the certificate. Translation does not outrun the gate.
 
 ## 5-minute start
 
@@ -73,9 +73,9 @@ from neuralese import load_observations_jsonl, learn_pack, translate_stream, cer
 
 obs = load_observations_jsonl("examples/toy_stream/observations.jsonl")
 pack = learn_pack(obs)
-glosses = translate_stream(pack, [0, 1, 99])
 cert = certify(pack)
 assert cert.passed
+glosses = translate_stream(pack, [0, 1, 99])
 ```
 
 ## What this is not
