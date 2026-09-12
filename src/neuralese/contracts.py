@@ -13,6 +13,7 @@ CERT_POLICIES = ("default", "strict", "integrity")
 TRANSLATION_POLICIES = ("default", "strict")
 DECISIONS = ("accept", "accept_provisional", "reject")
 SHA256_HEX = re.compile(r"^[0-9a-f]{64}\Z")
+LEGACY_ALIAS_KEY = "legacy"
 AliasTables = Dict[str, Dict[int, int]]
 
 
@@ -64,7 +65,27 @@ def normalize_aliases(raw: Any) -> AliasTables:
         if not all(nested):
             raise ValueError("aliases must be uniformly nested mappings")
         return {str(src): _int_keyed(mapping) for src, mapping in raw.items()}
-    return {"legacy": _int_keyed(raw)}
+    return {LEGACY_ALIAS_KEY: _int_keyed(raw)}
+
+
+def select_alias_table(
+    aliases: AliasTables,
+    source_pack_checksum: Optional[str] = None,
+    *,
+    parent_checksum: Optional[str] = None,
+) -> Dict[int, int]:
+    """Pick one alias table. The reserved legacy key is never an explicit source."""
+    if source_pack_checksum is not None:
+        if source_pack_checksum == LEGACY_ALIAS_KEY:
+            return {}
+        if source_pack_checksum in aliases:
+            return dict(aliases[source_pack_checksum])
+        if parent_checksum is not None and source_pack_checksum == parent_checksum:
+            return dict(aliases.get(parent_checksum, {}))
+        return {}
+    if LEGACY_ALIAS_KEY in aliases:
+        return dict(aliases[LEGACY_ALIAS_KEY])
+    return {}
 
 
 def aliases_to_dict(aliases: AliasTables) -> Dict[str, Dict[str, int]]:
@@ -294,11 +315,20 @@ class SymbolPack:
     def from_dict(cls, data: Dict[str, Any]) -> "SymbolPack":
         if not isinstance(data, dict):
             raise TypeError("pack must be a JSON object")
-        guards_raw = data.get("guards")
         metadata = _mapping(data.get("metadata"))
-        symbols_raw = data.get("symbols") or []
+        if "symbols" not in data:
+            symbols_raw: Any = []
+        else:
+            symbols_raw = data["symbols"]
         if not isinstance(symbols_raw, (list, tuple)):
             raise TypeError("symbols must be an array")
+        if "guards" not in data or data["guards"] is None:
+            guards = None
+        else:
+            guards_raw = data["guards"]
+            if not isinstance(guards_raw, dict):
+                raise TypeError("guards must be an object or null")
+            guards = GuardSnapshot.from_dict(guards_raw)
         return cls(
             pack_id=str(data["pack_id"]),
             symbols=[Symbol.from_dict(s) for s in symbols_raw],
@@ -309,7 +339,7 @@ class SymbolPack:
             parent_pack_id=data.get("parent_pack_id"),
             parent_checksum=data.get("parent_checksum"),
             receipts=[Receipt.from_dict(r) for r in data.get("receipts") or []],
-            guards=None if not guards_raw else GuardSnapshot.from_dict(guards_raw),
+            guards=guards,
             mdl_bits=float(data.get("mdl_bits") or 0.0),
             timestamp=float(data.get("timestamp") or 0.0),
             metadata=metadata,
@@ -383,15 +413,11 @@ class SymbolPack:
         return None
 
     def alias_table(self, source_pack_checksum: Optional[str] = None) -> Dict[int, int]:
-        if source_pack_checksum is not None:
-            if source_pack_checksum in self.aliases:
-                return dict(self.aliases[source_pack_checksum])
-            if self.parent_checksum is not None and source_pack_checksum == self.parent_checksum:
-                return dict(self.aliases.get(self.parent_checksum, {}))
-            return {}
-        if "legacy" in self.aliases:
-            return dict(self.aliases["legacy"])
-        return {}
+        return select_alias_table(
+            self.aliases,
+            source_pack_checksum,
+            parent_checksum=self.parent_checksum,
+        )
 
     def resolve_code(
         self,
