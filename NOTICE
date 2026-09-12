@@ -1,0 +1,11 @@
+This is the Neuralese to English Translator: a compact-alphabet
+reconstruction and fail-closed audit tool by Eric Buck (2026).
+
+It learns a symbol pack from embeddings and/or text, glosses codes
+into English, and certifies that live symbols stay addressable,
+unfoldable, and checksum-bound.
+
+It does not include the full Eris system, SLAR event-bus runtime,
+identity/governance roots, or any model weights.
+
+License: MIT. Copyright 2026 Eric Buck.

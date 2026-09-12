@@ -1,0 +1,12 @@
+{"observation_id": "g-1", "text": "hello there friend", "embedding": [1.00, 0.02, 0.01, 0.00]}
+{"observation_id": "g-2", "text": "hi hello hello", "embedding": [0.98, 0.03, 0.00, 0.02]}
+{"observation_id": "g-3", "text": "greetings and hello", "embedding": [0.97, 0.00, 0.04, 0.01]}
+{"observation_id": "g-4", "text": "hello friend", "embedding": [0.99, 0.01, 0.02, 0.00]}
+{"observation_id": "a-1", "text": "audit the symbol pack", "embedding": [0.01, 1.00, 0.02, 0.00]}
+{"observation_id": "a-2", "text": "certify unfoldable audit trail", "embedding": [0.00, 0.98, 0.03, 0.01]}
+{"observation_id": "a-3", "text": "audit receipts stay bound", "embedding": [0.02, 0.97, 0.00, 0.02]}
+{"observation_id": "a-4", "text": "keep the audit trail", "embedding": [0.00, 0.99, 0.01, 0.01]}
+{"observation_id": "u-1", "text": "unknown residual gap", "embedding": [0.01, 0.02, 1.00, 0.00]}
+{"observation_id": "u-2", "text": "undecodable residual hole", "embedding": [0.00, 0.01, 0.98, 0.03]}
+{"observation_id": "u-3", "text": "gap in residual coverage", "embedding": [0.03, 0.00, 0.97, 0.02]}
+{"observation_id": "u-4", "text": "residual unknown gap", "embedding": [0.01, 0.00, 0.99, 0.01]}

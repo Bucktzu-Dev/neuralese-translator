@@ -1,0 +1,64 @@
+from neuralese.aliases import rewrite_stream
+from neuralese.contracts import Symbol
+from neuralese.translator import translate_stream
+
+from packutil import make_pack
+
+
+def test_ok_and_unknown_states():
+    pack = make_pack()
+    glosses = translate_stream(pack, [0, 99])
+    assert glosses[0].state == "ok"
+    assert "hello" in glosses[0].english.lower()
+    assert glosses[0].observation_ids == ["obs-hello"]
+    assert glosses[0].pack_checksum == pack.checksum
+    assert glosses[1].state == "unknown"
+    assert glosses[1].english.startswith("[undecodable:")
+    assert glosses[1].confidence == 0.0
+
+
+def test_aliased_state_uses_resolved_definition():
+    pack = make_pack(aliases={7: 0})
+    glosses = translate_stream(pack, [7])
+    assert glosses[0].state == "aliased"
+    assert glosses[0].resolved_code == 0
+    assert "hello" in glosses[0].english.lower()
+
+
+def test_quarantined_state_does_not_use_definition_as_ok():
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0],
+                observation_ids=["obs-1"],
+                definition="should not appear as ok",
+                quarantined=True,
+            )
+        ]
+    )
+    glosses = translate_stream(pack, [0])
+    assert glosses[0].state == "quarantined"
+    assert glosses[0].english.startswith("[quarantined:")
+
+
+def test_unglossed_live_symbol_is_explicit_gap():
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0],
+                observation_ids=["obs-1"],
+                definition=None,
+            )
+        ]
+    )
+    glosses = translate_stream(pack, [0])
+    assert glosses[0].state == "ok"
+    assert glosses[0].english.startswith("[unglossed:")
+
+
+def test_rewrite_stream_matches_alias_map():
+    assert rewrite_stream([7, 1, 7], {7: 0}) == [0, 1, 0]

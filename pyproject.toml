@@ -1,0 +1,34 @@
+[project]
+name = "neuralese"
+version = "0.1.0"
+description = "Neuralese to English Translator — audit inner symbols so they stay decodable."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+authors = [{ name = "Neuralese to English Translator contributors" }]
+keywords = ["neuralese", "interpretability", "audit", "symbols", "decoder"]
+dependencies = ["numpy>=1.24"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+llm = []
+
+[project.scripts]
+neuralese = "neuralese.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Bucktzu-Dev/neuralese-translator"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
