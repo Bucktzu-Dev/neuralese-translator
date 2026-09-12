@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 GLOSS_STATES = ("ok", "aliased", "quarantined", "unknown")
 DECODER_VERSION = "0.1.1"
 CERT_POLICIES = ("default", "strict", "integrity")
+TRANSLATION_POLICIES = ("default", "strict")
 DECISIONS = ("accept", "accept_provisional", "reject")
 SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 AliasTables = Dict[str, Dict[int, int]]
@@ -151,6 +152,10 @@ class Symbol:
     quarantined: bool = False
     survival: float = 1.0
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.examples and not self.example_hashes:
+            self.example_hashes = [example_hash(x) for x in self.examples]
 
     def to_dict(self, *, include_private: bool = False) -> Dict[str, Any]:
         payload = {
@@ -325,7 +330,9 @@ class SymbolPack:
             if source_pack_checksum in self.aliases:
                 return self.aliases[source_pack_checksum]
             if self.parent_checksum and source_pack_checksum == self.parent_checksum:
-                return self.aliases.get(self.parent_checksum, {})
+                return dict(self.aliases.get(self.parent_checksum, {}))
+            # Explicit source that is not in this pack: do not merge unrelated tables.
+            return {}
         merged: Dict[int, int] = {}
         for mapping in self.aliases.values():
             merged.update(mapping)
