@@ -68,7 +68,7 @@ Aliases are version-scoped: `{source_pack_checksum: {old_code: new_code}}`.
 
 Current codebook codes are never rewritten. A map `{0: 1}` does not steal live code `0`. Historical codes absent from the current codebook follow hops (`rewrite_stream` is multi-hop).
 
-Pass `--source-pack <checksum>` to select a parent table explicitly. If that checksum is not in the pack, aliases are not applied (no merge of unrelated tables).
+Pass `--source-pack <checksum>` to select a parent table explicitly. An explicit source, including empty string, never merges other tables. With no source, only the unscoped `legacy` table is used.
 
 ## Admission
 
