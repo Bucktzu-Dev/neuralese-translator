@@ -113,3 +113,8 @@ def test_rewrite_stream_mixed_tables_use_legacy_without_source():
     tables = {"legacy": {7: 0}, "a" * 64: {7: 1}}
     assert rewrite_stream([7], tables) == [0]
     assert rewrite_stream([7], tables, source_pack_checksum="a" * 64) == [1]
+
+
+def test_rewrite_stream_flat_map_ignores_unrelated_source():
+    assert rewrite_stream([7], {7: 0}, source_pack_checksum="a" * 64) == [7]
+    assert rewrite_stream([7], {7: 0}) == [0]
