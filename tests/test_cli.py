@@ -302,6 +302,28 @@ def test_cli_translate_null_stream_is_clean_error(tmp_path, capsys):
     assert "Traceback" not in err
 
 
+def test_cli_translate_float_stream_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    stream = tmp_path / "stream.json"
+    stream.write_text("[1.9]\n")
+    rc = main(["translate", str(pack_path), str(stream)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "stream codes" in err
+    assert "Traceback" not in err
+
+
 def test_cli_learn_duplicate_ids_is_clean_error(tmp_path, capsys):
     obs = tmp_path / "obs.jsonl"
     obs.write_text(
