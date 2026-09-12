@@ -122,7 +122,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         try:
             pack = load_pack(args.pack)
             codes = load_stream(args.stream)
-        except ValueError as exc:
+        except (TypeError, ValueError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
         try:
