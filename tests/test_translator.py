@@ -124,3 +124,14 @@ def test_rewrite_stream_legacy_source_is_not_a_checksum():
     assert rewrite_stream([7], {7: 0}, source_pack_checksum="legacy") == [7]
     tables = {"legacy": {7: 0}, "a" * 64: {7: 1}}
     assert rewrite_stream([7], tables, source_pack_checksum="legacy") == [7]
+
+
+def test_rewrite_stream_empty_source_does_not_select_empty_key():
+    import pytest
+
+    from neuralese.contracts import select_alias_table
+
+    with pytest.raises(ValueError, match="non-empty"):
+        rewrite_stream([7], {"": {7: 0}}, source_pack_checksum="")
+    assert select_alias_table({"": {7: 0}}, "") == {}
+    assert rewrite_stream([7], {"a" * 64: {7: 0}}, source_pack_checksum="") == [7]
