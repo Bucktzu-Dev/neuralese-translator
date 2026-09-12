@@ -231,6 +231,25 @@ def test_v010_positional_symbol_confidence_still_binds():
     assert symbol.example_hashes == []
 
 
+def test_non_sha256_example_hash_fails_integrity():
+    pack = make_pack()
+    pack.symbols[0].example_hashes = ["raw secret"]
+    pack.seal()
+    cert = certify(pack, policy="integrity")
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("example_hashes" in f and "not SHA-256" in f for f in cert.failures)
+
+
+def test_example_hash_with_trailing_newline_fails_integrity():
+    pack = make_pack()
+    pack.symbols[0].example_hashes = ["c" * 64 + "\n"]
+    pack.seal()
+    cert = certify(pack, policy="integrity")
+    assert not cert.integrity_valid
+    assert any("example_hashes" in f and "not SHA-256" in f for f in cert.failures)
+
+
 def test_evidence_digest_with_trailing_newline_fails():
     pack = make_pack()
     obs_id = pack.symbols[0].observation_ids[0]
