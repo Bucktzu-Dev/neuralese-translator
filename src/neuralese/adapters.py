@@ -60,6 +60,9 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
             text = data.get("text")
             if text is not None and not isinstance(text, str):
                 raise ValueError(f"{path}:{line_no} invalid observation record")
+            embedding = data.get("embedding")
+            if embedding is not None and not isinstance(embedding, list):
+                raise ValueError(f"{path}:{line_no} invalid observation record")
             try:
                 rows.append(Observation.from_dict(data))
             except (TypeError, ValueError, KeyError) as exc:
@@ -91,7 +94,10 @@ def save_pack(pack: SymbolPack, path: PathLike) -> None:
 
 def load_pack(path: PathLike) -> SymbolPack:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return SymbolPack.from_dict(data)
+    try:
+        return SymbolPack.from_dict(data)
+    except (TypeError, ValueError, KeyError) as exc:
+        raise ValueError(f"invalid pack in {path}") from exc
 
 
 def stack_embeddings(observations: Sequence[Observation]) -> np.ndarray:
