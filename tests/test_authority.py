@@ -486,3 +486,26 @@ def test_non_mapping_evidence_loads_and_fails_closed():
     cert = certify(loaded)
     assert not cert.evidence_valid
     assert not cert.passed
+
+
+def test_non_string_definition_fails_load():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["definition"] = 1
+    with pytest.raises(TypeError, match="definition"):
+        pack.from_dict(data)
+
+
+def test_string_quarantined_fails_integrity():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["quarantined"] = "false"
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].quarantined == "false"
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("not a boolean" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
