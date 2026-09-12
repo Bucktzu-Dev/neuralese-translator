@@ -139,9 +139,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     pack = load_pack(args.pack)
-    observations = (
-        load_observations_jsonl(args.observations) if args.observations else None
-    )
+    try:
+        observations = (
+            load_observations_jsonl(args.observations) if args.observations else None
+        )
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     cert = certify(
         pack,
         require_gloss=not args.allow_unglossed,

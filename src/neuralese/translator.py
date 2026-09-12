@@ -11,6 +11,7 @@ from neuralese.contracts import (
     UncertifiedPackError,
 )
 from neuralese.energy import confidence_cap
+from neuralese.gloss import UNGLOSSED
 
 
 def translate_stream(
@@ -76,7 +77,7 @@ def translate_stream(
             continue
 
         definition = (symbol.definition or "").strip()
-        if not definition:
+        if not definition or definition == UNGLOSSED:
             english = f"[unglossed: symbol {resolved} has no bound English]"
             conf = 0.0
         else:

@@ -77,7 +77,7 @@ def learn_definition(
     observation_count = len(observations)
     text_count = len(texts)
     confidence = 0.0
-    if observation_count:
+    if observation_count and (definition or "").strip() != UNGLOSSED:
         confidence = min(1.0, 0.25 + 0.15 * text_count + 0.05 * len(keywords))
     return {
         "definition": definition,
