@@ -378,3 +378,41 @@ def test_int_and_str_observation_ids_are_duplicates():
     )
     assert not cert.evidence_valid
     assert any("duplicate observation_id" in f for f in cert.failures)
+
+
+def test_inconsistent_pass_all_fails_integrity():
+    pack = make_pack(guards=passing_guards(pass_all=True, pass_kappa=False))
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.admission_valid
+    assert not cert.passed
+    assert any("inconsistent" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0], policy="strict")
+
+
+def test_shared_live_observation_id_fails_evidence():
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0, 0.0],
+                observation_ids=["shared-obs"],
+                definition="first",
+                confidence=0.5,
+            ),
+            Symbol(
+                class_id=1,
+                code=1,
+                proto_embedding=[0.0, 1.0],
+                observation_ids=["shared-obs"],
+                definition="second",
+                confidence=0.5,
+            ),
+        ]
+    )
+    cert = certify(pack)
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("multiple live symbols" in f for f in cert.failures)
