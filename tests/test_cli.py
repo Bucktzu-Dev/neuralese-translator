@@ -137,6 +137,50 @@ def test_cli_certify_unknown_policy_is_clean_error(capsys):
     assert "invalid choice" in capsys.readouterr().err
 
 
+def test_cli_certify_malformed_observations_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text("not-json\n")
+    rc = main(["certify", str(pack_path), "--observations", str(bad)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid JSON" in err
+    assert "Traceback" not in err
+
+
+def test_cli_audit_empty_observations_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("")
+    rc = main(["audit", str(pack_path), "--observations", str(empty)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "no observations" in err
+    assert "Traceback" not in err
+
+
 def test_cli_learn_duplicate_ids_is_clean_error(tmp_path, capsys):
     obs = tmp_path / "obs.jsonl"
     obs.write_text(

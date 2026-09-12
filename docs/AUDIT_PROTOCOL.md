@@ -1,29 +1,88 @@
 # Audit protocol
 
-This protocol is what a third-party auditor should be able to run against a sealed translation pack without access to Eris internals.
+`neuralese certify` is the public fail-closed gate. A pack that does not pass is a **draft**, not a lexicon. Translation refuses to emit English unless a named policy passes.
 
-## Inputs
+## Certificate
 
-- A translation pack JSON file.
-- Optional: the original observation JSONL if evidence hashes need to be re-derived.
+v0.1.1 splits three authorities. `passed` is a conjunction under the named policy, never a majority vote.
 
-## Steps
+| field | meaning |
+|---|---|
+| `integrity_valid` | schema + addressable aliases + full SHA-256 seal + residual + gloss binding |
+| `evidence_valid` | live ids are non-blank, present in the sealed evidence map with SHA-256 digests; if `--observations` is supplied, digests are recomputed from content |
+| `admission_valid` | learning `decision` is not `reject`; guards/finalize agree with admission |
+| `passed` | policy conjunction of the above |
+| `policy` | `default` \| `strict` \| `integrity` |
 
-1. Confirm `schema_version` is `neuralese.pack.v1`.
-2. Confirm `decoder_version` equals the decoder that produced the pack (`0.1.1` for this release). A sealed checksum does not authorize a newer decoder.
-3. Recompute the canonical SHA-256 checksum and compare it to `checksum`. The digest must be the full 64-character lowercase hex string; truncated hashes fail closed.
-4. If `parent_checksum` is present, confirm it is a full SHA-256 hex digest.
-5. Confirm every atom has a non-empty `atom_id`, `form`, and `definition`.
-6. Confirm every `evidence` value is a 64-character SHA-256 hex digest. If original observations are available, re-hash them and confirm each atom evidence id still resolves.
-7. Confirm observation ids are unique and observation text is non-empty. Integer ids such as `1` and string ids such as `"1"` are the same id after load.
-8. Confirm `decision` is one of `certified`, `needs_review`, or `rejected`. Unknown values fail closed even during an integrity-only check.
-9. Confirm alias rewrites are bounded by the alias table size, so a long unique chain still resolves and a cycle still fails closed.
-10. Run `neuralese audit --pack pack.json`.
-11. Run `neuralese certify --pack pack.json` and confirm the written `decision`.
-12. Attempt `neuralese translate` against an uncertified pack and confirm it is refused unless `--allow-uncertified` is explicit.
-13. Confirm `neuralese audit --policy integrity` and `neuralese certify --policy integrity` do not authorize translation. Integrity only checks the seal; `default` and `strict` are the policies that can mark a pack certified.
-14. Confirm public packs omit raw `examples` and that public definitions/keywords do not reproduce observation text, including 8-character windows and public keywords of length 8 or more that are substrings of an observation.
+Kept detail flags: `addressable`, `unfoldable`, `gloss_bound`, `residual_ok`.
 
-## Fail closed
+CLI:
 
-Any checksum mismatch, unknown decoder, unknown decision, duplicate observation id, empty observation, malformed evidence hash, or uncertified translate request must fail. Do not repair the pack in place during an audit.
+```bash
+neuralese audit pack.json
+neuralese certify pack.json --fail-on-undecodable
+neuralese certify pack.json --observations observations.jsonl --fail-on-undecodable
+neuralese translate pack.json stream.json          # fails if certify fails
+neuralese translate pack.json stream.json --allow-uncertified   # debug only
+```
+
+`learn` writes the pack always. Exit `2` when `decision=reject` (explicit draft).
+
+## Policies
+
+| policy | `passed` when |
+|---|---|
+| `default` | integrity ∧ evidence ∧ admission (`accept` or `accept_provisional`) |
+| `strict` | default plus `decision=accept` and `guards.pass_all` |
+| `integrity` | seal/schema only (does **not** authorize translation) |
+
+`translate_stream(..., policy="default", require_certified=True)` is the library default. `policy="integrity"` is for inspecting a seal; `translate` and `translate_stream` reject it.
+
+## Seal (full SHA-256)
+
+Checksum is 64 hex characters over the complete semantic manifest:
+
+- `pack_id`, `decoder_version`, `decision`
+- `parent_pack_id`, `parent_checksum`
+- codebook, versioned aliases, evidence map
+- every symbol: class/code, prototype, observation ids, definition, example hashes, confidence, survival, quarantine, metadata
+- guards, receipts, MDL, residual, pack metadata
+
+Wall-clock `timestamp` on the pack object is **not** in the checksum. Receipt timestamps **are** (receipts are append-only once sealed).
+
+This is self-consistency, not publisher authenticity. Sign or externally anchor the manifest if you need that. A pack whose `decoder_version` is not this decoder (`0.1.1`) fails integrity; the field is reported and enforced.
+
+## Evidence / unfold
+
+A nonempty string in `observation_ids` is not enough. Each live id must be non-blank and appear in `pack.evidence` as `id → SHA-256(observation_id, embedding, text)`.
+
+Ids missing from the map fail. Blank ids fail. Mutating the manifest without resealing fails integrity.
+
+A well-formed digest in the map is **self-consistency**, not proof the tensors existed. Pass the original observations (`certify(..., observations=...)` / `--observations`) to recompute hashes. Fabricated ids with attacker-chosen 64-hex digests fail that check. Duplicate `observation_id` values fail during `learn` and during content verification; they are not a fold path. A supplied observation with neither embedding nor text fails `evidence_valid` instead of crashing.
+
+Public packs store hashes, not raw example text (`include_private=false` by default). Heuristic glosses then use keywords that do not reproduce an observation, or an explicit `[unglossed]` / quarantine marker. They do not copy the first observation verbatim into `definition`, and a single-token observation such as `TOPSECRET1234` is not kept as a public keyword. Optional LLM glosses for public packs are prompted from those remaining keywords only; a response that echoes raw observation text of any length is discarded. A recorded `[unglossed]` sentinel keeps confidence at 0 and translates as an explicit gap, not as bound English. An explicit empty `decoder_version` or `decision` is preserved on load and fails integrity rather than being silently replaced with this decoder's defaults. Unknown `decision` values fail schema even under `--policy integrity`. A pack whose `metadata` is `null` loads as `{}` instead of raising. Malformed or empty `--observations` files fail `audit`/`certify` with a CLI error instead of a traceback.
+
+## Aliases
+
+Aliases are version-scoped: `{source_pack_checksum: {old_code: new_code}}`.
+
+Current codebook codes are never rewritten. A map `{0: 1}` does not steal live code `0`. Historical codes absent from the current codebook follow hops (`rewrite_stream` is multi-hop, bounded by the alias table size so an acyclic chain is not truncated).
+
+Pass `--source-pack <checksum>` to select a parent table explicitly. An explicit source, including empty string, never merges other tables. With no source, only the unscoped `legacy` table is used (`rewrite_stream` and `SymbolPack.alias_table` agree: versioned tables are ignored unless a source is given). `audit` and `certify` reject unknown `--policy` values at the CLI.
+
+## Admission
+
+| `decision` | meaning | default certify |
+|---|---|
+| `accept` | admitted lexicon | pass if guards allow |
+| `accept_provisional` | admitted with notes | pass unless `--policy strict` |
+| `reject` | draft | **fail** |
+
+Learning rejection and certification now agree.
+
+## Fail-closed
+
+1. Missing data fails. It does not become a zero.
+2. Translation does not outrun certification.
+3. Quarantine is a labeled hold, not a pass.
+4. Negative residuals, duplicate identities, and unsealed mutations fail integrity.
