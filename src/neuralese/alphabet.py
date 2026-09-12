@@ -22,7 +22,7 @@ from neuralese.contracts import (
 )
 from neuralese.energy import cosine_similarity
 from neuralese.factorization import reconstruction_error, svd_factors
-from neuralese.gloss import learn_definition
+from neuralese.gloss import UNGLOSSED, learn_definition
 from neuralese.receipts import create_receipt
 
 
@@ -111,8 +111,9 @@ def learn_pack(
         )
         quarantined = member_idx.size < cfg.min_cluster_size or kappa < cfg.tau_kappa
         definition = gloss["definition"] or None
-        if quarantined and (not definition or definition.strip() == "[unglossed]"):
+        if quarantined and (not definition or definition.strip() == UNGLOSSED):
             definition = f"[quarantined class {class_id}]"
+        unglossed = (definition or "").strip() == UNGLOSSED
         examples = list(gloss["examples"])
         hash_source = examples or [
             o.text.strip() for o in member_obs if o.text and o.text.strip()
@@ -125,7 +126,7 @@ def learn_pack(
             definition=definition if definition else None,
             examples=examples if cfg.include_private else [],
             example_hashes=[example_hash(x) for x in hash_source],
-            confidence=float(gloss["confidence"] if not quarantined else 0.0),
+            confidence=float(0.0 if quarantined or unglossed else gloss["confidence"]),
             quarantined=bool(quarantined),
             survival=survival,
             metadata={"kappa": kappa, "size": int(member_idx.size)},
