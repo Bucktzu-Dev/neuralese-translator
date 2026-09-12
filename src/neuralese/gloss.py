@@ -72,7 +72,13 @@ def learn_definition(
 
     if not include_private:
         if not (definition or "").strip() or _contains_raw_observation(definition, texts):
-            definition = UNGLOSSED
+            definition = _heuristic_definition(keywords, [])
+            # Keyword glosses may share short tokens with observations; 8-char
+            # windows apply to LLM echoes, not to the heuristic template.
+            if not (definition or "").strip() or _contains_raw_observation(
+                definition, texts, windows=False
+            ):
+                definition = UNGLOSSED
 
     observation_count = len(observations)
     text_count = len(texts)
@@ -119,7 +125,9 @@ def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
     return blocked
 
 
-def _contains_raw_observation(definition: str, texts: Sequence[str]) -> bool:
+def _contains_raw_observation(
+    definition: str, texts: Sequence[str], *, windows: bool = True
+) -> bool:
     blob = (definition or "").lower()
     if not blob:
         return False
@@ -132,6 +140,8 @@ def _contains_raw_observation(definition: str, texts: Sequence[str]) -> bool:
             continue
         if re.search(rf"(?<![a-z0-9]){re.escape(form)}(?![a-z0-9])", blob):
             return True
+    if not windows:
+        return False
     for text in texts:
         snippet = text.strip().lower()
         if len(snippet) < 8:
