@@ -230,3 +230,27 @@ def test_empty_private_definition_is_unglossed_zero_confidence():
     for symbol in live:
         assert symbol.definition == "[unglossed]"
         assert symbol.confidence == 0.0
+
+
+def test_load_pack_rejects_non_object(tmp_path):
+    from neuralese.adapters import load_pack
+
+    path = tmp_path / "pack.json"
+    path.write_text("[]\n")
+    with pytest.raises(ValueError, match="invalid pack"):
+        load_pack(path)
+    path.write_text("null\n")
+    with pytest.raises(ValueError, match="invalid pack"):
+        load_pack(path)
+
+
+def test_load_stream_rejects_unusable_codes(tmp_path):
+    from neuralese.adapters import load_stream
+
+    path = tmp_path / "stream.json"
+    path.write_text("[null]\n")
+    with pytest.raises(ValueError, match="stream codes"):
+        load_stream(path)
+    path.write_text('{"codes": null}\n')
+    with pytest.raises(ValueError, match="stream codes"):
+        load_stream(path)
