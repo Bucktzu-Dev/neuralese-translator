@@ -73,6 +73,13 @@ def test_load_observations_rejects_unusable_embedding_type(tmp_path):
         load_observations_jsonl(path)
 
 
+def test_load_observations_rejects_non_string_text(tmp_path):
+    path = tmp_path / "bad.jsonl"
+    path.write_text('{"observation_id":"x","text":1}\n')
+    with pytest.raises(ValueError, match="invalid observation record"):
+        load_observations_jsonl(path)
+
+
 def test_learn_rejects_duplicate_observation_ids():
     obs = [
         Observation(observation_id="dup", text="hello there friend"),
