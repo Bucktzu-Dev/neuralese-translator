@@ -111,6 +111,8 @@ def learn_pack(
         )
         quarantined = member_idx.size < cfg.min_cluster_size or kappa < cfg.tau_kappa
         definition = gloss["definition"] or None
+        if not (definition or "").strip():
+            definition = UNGLOSSED
         if quarantined and (not definition or definition.strip() == UNGLOSSED):
             definition = f"[quarantined class {class_id}]"
         unglossed = (definition or "").strip() == UNGLOSSED
