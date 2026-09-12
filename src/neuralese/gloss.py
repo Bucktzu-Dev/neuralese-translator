@@ -90,7 +90,16 @@ def learn_definition(
 
 def _public_keywords(keywords: Sequence[str], texts: Sequence[str]) -> List[str]:
     blocked = _raw_observation_forms(texts)
-    return [w for w in keywords if w.lower() not in blocked]
+    lowered = [t.strip().lower() for t in texts if t and t.strip()]
+    safe: List[str] = []
+    for word in keywords:
+        token = word.lower()
+        if token in blocked:
+            continue
+        if len(token) >= 8 and any(token in text for text in lowered):
+            continue
+        safe.append(word)
+    return safe
 
 
 def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
@@ -123,6 +132,13 @@ def _contains_raw_observation(definition: str, texts: Sequence[str]) -> bool:
             continue
         if re.search(rf"(?<![a-z0-9]){re.escape(form)}(?![a-z0-9])", blob):
             return True
+    for text in texts:
+        snippet = text.strip().lower()
+        if len(snippet) < 8:
+            continue
+        for i in range(len(snippet) - 7):
+            if snippet[i : i + 8] in blob:
+                return True
     return False
 
 
