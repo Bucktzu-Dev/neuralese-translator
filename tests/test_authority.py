@@ -547,3 +547,35 @@ def test_mixed_alias_shapes_fail_load():
     data["aliases"] = {"": {}, "src": 1}
     with pytest.raises(ValueError, match="uniformly nested"):
         pack.from_dict(data)
+
+
+def test_legacy_source_pack_checksum_does_not_select_legacy_table():
+    pack = make_pack(aliases={7: 0})
+    glosses = translate_stream(pack, [7], source_pack_checksum="legacy")
+    assert glosses[0].state == "unknown"
+    assert pack.alias_table("legacy") == {}
+    assert pack.alias_table()[7] == 0
+
+
+def test_falsey_symbols_fail_from_dict():
+    pack = make_pack()
+    data = pack.to_dict()
+    for symbols in (0, "", {}):
+        data["symbols"] = symbols
+        with pytest.raises(TypeError, match="symbols must be an array"):
+            pack.from_dict(data)
+
+
+def test_falsey_guards_fail_from_dict():
+    pack = make_pack()
+    data = pack.to_dict()
+    for guards in ([], False, ""):
+        data["guards"] = guards
+        with pytest.raises(TypeError, match="guards must be an object or null"):
+            pack.from_dict(data)
+    data["guards"] = {}
+    with pytest.raises(KeyError):
+        pack.from_dict(data)
+    data["guards"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.guards is None
