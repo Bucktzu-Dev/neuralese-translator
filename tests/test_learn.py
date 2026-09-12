@@ -53,6 +53,19 @@ def test_text_only_pack_certifies_against_original_observations():
     assert cert.details["observations_checked"] is True
 
 
+def test_load_observations_rejects_non_object_records(tmp_path):
+    path = tmp_path / "bad.jsonl"
+    path.write_text("[]\n")
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        load_observations_jsonl(path)
+    path.write_text("null\n")
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        load_observations_jsonl(path)
+    path.write_text('"not-an-object"\n')
+    with pytest.raises(ValueError, match="must be a JSON object"):
+        load_observations_jsonl(path)
+
+
 def test_learn_rejects_duplicate_observation_ids():
     obs = [
         Observation(observation_id="dup", text="hello there friend"),

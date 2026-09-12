@@ -181,6 +181,39 @@ def test_cli_audit_empty_observations_is_clean_error(tmp_path, capsys):
     assert "Traceback" not in err
 
 
+def test_cli_learn_non_object_jsonl_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text("[]\n")
+    rc = main(["learn", str(obs), "-o", str(tmp_path / "pack.json"), "--n-symbols", "1"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "must be a JSON object" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "pack.json").exists()
+
+
+def test_cli_certify_null_jsonl_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    bad = tmp_path / "null.jsonl"
+    bad.write_text("null\n")
+    rc = main(["certify", str(pack_path), "--observations", str(bad)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "must be a JSON object" in err
+    assert "Traceback" not in err
+
+
 def test_cli_learn_duplicate_ids_is_clean_error(tmp_path, capsys):
     obs = tmp_path / "obs.jsonl"
     obs.write_text(

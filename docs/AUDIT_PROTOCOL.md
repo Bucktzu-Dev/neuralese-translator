@@ -75,7 +75,7 @@ Pass `--source-pack <checksum>` to select a parent table explicitly. An explicit
 ## Admission
 
 | `decision` | meaning | default certify |
-|---|---|
+|---|---|---|
 | `accept` | admitted lexicon | pass if guards allow |
 | `accept_provisional` | admitted with notes | pass unless `--policy strict` |
 | `reject` | draft | **fail** |
