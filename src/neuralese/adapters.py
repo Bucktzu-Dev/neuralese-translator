@@ -85,9 +85,20 @@ def load_stream(path: PathLike) -> List[int]:
     if not isinstance(codes, (list, tuple)):
         raise ValueError("stream codes must be an array")
     try:
-        return [int(c) for c in codes]
+        return [_as_stream_code(c) for c in codes]
     except (TypeError, ValueError) as exc:
         raise ValueError("stream codes must be integers") from exc
+
+
+def _as_stream_code(value: object) -> int:
+    # bool is a subclass of int; JSON true/false must not become 1/0.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("stream codes must be integers")
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError("stream codes must be integers")
+        return int(value)
+    return int(value)
 
 
 def save_pack(pack: SymbolPack, path: PathLike) -> None:
