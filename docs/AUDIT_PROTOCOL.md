@@ -60,7 +60,7 @@ Ids missing from the map fail. Blank ids fail. Mutating the manifest without res
 
 A well-formed digest in the map is **self-consistency**, not proof the tensors existed. Pass the original observations (`certify(..., observations=...)` / `--observations`) to recompute hashes. Fabricated ids with attacker-chosen 64-hex digests fail that check. Duplicate `observation_id` values fail during `learn` and during content verification; they are not a fold path. A supplied observation with neither embedding nor text fails `evidence_valid` instead of crashing.
 
-Public packs store hashes, not raw example text (`include_private=false` by default). Heuristic glosses then use keywords or an unglossed/quarantine marker; they do not copy the first observation verbatim into `definition`. Optional LLM glosses for public packs are prompted from keywords only, and a response that echoes raw observation text is discarded.
+Public packs store hashes, not raw example text (`include_private=false` by default). Heuristic glosses then use keywords that do not reproduce an observation, or an explicit `[unglossed]` / quarantine marker. They do not copy the first observation verbatim into `definition`, and a single-token observation such as `TOPSECRET1234` is not kept as a public keyword. Optional LLM glosses for public packs are prompted from those remaining keywords only; a response that echoes raw observation text of any length is discarded. An explicit empty `decoder_version` or `decision` is preserved on load and fails integrity rather than being silently replaced with this decoder's defaults. Unknown `decision` values fail schema even under `--policy integrity`. A pack whose `metadata` is `null` loads as `{}` instead of raising.
 
 ## Aliases
 
