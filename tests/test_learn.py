@@ -87,3 +87,20 @@ def test_public_pack_definition_does_not_copy_raw_observation_text():
         config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0, include_private=True),
     )
     assert any("99887766" in ex or "11223344" in ex for s in private.symbols for ex in s.examples)
+
+
+def test_public_llm_gloss_does_not_keep_raw_observation_text():
+    from neuralese.gloss import learn_definition
+
+    obs = [
+        Observation(observation_id="s1", text="99887766 !!!"),
+        Observation(observation_id="s2", text="99887766 ???"),
+    ]
+
+    class Echo:
+        def generate(self, prompt, max_tokens=80):
+            return "keep secret 99887766 !!!"
+
+    gloss = learn_definition(obs, llm_client=Echo(), include_private=False)
+    assert "99887766" not in (gloss["definition"] or "")
+    assert gloss["examples"] == []

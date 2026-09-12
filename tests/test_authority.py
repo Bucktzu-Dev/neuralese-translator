@@ -41,7 +41,7 @@ def test_seal_covers_prototype_confidence_examples_survival_lineage_guards_mdl_r
     assert pack.compute_checksum() != original
     pack.symbols[0].survival = 1.0
 
-    pack.parent_checksum = "b" * 64
+    pack.parent_checksum = "b" * 64]
     assert pack.compute_checksum() != original
     pack.parent_checksum = None
 
@@ -280,3 +280,24 @@ def test_observation_without_embedding_or_text_fails_closed():
     assert not cert.evidence_valid
     assert not cert.passed
     assert any("neither embedding nor text" in f for f in cert.failures)
+
+
+def test_foreign_decoder_version_fails_integrity():
+    pack = make_pack(decoder_version="0.0.0")
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("decoder_version" in f for f in cert.failures)
+
+
+def test_numpy_embedding_can_be_hashed():
+    import numpy as np
+
+    from neuralese.contracts import Observation, observation_content_hash
+
+    vec = np.array([1.0, 0.0, 0.25])
+    digest = observation_content_hash("obs-1", vec, "hello")
+    assert len(digest) == 64
+    obs = Observation(observation_id="obs-1", embedding=vec, text="hello")
+    assert obs.content_hash() == digest
+    assert obs.embedding == [1.0, 0.0, 0.25]

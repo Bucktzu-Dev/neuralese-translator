@@ -50,7 +50,7 @@ Checksum is 64 hex characters over the complete semantic manifest:
 
 Wall-clock `timestamp` on the pack object is **not** in the checksum. Receipt timestamps **are** (receipts are append-only once sealed).
 
-This is self-consistency, not publisher authenticity. Sign or externally anchor the manifest if you need that.
+This is self-consistency, not publisher authenticity. Sign or externally anchor the manifest if you need that. A pack whose `decoder_version` is not this decoder (`0.1.1`) fails integrity; the field is reported and enforced.
 
 ## Evidence / unfold
 
@@ -60,7 +60,7 @@ Ids missing from the map fail. Blank ids fail. Mutating the manifest without res
 
 A well-formed digest in the map is **self-consistency**, not proof the tensors existed. Pass the original observations (`certify(..., observations=...)` / `--observations`) to recompute hashes. Fabricated ids with attacker-chosen 64-hex digests fail that check. Duplicate `observation_id` values fail during `learn` and during content verification; they are not a fold path. A supplied observation with neither embedding nor text fails `evidence_valid` instead of crashing.
 
-Public packs store hashes, not raw example text (`include_private=false` by default). Heuristic glosses then use keywords or an unglossed/quarantine marker; they do not copy the first observation verbatim into `definition`.
+Public packs store hashes, not raw example text (`include_private=false` by default). Heuristic glosses then use keywords or an unglossed/quarantine marker; they do not copy the first observation verbatim into `definition`. Optional LLM glosses for public packs are prompted from keywords only, and a response that echoes raw observation text is discarded.
 
 ## Aliases
 
