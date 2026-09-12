@@ -57,7 +57,12 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
                 )
             if "observation_id" not in data:
                 data["observation_id"] = f"obs-{line_no}"
-            rows.append(Observation.from_dict(data))
+            try:
+                rows.append(Observation.from_dict(data))
+            except (TypeError, ValueError, KeyError) as exc:
+                raise ValueError(
+                    f"{path}:{line_no} invalid observation record"
+                ) from exc
     if not rows:
         raise ValueError(f"no observations in {path}")
     return rows

@@ -133,11 +133,18 @@ def certify(
             failures.append(f"class {symbol.class_id} has no observation_ids")
             continue
         for obs_id in symbol.observation_ids:
-            if not str(obs_id).strip():
+            obs_id = str(obs_id)
+            if not obs_id.strip():
                 unfoldable = False
                 evidence_valid = False
                 failures.append(f"class {symbol.class_id} has a blank observation_id")
                 continue
+            if obs_id in live_ids:
+                unfoldable = False
+                evidence_valid = False
+                failures.append(
+                    f"observation {obs_id!r} is attached to multiple live symbols"
+                )
             live_ids.add(obs_id)
             digest = pack.evidence.get(obs_id)
             if digest is None:
@@ -180,11 +187,11 @@ def certify(
             and admission_valid
             and pack.decision == "accept"
             and pack.guards is not None
-            and pack.guards.pass_all
+            and _effective_pass_all(pack.guards)
         )
         if pack.decision != "accept":
             failures.append("strict policy requires decision=accept")
-        if pack.guards is None or not pack.guards.pass_all:
+        if pack.guards is None or not _effective_pass_all(pack.guards):
             failures.append("strict policy requires guards.pass_all")
     else:
         passed = integrity_valid and evidence_valid and admission_valid
@@ -232,7 +239,7 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
     if decision == "reject":
         failures.append("decision=reject is a draft, not an admitted lexicon")
         return False
-    if pack.guards is not None and not pack.guards.pass_all:
+    if pack.guards is not None and not _effective_pass_all(pack.guards):
         if decision == "accept_provisional" and policy != "strict":
             return True
         failures.append("guards.pass_all is false")
@@ -253,6 +260,10 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         )
     if pack.decision not in DECISIONS:
         failures.append(f"unknown decision {pack.decision!r}")
+    if pack.guards is not None and bool(pack.guards.pass_all) != _effective_pass_all(
+        pack.guards
+    ):
+        failures.append("guards.pass_all is inconsistent with component flags")
     if not _finite(pack.reconstruction_error):
         failures.append("reconstruction_error is not finite")
     if pack.reconstruction_error < 0:
@@ -268,6 +279,19 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
                     f"class {symbol.class_id} example_hashes[{index}] is not SHA-256"
                 )
     return (len(failures) == 0, failures)
+
+
+_GUARD_PASS_FLAGS = (
+    "pass_kappa",
+    "pass_residual",
+    "pass_mdl",
+    "pass_persist",
+    "pass_compat",
+)
+
+
+def _effective_pass_all(guards) -> bool:
+    return all(bool(getattr(guards, name)) for name in _GUARD_PASS_FLAGS)
 
 
 def _finite(value: float) -> bool:
