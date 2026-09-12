@@ -236,6 +236,40 @@ def test_cli_learn_non_string_text_is_clean_error(tmp_path, capsys):
     assert not (tmp_path / "pack.json").exists()
 
 
+def test_cli_learn_string_embedding_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text('{"observation_id":"x","embedding":"1"}\n')
+    rc = main(["learn", str(obs), "-o", str(tmp_path / "pack.json"), "--n-symbols", "1"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid observation record" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "pack.json").exists()
+
+
+def test_cli_certify_non_string_definition_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["symbols"][0]["definition"] = 1
+    pack_path.write_text(json.dumps(data))
+    rc = main(["certify", str(pack_path)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid pack" in err
+    assert "Traceback" not in err
+
+
 def test_cli_learn_duplicate_ids_is_clean_error(tmp_path, capsys):
     obs = tmp_path / "obs.jsonl"
     obs.write_text(
