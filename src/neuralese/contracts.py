@@ -64,7 +64,13 @@ def normalize_aliases(raw: Any) -> AliasTables:
     if any(nested):
         if not all(nested):
             raise ValueError("aliases must be uniformly nested mappings")
-        return {str(src): _int_keyed(mapping) for src, mapping in raw.items()}
+        tables: AliasTables = {}
+        for src, mapping in raw.items():
+            key = str(src)
+            if not key:
+                raise ValueError("alias source keys must be non-empty")
+            tables[key] = _int_keyed(mapping)
+        return tables
     return {LEGACY_ALIAS_KEY: _int_keyed(raw)}
 
 
@@ -76,7 +82,7 @@ def select_alias_table(
 ) -> Dict[int, int]:
     """Pick one alias table. The reserved legacy key is never an explicit source."""
     if source_pack_checksum is not None:
-        if source_pack_checksum == LEGACY_ALIAS_KEY:
+        if not source_pack_checksum or source_pack_checksum == LEGACY_ALIAS_KEY:
             return {}
         if source_pack_checksum in aliases:
             return dict(aliases[source_pack_checksum])
@@ -237,7 +243,7 @@ class Symbol:
             "survival": self.survival,
             "metadata": dict(self.metadata),
         }
-        if include_private:
+        if include_private is True:
             payload["examples"] = list(self.examples)
         return payload
 
@@ -295,7 +301,7 @@ class SymbolPack:
             "pack_id": self.pack_id,
             "decoder_version": self.decoder_version,
             "decision": self.decision,
-            "symbols": [s.to_dict(include_private=self.include_private) for s in self.symbols],
+            "symbols": [s.to_dict(include_private=self.include_private is True) for s in self.symbols],
             "codebook": {str(k): int(v) for k, v in self.codebook.items()},
             "aliases": aliases_to_dict(self.aliases),
             "reconstruction_error": self.reconstruction_error,
@@ -377,7 +383,7 @@ class SymbolPack:
                     "observation_ids": list(s.observation_ids),
                     "definition": self._normalize_definition(s.definition),
                     "example_hashes": list(s.example_hashes),
-                    "examples": list(s.examples) if self.include_private else [],
+                    "examples": list(s.examples) if self.include_private is True else [],
                     "confidence": round(float(s.confidence), 8),
                     "quarantined": bool(s.quarantined),
                     "survival": round(float(s.survival), 8),
