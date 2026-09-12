@@ -56,6 +56,20 @@ def learn_pack(
     cfg = config or LearnConfig()
     if not observations:
         raise ValueError("learn_pack requires at least one observation")
+    seen_ids: set[str] = set()
+    duplicates: List[str] = []
+    for obs in observations:
+        oid = str(obs.observation_id)
+        if oid in seen_ids:
+            if oid not in duplicates:
+                duplicates.append(oid)
+        else:
+            seen_ids.add(oid)
+    if duplicates:
+        raise ValueError(
+            "duplicate observation_id values are not a fold path: "
+            + ", ".join(repr(x) for x in duplicates)
+        )
     rows = [ensure_embedding(Observation.from_dict(o.to_dict())) for o in observations]
     X = stack_embeddings(rows)
 
@@ -90,12 +104,19 @@ def learn_pack(
         survival = float(survivals[class_id]) if class_id < len(survivals) else 1.0
         if previous is None:
             survival = 1.0
-        gloss = learn_definition(member_obs, llm_client=llm_client)
+        gloss = learn_definition(
+            member_obs,
+            llm_client=llm_client,
+            include_private=cfg.include_private,
+        )
         quarantined = member_idx.size < cfg.min_cluster_size or kappa < cfg.tau_kappa
         definition = gloss["definition"] or None
         if quarantined and not definition:
             definition = f"[quarantined class {class_id}]"
         examples = list(gloss["examples"])
+        hash_source = examples or [
+            o.text.strip() for o in member_obs if o.text and o.text.strip()
+        ][:8]
         symbol = Symbol(
             class_id=class_id,
             code=class_id,
@@ -103,7 +124,7 @@ def learn_pack(
             observation_ids=[o.observation_id for o in member_obs],
             definition=definition if definition else None,
             examples=examples if cfg.include_private else [],
-            example_hashes=[example_hash(x) for x in examples],
+            example_hashes=[example_hash(x) for x in hash_source],
             confidence=float(gloss["confidence"] if not quarantined else 0.0),
             quarantined=bool(quarantined),
             survival=survival,

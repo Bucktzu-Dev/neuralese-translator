@@ -10,7 +10,7 @@ from typing import List, Optional
 from neuralese.adapters import load_observations_jsonl, load_pack, load_stream, save_pack
 from neuralese.alphabet import LearnConfig, learn_pack
 from neuralese.audit import certify
-from neuralese.contracts import UncertifiedPackError
+from neuralese.contracts import CERT_POLICIES, UncertifiedPackError
 from neuralese.translator import translate_stream
 
 
@@ -54,7 +54,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     audit_p.add_argument("pack", type=Path)
     audit_p.add_argument("--tau-residual", type=float, default=0.55)
     audit_p.add_argument("--allow-unglossed", action="store_true")
-    audit_p.add_argument("--policy", default="default")
+    audit_p.add_argument(
+        "--policy",
+        default="default",
+        choices=list(CERT_POLICIES),
+    )
     audit_p.add_argument(
         "--observations",
         type=Path,
@@ -67,7 +71,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     cert_p.add_argument("--fail-on-undecodable", action="store_true")
     cert_p.add_argument("--tau-residual", type=float, default=0.55)
     cert_p.add_argument("--allow-unglossed", action="store_true")
-    cert_p.add_argument("--policy", default="default")
+    cert_p.add_argument(
+        "--policy",
+        default="default",
+        choices=list(CERT_POLICIES),
+    )
     cert_p.add_argument(
         "--observations",
         type=Path,
@@ -78,19 +86,23 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.cmd == "learn":
-        obs = load_observations_jsonl(args.observations)
-        parent = load_pack(args.parent) if args.parent else None
-        pack = learn_pack(
-            obs,
-            config=LearnConfig(
-                n_symbols=args.n_symbols,
-                min_cluster_size=args.min_cluster_size,
-                tau_residual=args.tau_residual,
-                seed=args.seed,
-                include_private=args.include_private,
-            ),
-            previous=parent,
-        )
+        try:
+            obs = load_observations_jsonl(args.observations)
+            parent = load_pack(args.parent) if args.parent else None
+            pack = learn_pack(
+                obs,
+                config=LearnConfig(
+                    n_symbols=args.n_symbols,
+                    min_cluster_size=args.min_cluster_size,
+                    tau_residual=args.tau_residual,
+                    seed=args.seed,
+                    include_private=args.include_private,
+                ),
+                previous=parent,
+            )
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
         save_pack(pack, args.output)
         print(
             json.dumps(

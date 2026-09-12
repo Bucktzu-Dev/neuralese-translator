@@ -1,8 +1,11 @@
 from pathlib import Path
 
+import pytest
+
 from neuralese.adapters import load_observations_jsonl
 from neuralese.alphabet import LearnConfig, learn_pack
 from neuralese.audit import certify
+from neuralese.contracts import Observation
 from neuralese.translator import translate_stream
 
 TOY = Path(__file__).resolve().parents[1] / "examples" / "toy_stream" / "observations.jsonl"
@@ -38,8 +41,6 @@ def test_parent_pack_records_parent_id_and_delta():
 
 
 def test_text_only_pack_certifies_against_original_observations():
-    from neuralese.contracts import Observation
-
     obs = [
         Observation(observation_id="t-1", text="hello there friend"),
         Observation(observation_id="t-2", text="hello there pal"),
@@ -50,3 +51,39 @@ def test_text_only_pack_certifies_against_original_observations():
     cert = certify(pack, observations=obs)
     assert cert.passed, cert.failures
     assert cert.details["observations_checked"] is True
+
+
+def test_learn_rejects_duplicate_observation_ids():
+    obs = [
+        Observation(observation_id="dup", text="hello there friend"),
+        Observation(observation_id="dup", text="hello there pal"),
+    ]
+    with pytest.raises(ValueError, match="duplicate observation_id"):
+        learn_pack(obs, config=LearnConfig(n_symbols=1, min_cluster_size=1, seed=0))
+
+
+def test_public_pack_definition_does_not_copy_raw_observation_text():
+    obs = [
+        Observation(observation_id="s1", text="99887766 !!!"),
+        Observation(observation_id="s2", text="99887766 ???"),
+        Observation(observation_id="p1", text="!!! 11223344"),
+        Observation(observation_id="p2", text="??? 11223344"),
+    ]
+    pack = learn_pack(
+        obs,
+        config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0, include_private=False),
+    )
+    for symbol in pack.symbols:
+        assert symbol.examples == []
+        definition = symbol.definition or ""
+        assert "99887766" not in definition
+        assert "11223344" not in definition
+        dumped = symbol.to_dict(include_private=False)
+        assert "examples" not in dumped
+        if symbol.observation_ids:
+            assert symbol.example_hashes
+    private = learn_pack(
+        obs,
+        config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0, include_private=True),
+    )
+    assert any("99887766" in ex or "11223344" in ex for s in private.symbols for ex in s.examples)

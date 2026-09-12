@@ -82,3 +82,9 @@ def test_rewrite_stream_versioned_requires_source():
     with pytest.raises(ValueError, match="source_pack_checksum"):
         rewrite_stream([7], tables)
     assert rewrite_stream([7], tables, source_pack_checksum="a" * 64) == [0]
+
+
+def test_rewrite_stream_mixed_tables_use_legacy_without_source():
+    tables = {"legacy": {7: 0}, "a" * 64: {7: 1}}
+    assert rewrite_stream([7], tables) == [0]
+    assert rewrite_stream([7], tables, source_pack_checksum="a" * 64) == [1]

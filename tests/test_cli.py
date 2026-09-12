@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from neuralese.cli import main
 
 TOY_DIR = Path(__file__).resolve().parents[1] / "examples" / "toy_stream"
@@ -119,3 +121,29 @@ def test_cli_certify_fails_on_undecodable(tmp_path, capsys):
     assert rc == 1
     cert = json.loads(capsys.readouterr().out)
     assert cert["passed"] is False
+
+
+def test_cli_audit_unknown_policy_is_clean_error(capsys):
+    with pytest.raises(SystemExit) as err:
+        main(["audit", "pack.json", "--policy", "typo"])
+    assert err.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_cli_certify_unknown_policy_is_clean_error(capsys):
+    with pytest.raises(SystemExit) as err:
+        main(["certify", "pack.json", "--policy", "typo"])
+    assert err.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_cli_learn_duplicate_ids_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text(
+        '{"observation_id":"x","text":"hello there friend"}\n'
+        '{"observation_id":"x","text":"hello there pal"}\n'
+    )
+    rc = main(["learn", str(obs), "-o", str(tmp_path / "pack.json"), "--n-symbols", "1"])
+    assert rc == 1
+    assert "duplicate observation_id" in capsys.readouterr().err
+    assert not (tmp_path / "pack.json").exists()

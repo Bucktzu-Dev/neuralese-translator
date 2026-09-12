@@ -58,9 +58,9 @@ A nonempty string in `observation_ids` is not enough. Each live id must be non-b
 
 Ids missing from the map fail. Blank ids fail. Mutating the manifest without resealing fails integrity.
 
-A well-formed digest in the map is **self-consistency**, not proof the tensors existed. Pass the original observations (`certify(..., observations=...)` / `--observations`) to recompute hashes. Fabricated ids with attacker-chosen 64-hex digests fail that check.
+A well-formed digest in the map is **self-consistency**, not proof the tensors existed. Pass the original observations (`certify(..., observations=...)` / `--observations`) to recompute hashes. Fabricated ids with attacker-chosen 64-hex digests fail that check. Duplicate `observation_id` values fail during `learn` and during content verification; they are not a fold path. A supplied observation with neither embedding nor text fails `evidence_valid` instead of crashing.
 
-Public packs store hashes, not raw example text (`include_private=false` by default).
+Public packs store hashes, not raw example text (`include_private=false` by default). Heuristic glosses then use keywords or an unglossed/quarantine marker; they do not copy the first observation verbatim into `definition`.
 
 ## Aliases
 
@@ -68,7 +68,7 @@ Aliases are version-scoped: `{source_pack_checksum: {old_code: new_code}}`.
 
 Current codebook codes are never rewritten. A map `{0: 1}` does not steal live code `0`. Historical codes absent from the current codebook follow hops (`rewrite_stream` is multi-hop).
 
-Pass `--source-pack <checksum>` to select a parent table explicitly. An explicit source, including empty string, never merges other tables. With no source, only the unscoped `legacy` table is used.
+Pass `--source-pack <checksum>` to select a parent table explicitly. An explicit source, including empty string, never merges other tables. With no source, only the unscoped `legacy` table is used (`rewrite_stream` and `SymbolPack.alias_table` agree: versioned tables are ignored unless a source is given). `audit` and `certify` reject unknown `--policy` values at the CLI.
 
 ## Admission
 

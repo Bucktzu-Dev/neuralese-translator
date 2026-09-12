@@ -31,6 +31,7 @@ def learn_definition(
     observations: Sequence[Observation],
     *,
     llm_client: Any = None,
+    include_private: bool = False,
 ) -> Dict[str, Any]:
     texts = [obs.text.strip() for obs in observations if obs.text and obs.text.strip()]
     tokens: List[str] = []
@@ -38,13 +39,13 @@ def learn_definition(
         tokens.extend(re.findall(r"[a-zA-Z][a-zA-Z0-9']+", text.lower()))
     counted = Counter(t for t in tokens if t not in STOP)
     keywords = [w for w, _ in counted.most_common(8)]
-    examples = texts[:8]
+    examples = texts[:8] if include_private else []
 
     if llm_client is not None and texts:
         prompt = (
             "Write one short English sentence defining the shared meaning of these examples. "
             "Do not add facts that are not in the examples.\n"
-            + "\n".join(f"- {t}" for t in examples[:12])
+            + "\n".join(f"- {t}" for t in texts[:12])
         )
         try:
             definition = str(llm_client.generate(prompt, max_tokens=80)).strip()

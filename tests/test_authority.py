@@ -252,3 +252,31 @@ def test_versioned_aliases_without_source_do_not_merge():
     pack = make_pack(aliases={"cccc" * 16: {7: 0}})
     glosses = translate_stream(pack, [7])
     assert glosses[0].state == "unknown"
+
+
+def test_duplicate_supplied_observations_fail_evidence():
+    from neuralese.contracts import Observation
+
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    cert = certify(
+        pack,
+        observations=[
+            Observation(observation_id=obs_id, text="hello there"),
+            Observation(observation_id=obs_id, text="different content entirely"),
+        ],
+    )
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("duplicate observation_id" in f for f in cert.failures)
+
+
+def test_observation_without_embedding_or_text_fails_closed():
+    from neuralese.contracts import Observation
+
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    cert = certify(pack, observations=[Observation(observation_id=obs_id)])
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("neither embedding nor text" in f for f in cert.failures)

@@ -33,7 +33,9 @@ def rewrite_stream(
         tables = normalize_aliases(aliases)
         if source_pack_checksum is not None:
             table = dict(tables.get(source_pack_checksum, {}))
-        elif set(tables) <= {"legacy"}:
+        elif "legacy" in tables:
+            # Match SymbolPack.alias_table(): no source selects only legacy
+            # and ignores versioned parent tables.
             table = dict(tables.get("legacy", {}))
         else:
             raise ValueError(

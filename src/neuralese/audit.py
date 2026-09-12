@@ -111,7 +111,20 @@ def certify(
     live_ids: Set[str] = set()
     provided = None
     if observations is not None:
-        provided = {o.observation_id: o for o in observations}
+        provided = {}
+        duplicate_ids: Set[str] = set()
+        for obs in observations:
+            oid = obs.observation_id
+            if oid in provided:
+                duplicate_ids.add(oid)
+            provided[oid] = obs
+        if duplicate_ids:
+            evidence_valid = False
+            unfoldable = False
+            for oid in sorted(duplicate_ids):
+                failures.append(
+                    f"duplicate observation_id {oid!r} in supplied observations"
+                )
     for symbol in iter_live_symbols(pack):
         if not symbol.observation_ids:
             unfoldable = False
@@ -140,7 +153,14 @@ def certify(
                         f"observation {obs_id!r} was not supplied for content verification"
                     )
                 else:
-                    normalized = ensure_embedding(Observation.from_dict(obs.to_dict()))
+                    try:
+                        normalized = ensure_embedding(Observation.from_dict(obs.to_dict()))
+                    except ValueError:
+                        evidence_valid = False
+                        failures.append(
+                            f"observation {obs_id!r} has neither embedding nor text"
+                        )
+                        continue
                     if normalized.content_hash() != digest:
                         evidence_valid = False
                         failures.append(
