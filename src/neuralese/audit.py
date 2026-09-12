@@ -16,6 +16,7 @@ from neuralese.contracts import (
     SymbolPack,
     iter_live_symbols,
 )
+from neuralese.gloss import UNGLOSSED
 
 
 def certify(
@@ -101,7 +102,7 @@ def certify(
     if require_gloss:
         for symbol in iter_live_symbols(pack):
             definition = (symbol.definition or "").strip()
-            if not definition:
+            if not definition or definition == UNGLOSSED:
                 gloss_bound = False
                 failures.append(f"class {symbol.class_id} has no bound English gloss")
 
@@ -245,9 +246,14 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
         failures.append("guards.pass_all is false")
         return False
     finalize = [r for r in pack.receipts if r.step == "finalize"]
-    if finalize and not finalize[-1].ok and decision != "accept_provisional":
-        failures.append("finalize receipt is not ok")
-        return False
+    if finalize:
+        ok = finalize[-1].ok
+        if not isinstance(ok, bool):
+            failures.append("finalize receipt ok is not a boolean")
+            return False
+        if not ok and decision != "accept_provisional":
+            failures.append("finalize receipt is not ok")
+            return False
     return True
 
 
@@ -260,10 +266,17 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         )
     if pack.decision not in DECISIONS:
         failures.append(f"unknown decision {pack.decision!r}")
-    if pack.guards is not None and bool(pack.guards.pass_all) != _effective_pass_all(
-        pack.guards
-    ):
-        failures.append("guards.pass_all is inconsistent with component flags")
+    if pack.guards is not None:
+        for name in (*_GUARD_PASS_FLAGS, "pass_all"):
+            if not isinstance(getattr(pack.guards, name), bool):
+                failures.append(f"guards.{name} is not a boolean")
+        if isinstance(pack.guards.pass_all, bool) and pack.guards.pass_all != _effective_pass_all(
+            pack.guards
+        ):
+            failures.append("guards.pass_all is inconsistent with component flags")
+    for index, receipt in enumerate(pack.receipts):
+        if not isinstance(receipt.ok, bool):
+            failures.append(f"receipts[{index}].ok is not a boolean")
     if not _finite(pack.reconstruction_error):
         failures.append("reconstruction_error is not finite")
     if pack.reconstruction_error < 0:
@@ -291,7 +304,7 @@ _GUARD_PASS_FLAGS = (
 
 
 def _effective_pass_all(guards) -> bool:
-    return all(bool(getattr(guards, name)) for name in _GUARD_PASS_FLAGS)
+    return all(getattr(guards, name) is True for name in _GUARD_PASS_FLAGS)
 
 
 def _finite(value: float) -> bool:
