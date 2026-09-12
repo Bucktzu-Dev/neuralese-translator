@@ -80,6 +80,9 @@ def learn_definition(
             ):
                 definition = UNGLOSSED
 
+    if not (definition or "").strip():
+        definition = UNGLOSSED
+
     observation_count = len(observations)
     text_count = len(texts)
     confidence = 0.0
@@ -94,9 +97,13 @@ def learn_definition(
     }
 
 
+def _normalized_text(text: str) -> str:
+    return " ".join((text or "").strip().lower().split())
+
+
 def _public_keywords(keywords: Sequence[str], texts: Sequence[str]) -> List[str]:
     blocked = _raw_observation_forms(texts)
-    lowered = [t.strip().lower() for t in texts if t and t.strip()]
+    lowered = [_normalized_text(t) for t in texts if t and t.strip()]
     safe: List[str] = []
     for word in keywords:
         token = word.lower()
@@ -112,7 +119,7 @@ def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
     """Full observations and single-token payloads that would reproduce raw text."""
     blocked: Set[str] = set()
     for text in texts:
-        snippet = text.strip().lower()
+        snippet = _normalized_text(text)
         if not snippet:
             continue
         blocked.add(snippet)
@@ -128,7 +135,7 @@ def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
 def _contains_raw_observation(
     definition: str, texts: Sequence[str], *, windows: bool = True
 ) -> bool:
-    blob = (definition or "").lower()
+    blob = _normalized_text(definition or "")
     if not blob:
         return False
     for form in _raw_observation_forms(texts):
@@ -143,7 +150,7 @@ def _contains_raw_observation(
     if not windows:
         return False
     for text in texts:
-        snippet = text.strip().lower()
+        snippet = _normalized_text(text)
         if len(snippet) < 8:
             continue
         for i in range(len(snippet) - 7):
