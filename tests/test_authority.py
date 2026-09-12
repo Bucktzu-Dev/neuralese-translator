@@ -41,7 +41,7 @@ def test_seal_covers_prototype_confidence_examples_survival_lineage_guards_mdl_r
     assert pack.compute_checksum() != original
     pack.symbols[0].survival = 1.0
 
-    pack.parent_checksum = "b" * 64]
+    pack.parent_checksum = "b" * 64
     assert pack.compute_checksum() != original
     pack.parent_checksum = None
 
