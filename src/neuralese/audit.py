@@ -4,6 +4,7 @@ from __future__ import annotations
 import time
 from typing import List, Optional, Sequence, Set
 
+from neuralese.adapters import ensure_embedding
 from neuralese.aliases import follow_aliases, has_alias_cycle
 from neuralese.contracts import (
     CERT_POLICIES,
@@ -138,11 +139,13 @@ def certify(
                     failures.append(
                         f"observation {obs_id!r} was not supplied for content verification"
                     )
-                elif obs.content_hash() != digest:
-                    evidence_valid = False
-                    failures.append(
-                        f"observation {obs_id!r} evidence hash does not match content"
-                    )
+                else:
+                    normalized = ensure_embedding(Observation.from_dict(obs.to_dict()))
+                    if normalized.content_hash() != digest:
+                        evidence_valid = False
+                        failures.append(
+                            f"observation {obs_id!r} evidence hash does not match content"
+                        )
     unfoldable = unfoldable and evidence_valid
 
     admission_valid = _admission_valid(pack, policy, failures)
