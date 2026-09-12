@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence, Set
 
 from neuralese.contracts import Observation
 
@@ -26,6 +26,9 @@ STOP = {
     "with",
 }
 
+UNGLOSSED = "[unglossed]"
+_TOKEN = re.compile(r"[a-zA-Z][a-zA-Z0-9']+")
+
 
 def learn_definition(
     observations: Sequence[Observation],
@@ -36,10 +39,12 @@ def learn_definition(
     texts = [obs.text.strip() for obs in observations if obs.text and obs.text.strip()]
     tokens: List[str] = []
     for text in texts:
-        tokens.extend(re.findall(r"[a-zA-Z][a-zA-Z0-9']+", text.lower()))
+        tokens.extend(_TOKEN.findall(text.lower()))
     counted = Counter(t for t in tokens if t not in STOP)
     keywords = [w for w, _ in counted.most_common(8)]
     examples = texts[:8] if include_private else []
+    if not include_private:
+        keywords = _public_keywords(keywords, texts)
 
     if llm_client is not None and (texts if include_private else keywords):
         if include_private:
@@ -65,6 +70,10 @@ def learn_definition(
     else:
         definition = _heuristic_definition(keywords, examples)
 
+    if not include_private:
+        if not (definition or "").strip() or _contains_raw_observation(definition, texts):
+            definition = UNGLOSSED
+
     observation_count = len(observations)
     text_count = len(texts)
     confidence = 0.0
@@ -79,13 +88,40 @@ def learn_definition(
     }
 
 
+def _public_keywords(keywords: Sequence[str], texts: Sequence[str]) -> List[str]:
+    blocked = _raw_observation_forms(texts)
+    return [w for w in keywords if w.lower() not in blocked]
+
+
+def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
+    """Full observations and single-token payloads that would reproduce raw text."""
+    blocked: Set[str] = set()
+    for text in texts:
+        snippet = text.strip().lower()
+        if not snippet:
+            continue
+        blocked.add(snippet)
+        words = _TOKEN.findall(snippet)
+        if len(words) == 1:
+            blocked.add(words[0])
+        alnum = re.findall(r"[a-z0-9]+", snippet)
+        if len(alnum) == 1:
+            blocked.add(alnum[0])
+    return blocked
+
+
 def _contains_raw_observation(definition: str, texts: Sequence[str]) -> bool:
     blob = (definition or "").lower()
     if not blob:
         return False
-    for text in texts:
-        snippet = text.strip()
-        if len(snippet) >= 8 and snippet.lower() in blob:
+    for form in _raw_observation_forms(texts):
+        if not form:
+            continue
+        if len(form) >= 3:
+            if form in blob:
+                return True
+            continue
+        if re.search(rf"(?<![a-z0-9]){re.escape(form)}(?![a-z0-9])", blob):
             return True
     return False
 
