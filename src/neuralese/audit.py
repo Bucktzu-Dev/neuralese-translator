@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from typing import List, Set
+from typing import List, Optional, Sequence, Set
 
 from neuralese.aliases import follow_aliases, has_alias_cycle
 from neuralese.contracts import (
@@ -10,6 +10,7 @@ from neuralese.contracts import (
     DECODER_VERSION,
     SHA256_HEX,
     AuditCertificate,
+    Observation,
     SymbolPack,
     iter_live_symbols,
 )
@@ -21,6 +22,7 @@ def certify(
     require_gloss: bool = True,
     tau_residual: float = 0.55,
     policy: str = "default",
+    observations: Optional[Sequence[Observation]] = None,
 ) -> AuditCertificate:
     if policy not in CERT_POLICIES:
         raise ValueError(f"unknown certification policy {policy!r}")
@@ -106,6 +108,9 @@ def certify(
     unfoldable = True
     evidence_valid = True
     live_ids: Set[str] = set()
+    provided = None
+    if observations is not None:
+        provided = {o.observation_id: o for o in observations}
     for symbol in iter_live_symbols(pack):
         if not symbol.observation_ids:
             unfoldable = False
@@ -113,6 +118,11 @@ def certify(
             failures.append(f"class {symbol.class_id} has no observation_ids")
             continue
         for obs_id in symbol.observation_ids:
+            if not str(obs_id).strip():
+                unfoldable = False
+                evidence_valid = False
+                failures.append(f"class {symbol.class_id} has a blank observation_id")
+                continue
             live_ids.add(obs_id)
             digest = pack.evidence.get(obs_id)
             if digest is None:
@@ -121,6 +131,18 @@ def certify(
             elif not SHA256_HEX.match(digest):
                 evidence_valid = False
                 failures.append(f"observation {obs_id!r} evidence hash is not SHA-256")
+            elif provided is not None:
+                obs = provided.get(obs_id)
+                if obs is None:
+                    evidence_valid = False
+                    failures.append(
+                        f"observation {obs_id!r} was not supplied for content verification"
+                    )
+                elif obs.content_hash() != digest:
+                    evidence_valid = False
+                    failures.append(
+                        f"observation {obs_id!r} evidence hash does not match content"
+                    )
     unfoldable = unfoldable and evidence_valid
 
     admission_valid = _admission_valid(pack, policy, failures)
@@ -173,6 +195,7 @@ def certify(
             "decision": pack.decision,
             "decoder_version": pack.decoder_version,
             "expected_decoder_version": DECODER_VERSION,
+            "observations_checked": observations is not None,
         },
     )
 
