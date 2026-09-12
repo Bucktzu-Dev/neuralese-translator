@@ -59,7 +59,10 @@ def normalize_aliases(raw: Any) -> AliasTables:
     if not isinstance(raw, dict):
         raise ValueError("aliases must be a mapping")
     values = list(raw.values())
-    if values and isinstance(values[0], dict):
+    nested = [isinstance(value, dict) for value in values]
+    if any(nested):
+        if not all(nested):
+            raise ValueError("aliases must be uniformly nested mappings")
         return {str(src): _int_keyed(mapping) for src, mapping in raw.items()}
     return {"legacy": _int_keyed(raw)}
 
@@ -219,6 +222,8 @@ class Symbol:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Symbol":
+        if not isinstance(data, dict):
+            raise TypeError("symbol record must be an object")
         examples = [str(x) for x in data.get("examples") or []]
         hashes = [str(x) for x in data.get("example_hashes") or []]
         if examples and not hashes:
@@ -287,11 +292,16 @@ class SymbolPack:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SymbolPack":
+        if not isinstance(data, dict):
+            raise TypeError("pack must be a JSON object")
         guards_raw = data.get("guards")
         metadata = _mapping(data.get("metadata"))
+        symbols_raw = data.get("symbols") or []
+        if not isinstance(symbols_raw, (list, tuple)):
+            raise TypeError("symbols must be an array")
         return cls(
             pack_id=str(data["pack_id"]),
-            symbols=[Symbol.from_dict(s) for s in data.get("symbols") or []],
+            symbols=[Symbol.from_dict(s) for s in symbols_raw],
             codebook=_int_keyed(data.get("codebook") or {}),
             aliases=normalize_aliases(data.get("aliases") or {}),
             reconstruction_error=float(data.get("reconstruction_error") or 0.0),
@@ -306,7 +316,7 @@ class SymbolPack:
             evidence={str(k): str(v) for k, v in _mapping(data.get("evidence")).items()},
             decoder_version=_present_str(data, "decoder_version", DECODER_VERSION),
             decision=_load_decision(data, metadata),
-            include_private=bool(data.get("include_private") or False),
+            include_private=data["include_private"] if "include_private" in data else False,
         )
 
     def seal(self) -> "SymbolPack":
