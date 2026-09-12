@@ -55,10 +55,14 @@ def test_unglossed_live_symbol_is_explicit_gap():
             )
         ]
     )
-    glosses = translate_stream(pack, [0])
+    glosses = translate_stream(pack, [0], require_certified=False)
     assert glosses[0].state == "ok"
     assert glosses[0].english.startswith("[unglossed:")
 
 
 def test_rewrite_stream_matches_alias_map():
     assert rewrite_stream([7, 1, 7], {7: 0}) == [0, 1, 0]
+
+
+def test_rewrite_stream_follows_multiple_hops():
+    assert rewrite_stream([7], {7: 8, 8: 0}) == [0]

@@ -1,18 +1,34 @@
 """Translate a neuralese code stream into English glosses."""
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
-from neuralese.contracts import Gloss, SymbolPack
+from neuralese.audit import certify
+from neuralese.contracts import Gloss, SymbolPack, UncertifiedPackError
 from neuralese.energy import confidence_cap
 
 
-def translate_stream(pack: SymbolPack, codes: Sequence[int]) -> List[Gloss]:
-    """Map each code to a gloss. Never invent English for a missing symbol."""
+def translate_stream(
+    pack: SymbolPack,
+    codes: Sequence[int],
+    *,
+    policy: str = "default",
+    require_certified: bool = True,
+    source_pack_checksum: Optional[str] = None,
+) -> List[Gloss]:
+    """Map each code to a gloss. Never invent English for a missing symbol.
+
+    By default translation is refused unless `certify(pack, policy=policy)` passes.
+    """
+    if require_certified:
+        certificate = certify(pack, policy=policy)
+        if not certificate.passed:
+            raise UncertifiedPackError(certificate)
+
     glosses: List[Gloss] = []
     for raw in codes:
         code = int(raw)
-        resolved, aliased = pack.resolve_code(code)
+        resolved, aliased = pack.resolve_code(code, source_pack_checksum=source_pack_checksum)
         symbol = pack.symbol_by_code(resolved)
         if symbol is None:
             glosses.append(
