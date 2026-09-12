@@ -254,3 +254,9 @@ def test_load_stream_rejects_unusable_codes(tmp_path):
     path.write_text('{"codes": null}\n')
     with pytest.raises(ValueError, match="stream codes"):
         load_stream(path)
+    path.write_text("[1.9]\n")
+    with pytest.raises(ValueError, match="stream codes"):
+        load_stream(path)
+    path.write_text("[true]\n")
+    with pytest.raises(ValueError, match="stream codes"):
+        load_stream(path)
