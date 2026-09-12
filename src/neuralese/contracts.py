@@ -334,7 +334,7 @@ class SymbolPack:
                     "survival": round(float(s.survival), 8),
                     "metadata": dict(s.metadata),
                 }
-                for s in sorted(self.symbols, key=lambda x: s.class_id)
+                for s in sorted(self.symbols, key=lambda x: x.class_id)
             ],
         }
         return sha256_hex(payload)
