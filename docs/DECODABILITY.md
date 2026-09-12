@@ -30,13 +30,13 @@ Deletion is not an inverse. If a class dies, either quarantine it or issue a new
 
 ### 2. Unfoldable
 
-Every admitted (non-quarantined) symbol lists `observation_ids` that produced it.
+Every admitted (non-quarantined) symbol lists `observation_ids` that produced it, **and** those ids must resolve in the sealed evidence manifest (`id → SHA-256` of observation id, embedding, and text). A nonempty string that points nowhere is not a fold path.
 
 This is the reservoir. An auditor must be able to:
 
 1. Take a code.
 2. Look up its class.
-3. Retrieve the observations (text and/or embeddings) used at mint time.
+3. Retrieve the observations (text and/or embeddings) used at mint time, or at least verify their content hashes.
 4. Recompute the prototype and residual.
 
 If step 3 is empty, the symbol is not certified. Quarantine it or refuse the pack.
@@ -46,8 +46,9 @@ If step 3 is empty, the symbol is not certified. Quarantine it or refuse the pac
 English is sealed into the pack checksum with the class id.
 
 - A gloss without a pack checksum is commentary, not an audit.
-- Changing the sentence without resealing **must** fail `certify()`.
+- Changing the sentence without resealing **must** fail `certify()` **and** `translate()`.
 - An optional LLM may draft the sentence. The certificate does not depend on the vendor.
+- Translation does not run unless a named certification policy passes.
 
 Unglossed but unfoldable symbols are still better than hallucinated English. The translator emits `[unglossed: …]` rather than a plausible lie.
 

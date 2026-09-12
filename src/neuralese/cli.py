@@ -10,6 +10,7 @@ from typing import List, Optional
 from neuralese.adapters import load_observations_jsonl, load_pack, load_stream, save_pack
 from neuralese.alphabet import LearnConfig, learn_pack
 from neuralese.audit import certify
+from neuralese.contracts import UncertifiedPackError
 from neuralese.translator import translate_stream
 
 
@@ -28,21 +29,39 @@ def main(argv: Optional[List[str]] = None) -> int:
     learn_p.add_argument("--min-cluster-size", type=int, default=2)
     learn_p.add_argument("--tau-residual", type=float, default=0.55)
     learn_p.add_argument("--seed", type=int, default=0)
+    learn_p.add_argument(
+        "--include-private",
+        action="store_true",
+        help="serialize raw example text (off by default)",
+    )
 
     tr_p = sub.add_parser("translate", help="gloss a code stream using a sealed pack")
     tr_p.add_argument("pack", type=Path)
     tr_p.add_argument("stream", type=Path)
+    tr_p.add_argument("--policy", default="default", help="certification policy: default|strict|integrity")
+    tr_p.add_argument(
+        "--allow-uncertified",
+        action="store_true",
+        help="translate even if the pack fails certification (debug only)",
+    )
+    tr_p.add_argument(
+        "--source-pack",
+        default=None,
+        help="parent/source pack checksum whose alias table should be used",
+    )
 
     audit_p = sub.add_parser("audit", help="print an AuditCertificate for a pack")
     audit_p.add_argument("pack", type=Path)
     audit_p.add_argument("--tau-residual", type=float, default=0.55)
     audit_p.add_argument("--allow-unglossed", action="store_true")
+    audit_p.add_argument("--policy", default="default")
 
     cert_p = sub.add_parser("certify", help="certify a pack; optionally fail closed")
     cert_p.add_argument("pack", type=Path)
     cert_p.add_argument("--fail-on-undecodable", action="store_true")
     cert_p.add_argument("--tau-residual", type=float, default=0.55)
     cert_p.add_argument("--allow-unglossed", action="store_true")
+    cert_p.add_argument("--policy", default="default")
 
     args = parser.parse_args(argv)
 
@@ -56,17 +75,39 @@ def main(argv: Optional[List[str]] = None) -> int:
                 min_cluster_size=args.min_cluster_size,
                 tau_residual=args.tau_residual,
                 seed=args.seed,
+                include_private=args.include_private,
             ),
             previous=parent,
         )
         save_pack(pack, args.output)
-        print(json.dumps({"pack_id": pack.pack_id, "checksum": pack.checksum, "n_symbols": len(pack.symbols)}, indent=2))
-        return 0
+        print(
+            json.dumps(
+                {
+                    "pack_id": pack.pack_id,
+                    "checksum": pack.checksum,
+                    "n_symbols": len(pack.symbols),
+                    "decision": pack.decision,
+                    "status": pack.metadata.get("status"),
+                },
+                indent=2,
+            )
+        )
+        return 2 if pack.decision == "reject" else 0
 
     if args.cmd == "translate":
         pack = load_pack(args.pack)
         codes = load_stream(args.stream)
-        glosses = translate_stream(pack, codes)
+        try:
+            glosses = translate_stream(
+                pack,
+                codes,
+                policy=args.policy,
+                require_certified=not args.allow_uncertified,
+                source_pack_checksum=args.source_pack,
+            )
+        except UncertifiedPackError as exc:
+            print(json.dumps(exc.certificate.to_dict(), indent=2, sort_keys=True))
+            return 1
         print(json.dumps([g.to_dict() for g in glosses], indent=2))
         return 0
 
@@ -75,6 +116,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         pack,
         require_gloss=not args.allow_unglossed,
         tau_residual=args.tau_residual,
+        policy=args.policy,
     )
     print(json.dumps(cert.to_dict(), indent=2, sort_keys=True))
     if args.cmd == "certify" and args.fail_on_undecodable and not cert.passed:
