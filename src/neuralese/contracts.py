@@ -104,6 +104,8 @@ class Observation:
             raise TypeError("text must be a string or null")
         if self.embedding is None:
             self.embedding = []
+        elif isinstance(self.embedding, (str, bytes)):
+            raise TypeError("embedding must be an array or null")
         else:
             self.embedding = [float(x) for x in self.embedding]
 
@@ -118,6 +120,8 @@ class Observation:
         raw_embedding = data.get("embedding")
         if raw_embedding is None:
             raw_embedding = []
+        elif not isinstance(raw_embedding, (list, tuple)):
+            raise TypeError("embedding must be an array or null")
         text = data.get("text")
         if text is not None and not isinstance(text, str):
             raise TypeError("text must be a string or null")
@@ -191,6 +195,8 @@ class Symbol:
     example_hashes: List[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        if self.definition is not None and not isinstance(self.definition, str):
+            raise TypeError("definition must be a string or null")
         if self.examples and not self.example_hashes:
             self.example_hashes = [example_hash(x) for x in self.examples]
 
@@ -217,16 +223,19 @@ class Symbol:
         hashes = [str(x) for x in data.get("example_hashes") or []]
         if examples and not hashes:
             hashes = [example_hash(x) for x in examples]
+        definition = data.get("definition")
+        if definition is not None and not isinstance(definition, str):
+            raise TypeError("definition must be a string or null")
         return cls(
             class_id=int(data["class_id"]),
             code=int(data["code"]),
             proto_embedding=[float(x) for x in data.get("proto_embedding") or []],
             observation_ids=[str(x) for x in data.get("observation_ids") or []],
-            definition=data.get("definition"),
+            definition=definition,
             examples=examples,
             example_hashes=hashes,
             confidence=float(data.get("confidence") or 0.0),
-            quarantined=bool(data.get("quarantined") or False),
+            quarantined=data["quarantined"] if "quarantined" in data else False,
             survival=float(data.get("survival") if data.get("survival") is not None else 1.0),
             metadata=dict(data.get("metadata") or {}),
         )
