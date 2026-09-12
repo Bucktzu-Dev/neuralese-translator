@@ -214,6 +214,17 @@ def test_cli_certify_null_jsonl_is_clean_error(tmp_path, capsys):
     assert "Traceback" not in err
 
 
+def test_cli_learn_non_list_embedding_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text('{"observation_id":"x","embedding":1}\n')
+    rc = main(["learn", str(obs), "-o", str(tmp_path / "pack.json"), "--n-symbols", "1"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid observation record" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "pack.json").exists()
+
+
 def test_cli_learn_duplicate_ids_is_clean_error(tmp_path, capsys):
     obs = tmp_path / "obs.jsonl"
     obs.write_text(
