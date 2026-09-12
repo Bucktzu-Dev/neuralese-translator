@@ -80,6 +80,13 @@ def test_load_observations_rejects_non_string_text(tmp_path):
         load_observations_jsonl(path)
 
 
+def test_load_observations_rejects_string_embedding(tmp_path):
+    path = tmp_path / "bad.jsonl"
+    path.write_text('{"observation_id":"x","embedding":"1"}\n')
+    with pytest.raises(ValueError, match="invalid observation record"):
+        load_observations_jsonl(path)
+
+
 def test_learn_rejects_duplicate_observation_ids():
     obs = [
         Observation(observation_id="dup", text="hello there friend"),
@@ -183,3 +190,43 @@ def test_public_llm_echo_of_observation_prefix_is_discarded():
     assert "launchco" not in definition
     assert "launchcode99" not in definition
     assert gloss["examples"] == []
+
+
+def test_public_llm_echo_with_collapsed_whitespace_is_discarded():
+    from neuralese.gloss import learn_definition
+
+    obs = [
+        Observation(observation_id="s1", text="alpha   beta"),
+        Observation(observation_id="s2", text="hello there friend"),
+    ]
+
+    class Echo:
+        def generate(self, prompt, max_tokens=80):
+            return "this means alpha beta"
+
+    gloss = learn_definition(obs, llm_client=Echo(), include_private=False)
+    definition = (gloss["definition"] or "").lower()
+    assert "alpha beta" not in definition
+    assert gloss["examples"] == []
+
+
+def test_empty_private_definition_is_unglossed_zero_confidence():
+    obs = [
+        Observation(observation_id="e1", embedding=[1.0, 0.0, 0.0]),
+        Observation(observation_id="e2", embedding=[0.95, 0.05, 0.0]),
+        Observation(observation_id="e3", embedding=[0.9, 0.1, 0.0]),
+    ]
+    pack = learn_pack(
+        obs,
+        config=LearnConfig(
+            n_symbols=1,
+            min_cluster_size=2,
+            seed=0,
+            include_private=True,
+        ),
+    )
+    live = [s for s in pack.symbols if not s.quarantined]
+    assert live
+    for symbol in live:
+        assert symbol.definition == "[unglossed]"
+        assert symbol.confidence == 0.0
