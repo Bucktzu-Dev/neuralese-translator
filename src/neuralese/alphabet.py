@@ -111,7 +111,7 @@ def learn_pack(
         )
         quarantined = member_idx.size < cfg.min_cluster_size or kappa < cfg.tau_kappa
         definition = gloss["definition"] or None
-        if quarantined and not definition:
+        if quarantined and (not definition or definition.strip() == "[unglossed]"):
             definition = f"[quarantined class {class_id}]"
         examples = list(gloss["examples"])
         hash_source = examples or [
