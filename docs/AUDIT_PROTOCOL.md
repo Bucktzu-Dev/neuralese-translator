@@ -9,7 +9,7 @@ v0.1.1 splits three authorities. `passed` is a conjunction under the named polic
 | field | meaning |
 |---|---|
 | `integrity_valid` | schema + addressable aliases + full SHA-256 seal + residual + gloss binding |
-| `evidence_valid` | every live `observation_id` resolves in the sealed evidence manifest with a SHA-256 digest |
+| `evidence_valid` | live ids are non-blank, present in the sealed evidence map with SHA-256 digests; if `--observations` is supplied, digests are recomputed from content |
 | `admission_valid` | learning `decision` is not `reject`; guards/finalize agree with admission |
 | `passed` | policy conjunction of the above |
 | `policy` | `default` \| `strict` \| `integrity` |
@@ -21,6 +21,7 @@ CLI:
 ```bash
 neuralese audit pack.json
 neuralese certify pack.json --fail-on-undecodable
+neuralese certify pack.json --observations observations.jsonl --fail-on-undecodable
 neuralese translate pack.json stream.json          # fails if certify fails
 neuralese translate pack.json stream.json --allow-uncertified   # debug only
 ```
@@ -33,9 +34,9 @@ neuralese translate pack.json stream.json --allow-uncertified   # debug only
 |---|---|
 | `default` | integrity ∧ evidence ∧ admission (`accept` or `accept_provisional`) |
 | `strict` | default plus `decision=accept` and `guards.pass_all` |
-| `integrity` | seal/schema only (does not authorize translation) |
+| `integrity` | seal/schema only (does **not** authorize translation) |
 
-`translate_stream(..., policy="default", require_certified=True)` is the library default.
+`translate_stream(..., policy="default", require_certified=True)` is the library default. `policy="integrity"` is for inspecting a seal; `translate` and `translate_stream` reject it.
 
 ## Seal (full SHA-256)
 
@@ -53,9 +54,11 @@ This is self-consistency, not publisher authenticity. Sign or externally anchor 
 
 ## Evidence / unfold
 
-A nonempty string in `observation_ids` is not enough. Each live id must appear in `pack.evidence` as `id → SHA-256(observation_id, embedding, text)`.
+A nonempty string in `observation_ids` is not enough. Each live id must be non-blank and appear in `pack.evidence` as `id → SHA-256(observation_id, embedding, text)`.
 
-Fabricated ids fail. Mutating the manifest without resealing fails integrity.
+Ids missing from the map fail. Blank ids fail. Mutating the manifest without resealing fails integrity.
+
+A well-formed digest in the map is **self-consistency**, not proof the tensors existed. Pass the original observations (`certify(..., observations=...)` / `--observations`) to recompute hashes. Fabricated ids with attacker-chosen 64-hex digests fail that check.
 
 Public packs store hashes, not raw example text (`include_private=false` by default).
 
@@ -65,7 +68,7 @@ Aliases are version-scoped: `{source_pack_checksum: {old_code: new_code}}`.
 
 Current codebook codes are never rewritten. A map `{0: 1}` does not steal live code `0`. Historical codes absent from the current codebook follow hops (`rewrite_stream` is multi-hop).
 
-Pass `--source-pack <checksum>` to select a parent table explicitly.
+Pass `--source-pack <checksum>` to select a parent table explicitly. If that checksum is not in the pack, aliases are not applied (no merge of unrelated tables).
 
 ## Admission
 

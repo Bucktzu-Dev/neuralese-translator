@@ -73,7 +73,7 @@ from neuralese import load_observations_jsonl, learn_pack, translate_stream, cer
 
 obs = load_observations_jsonl("examples/toy_stream/observations.jsonl")
 pack = learn_pack(obs)
-cert = certify(pack)
+cert = certify(pack, observations=obs)
 assert cert.passed
 glosses = translate_stream(pack, [0, 1, 99])
 ```
