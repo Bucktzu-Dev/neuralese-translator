@@ -3,7 +3,12 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional, Sequence, Union
 
-from neuralese.contracts import AliasTables, normalize_aliases
+from neuralese.contracts import (
+    LEGACY_ALIAS_KEY,
+    AliasTables,
+    normalize_aliases,
+    select_alias_table,
+)
 
 
 def follow_aliases(
@@ -37,17 +42,12 @@ def rewrite_stream(
     if not aliases:
         return [int(token) for token in tokens]
     tables = normalize_aliases(aliases)
-    if source_pack_checksum is not None:
-        table = dict(tables.get(source_pack_checksum, {}))
-    elif "legacy" in tables:
-        # Match SymbolPack.alias_table(): no source selects only legacy
-        # and ignores versioned parent tables.
-        table = dict(tables.get("legacy", {}))
-    else:
+    if source_pack_checksum is None and LEGACY_ALIAS_KEY not in tables:
         raise ValueError(
             "versioned alias tables require source_pack_checksum; "
             "refusing to merge unrelated sources"
         )
+    table = select_alias_table(tables, source_pack_checksum)
     return [follow_aliases(int(token), table) for token in tokens]
 
 
