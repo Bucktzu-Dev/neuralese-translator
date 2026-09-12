@@ -25,6 +25,13 @@ def test_aliased_state_uses_resolved_definition():
     assert "hello" in glosses[0].english.lower()
 
 
+def test_explicit_source_pack_uses_only_that_table():
+    pack = make_pack(aliases={"aaaa" * 16: {7: 0}, "bbbb" * 16: {7: 1}})
+    glosses = translate_stream(pack, [7], source_pack_checksum="aaaa" * 16)
+    assert glosses[0].state == "aliased"
+    assert glosses[0].resolved_code == 0
+
+
 def test_quarantined_state_does_not_use_definition_as_ok():
     pack = make_pack(
         symbols=[

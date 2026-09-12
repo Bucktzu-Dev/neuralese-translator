@@ -34,6 +34,41 @@ def test_cli_learn_translate_certify(tmp_path, capsys):
     cert = json.loads(capsys.readouterr().out)
     assert cert["passed"] is True
 
+    rc = main(
+        [
+            "certify",
+            str(pack_path),
+            "--fail-on-undecodable",
+            "--observations",
+            str(TOY_DIR / "observations.jsonl"),
+        ]
+    )
+    assert rc == 0
+    cert = json.loads(capsys.readouterr().out)
+    assert cert["passed"] is True
+    assert cert["details"]["observations_checked"] is True
+
+
+def test_cli_translate_rejects_integrity_policy(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    rc = main(
+        ["translate", str(pack_path), str(TOY_DIR / "stream.json"), "--policy", "integrity"]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "does not authorize translation" in err
+
 
 def test_cli_certify_fails_on_undecodable(tmp_path, capsys):
     pack_path = tmp_path / "pack.json"

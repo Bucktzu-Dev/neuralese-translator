@@ -150,3 +150,74 @@ def test_integrity_policy_can_pass_when_admission_fails():
     assert cert.passed
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0], policy="default")
+    with pytest.raises(ValueError, match="does not authorize translation"):
+        translate_stream(pack, [0], policy="integrity")
+
+
+def test_blank_observation_id_fails_evidence():
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0],
+                observation_ids=["   "],
+                definition="blank id",
+                confidence=0.5,
+            )
+        ],
+        evidence={"   ": "a" * 64},
+    )
+    cert = certify(pack)
+    assert not cert.evidence_valid
+    assert any("blank observation_id" in f for f in cert.failures)
+
+
+def test_fabricated_digest_fails_when_observations_supplied():
+    from neuralese.contracts import Observation
+
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0],
+                observation_ids=["obs-hello"],
+                definition="hello",
+                confidence=0.5,
+            )
+        ],
+        evidence={"obs-hello": "a" * 64},
+    )
+    cert = certify(pack)
+    assert cert.evidence_valid
+    cert = certify(
+        pack,
+        observations=[Observation(observation_id="obs-hello", text="hello there")],
+    )
+    assert not cert.evidence_valid
+    assert cert.details["observations_checked"] is True
+    assert any("does not match content" in f for f in cert.failures)
+
+
+def test_unknown_source_pack_does_not_merge_unrelated_aliases():
+    pack = make_pack(aliases={"cccc" * 16: {7: 0}})
+    glosses = translate_stream(pack, [7], source_pack_checksum="dddd" * 16)
+    assert glosses[0].state == "unknown"
+    assert glosses[0].resolved_code is None
+
+
+def test_example_hashes_normalized_before_seal():
+    symbol = Symbol(
+        class_id=0,
+        code=0,
+        proto_embedding=[1.0],
+        observation_ids=["obs-hello"],
+        definition="hello",
+        examples=["hello there"],
+        confidence=0.5,
+    )
+    assert len(symbol.example_hashes) == 1
+    pack = make_pack(symbols=[symbol])
+    reloaded = pack.from_dict(pack.to_dict())
+    assert reloaded.compute_checksum() == pack.checksum
