@@ -73,3 +73,12 @@ def test_rewrite_stream_matches_alias_map():
 
 def test_rewrite_stream_follows_multiple_hops():
     assert rewrite_stream([7], {7: 8, 8: 0}) == [0]
+
+
+def test_rewrite_stream_versioned_requires_source():
+    import pytest
+
+    tables = {"a" * 64: {7: 0}, "b" * 64: {7: 1}}
+    with pytest.raises(ValueError, match="source_pack_checksum"):
+        rewrite_stream([7], tables)
+    assert rewrite_stream([7], tables, source_pack_checksum="a" * 64) == [0]

@@ -35,3 +35,18 @@ def test_parent_pack_records_parent_id_and_delta():
     assert second.parent_pack_id == first.pack_id
     finalize = next(r for r in second.receipts if r.step == "finalize")
     assert finalize.delta_mdl_bits is not None
+
+
+def test_text_only_pack_certifies_against_original_observations():
+    from neuralese.contracts import Observation
+
+    obs = [
+        Observation(observation_id="t-1", text="hello there friend"),
+        Observation(observation_id="t-2", text="hello there pal"),
+        Observation(observation_id="t-3", text="audit the trail please"),
+        Observation(observation_id="t-4", text="audit receipts stay bound"),
+    ]
+    pack = learn_pack(obs, config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0))
+    cert = certify(pack, observations=obs)
+    assert cert.passed, cert.failures
+    assert cert.details["observations_checked"] is True

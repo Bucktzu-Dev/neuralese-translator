@@ -70,6 +70,34 @@ def test_cli_translate_rejects_integrity_policy(tmp_path, capsys):
     assert "does not authorize translation" in err
 
 
+def test_cli_integrity_rejected_even_with_allow_uncertified(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    rc = main(
+        [
+            "translate",
+            str(pack_path),
+            str(TOY_DIR / "stream.json"),
+            "--policy",
+            "integrity",
+            "--allow-uncertified",
+        ]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "does not authorize translation" in err
+
+
 def test_cli_certify_fails_on_undecodable(tmp_path, capsys):
     pack_path = tmp_path / "pack.json"
     main(
