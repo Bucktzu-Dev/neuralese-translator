@@ -82,7 +82,12 @@ def load_stream(path: PathLike) -> List[int]:
         codes = payload
     else:
         raise ValueError("stream file must be a JSON list or {\"codes\": [...]}")
-    return [int(c) for c in codes]
+    if not isinstance(codes, (list, tuple)):
+        raise ValueError("stream codes must be an array")
+    try:
+        return [int(c) for c in codes]
+    except (TypeError, ValueError) as exc:
+        raise ValueError("stream codes must be integers") from exc
 
 
 def save_pack(pack: SymbolPack, path: PathLike) -> None:
@@ -94,9 +99,11 @@ def save_pack(pack: SymbolPack, path: PathLike) -> None:
 
 def load_pack(path: PathLike) -> SymbolPack:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"invalid pack in {path}")
     try:
         return SymbolPack.from_dict(data)
-    except (TypeError, ValueError, KeyError) as exc:
+    except (TypeError, ValueError, KeyError, AttributeError) as exc:
         raise ValueError(f"invalid pack in {path}") from exc
 
 
