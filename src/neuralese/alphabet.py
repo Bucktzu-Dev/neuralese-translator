@@ -11,7 +11,15 @@ import numpy as np
 
 from neuralese.adapters import ensure_embedding, stack_embeddings
 from neuralese.clustering import cluster_survival, kmeans
-from neuralese.contracts import GuardSnapshot, Observation, Receipt, Symbol, SymbolPack
+from neuralese.contracts import (
+    DECODER_VERSION,
+    GuardSnapshot,
+    Observation,
+    Receipt,
+    Symbol,
+    SymbolPack,
+    example_hash,
+)
 from neuralese.energy import cosine_similarity
 from neuralese.factorization import reconstruction_error, svd_factors
 from neuralese.gloss import learn_definition
@@ -28,6 +36,7 @@ class LearnConfig:
     svd_rank: Optional[int] = None
     seed: int = 0
     match_threshold: float = 0.55
+    include_private: bool = False
 
 
 def mdl_bits(n_symbols: int, residual: float, dim: int, n_obs: int, gloss_chars: int) -> float:
@@ -86,13 +95,15 @@ def learn_pack(
         definition = gloss["definition"] or None
         if quarantined and not definition:
             definition = f"[quarantined class {class_id}]"
+        examples = list(gloss["examples"])
         symbol = Symbol(
             class_id=class_id,
             code=class_id,
             proto_embedding=proto,
             observation_ids=[o.observation_id for o in member_obs],
             definition=definition if definition else None,
-            examples=list(gloss["examples"]),
+            examples=examples if cfg.include_private else [],
+            example_hashes=[example_hash(x) for x in examples],
             confidence=float(gloss["confidence"] if not quarantined else 0.0),
             quarantined=bool(quarantined),
             survival=survival,
@@ -108,9 +119,13 @@ def learn_pack(
     cluster_residual = reconstruction_error(X, X_hat)
     residual = max(float(cluster_residual), float(svd_residual) * 0.25)
 
-    aliases: Dict[int, int] = {}
+    evidence = {row.observation_id: row.content_hash() for row in rows}
+
+    aliases: Dict[str, Dict[int, int]] = {}
     if previous is not None:
-        aliases = _match_aliases(previous, symbols, threshold=cfg.match_threshold)
+        remap = _match_aliases(previous, symbols, threshold=cfg.match_threshold)
+        if remap:
+            aliases[previous.checksum] = remap
 
     gloss_chars = sum(len(s.definition or "") for s in symbols)
     bits = mdl_bits(len(symbols), residual, X.shape[1], X.shape[0], gloss_chars)
@@ -178,13 +193,19 @@ def learn_pack(
         aliases=aliases,
         reconstruction_error=residual,
         parent_pack_id=None if previous is None else previous.pack_id,
+        parent_checksum=None if previous is None else previous.checksum,
         receipts=receipts,
         guards=guards,
         mdl_bits=bits,
         timestamp=time.time(),
+        evidence=evidence,
+        decoder_version=DECODER_VERSION,
+        decision=decision,
+        include_private=cfg.include_private,
         metadata={
             "n_observations": len(rows),
             "decision": decision,
+            "status": "draft" if decision == "reject" else "admitted",
             "config": {
                 "n_symbols": cfg.n_symbols,
                 "tau_kappa": cfg.tau_kappa,
@@ -221,6 +242,8 @@ def _match_aliases(
     return aliases
 
 
-def _alias_collision(aliases: Dict[int, int], codebook: Dict[int, int]) -> bool:
-    targets = list(aliases.values())
-    return any(t not in codebook for t in targets)
+def _alias_collision(aliases: Dict[str, Dict[int, int]], codebook: Dict[int, int]) -> bool:
+    for mapping in aliases.values():
+        if any(t not in codebook for t in mapping.values()):
+            return True
+    return False
