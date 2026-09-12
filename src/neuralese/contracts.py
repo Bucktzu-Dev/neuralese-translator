@@ -100,6 +100,8 @@ class Observation:
 
     def __post_init__(self) -> None:
         self.observation_id = str(self.observation_id)
+        if self.text is not None and not isinstance(self.text, str):
+            raise TypeError("text must be a string or null")
         if self.embedding is None:
             self.embedding = []
         else:
@@ -116,10 +118,13 @@ class Observation:
         raw_embedding = data.get("embedding")
         if raw_embedding is None:
             raw_embedding = []
+        text = data.get("text")
+        if text is not None and not isinstance(text, str):
+            raise TypeError("text must be a string or null")
         return cls(
             observation_id=str(data["observation_id"]),
             embedding=[float(x) for x in raw_embedding],
-            text=data.get("text"),
+            text=text,
             metadata=dict(data.get("metadata") or {}),
         )
 
@@ -141,7 +146,7 @@ class Receipt:
     def from_dict(cls, data: Dict[str, Any]) -> "Receipt":
         return cls(
             step=str(data["step"]),
-            ok=bool(data["ok"]),
+            ok=data["ok"],
             timestamp=float(data["timestamp"]),
             kappa=_opt_float(data.get("kappa")),
             reconstruction_error=_opt_float(data.get("reconstruction_error")),
@@ -289,7 +294,7 @@ class SymbolPack:
             mdl_bits=float(data.get("mdl_bits") or 0.0),
             timestamp=float(data.get("timestamp") or 0.0),
             metadata=metadata,
-            evidence={str(k): str(v) for k, v in (data.get("evidence") or {}).items()},
+            evidence={str(k): str(v) for k, v in _mapping(data.get("evidence")).items()},
             decoder_version=_present_str(data, "decoder_version", DECODER_VERSION),
             decision=_load_decision(data, metadata),
             include_private=bool(data.get("include_private") or False),
@@ -329,7 +334,7 @@ class SymbolPack:
                     "survival": round(float(s.survival), 8),
                     "metadata": dict(s.metadata),
                 }
-                for s in sorted(self.symbols, key=lambda x: x.class_id)
+                for s in sorted(self.symbols, key=lambda x: s.class_id)
             ],
         }
         return sha256_hex(payload)
