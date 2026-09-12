@@ -1,511 +1,440 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
 import pytest
 
-from neuralese.audit import certify
+from neuralese.adapters import load_pack, load_stream, save_pack, save_stream
+from neuralese.aliases import rewrite_stream
+from neuralese.audit import certify, integrity_report
+from neuralese.cli import main
 from neuralese.contracts import (
+    DECODER_VERSION,
+    SHA256_HEX,
+    Observation,
     Receipt,
     Symbol,
-    UncertifiedPackError,
+    SymbolPack,
+    TranslatedToken,
+    TranslatedUtterance,
+    TranslationStream,
+    load_observations,
 )
-from neuralese.translator import translate_stream
-
-from packutil import make_pack, passing_guards
-
-
-def test_translate_refuses_forged_definition_after_seal():
-    pack = make_pack()
-    pack.symbols[0].definition = "forged after seal"
-    with pytest.raises(UncertifiedPackError) as err:
-        translate_stream(pack, [0])
-    assert err.value.certificate.passed is False
-    assert err.value.certificate.integrity_valid is False
+from neuralese.translator import TRANSLATION_POLICIES, translate_stream
+from tests.packutil import certified_pack, dummy_receipt, dummy_symbol, dummy_translated, public_pack, sealed_pack
 
 
-def test_seal_covers_prototype_confidence_examples_survival_lineage_guards_mdl_receipts():
-    pack = make_pack()
-    original = pack.checksum
-    assert len(original) == 64
-
-    pack.symbols[0].proto_embedding = [0.5, 0.5, 0.5]
-    assert pack.compute_checksum() != original
-    pack.symbols[0].proto_embedding = [1.0, 0.0, 0.0]
-
-    pack.symbols[0].confidence = 0.1
-    assert pack.compute_checksum() != original
-    pack.symbols[0].confidence = 0.8
-
-    pack.symbols[0].example_hashes = ["a" * 64]
-    assert pack.compute_checksum() != original
-    pack.symbols[0].example_hashes = []
-
-    pack.symbols[0].survival = 0.5
-    assert pack.compute_checksum() != original
-    pack.symbols[0].survival = 1.0
-
-    pack.parent_checksum = "b" * 64
-    assert pack.compute_checksum() != original
-    pack.parent_checksum = None
-
-    pack.guards = passing_guards(kappa_avg=0.1)
-    assert pack.compute_checksum() != original
-    pack.guards = passing_guards()
-
-    pack.mdl_bits = 99.0
-    assert pack.compute_checksum() != original
-    pack.mdl_bits = 12.0
-
-    pack.receipts = [Receipt(step="finalize", ok=True, timestamp=1.0)]
-    assert pack.compute_checksum() != original
-    pack.receipts = []
-
-    pack.metadata = {"tampered": True}
-    assert pack.compute_checksum() != original
+def test_certified_pack_translates_codes() -> None:
+    pack = certified_pack()
+    stream = TranslationStream(codes=[0], source_pack_checksum=pack.checksum())
+    utterance = translate_stream(stream, pack)
+    assert [token.gloss for token in utterance.tokens] == ["hello"]
+    assert utterance.certified is True
+    assert utterance.unknown_ratio == 0.0
 
 
-def test_fabricated_observation_id_fails_evidence():
-    pack = make_pack(
-        symbols=[
-            Symbol(
-                class_id=0,
-                code=0,
-                proto_embedding=[1.0, 0.0],
-                observation_ids=["not-resolved-anywhere"],
-                definition="ghost",
-                confidence=0.5,
-            )
-        ],
-        evidence={},
+def test_uncertified_pack_refuses_translation() -> None:
+    pack = sealed_pack()
+    stream = TranslationStream(codes=[0])
+    with pytest.raises(PermissionError, match="uncertified"):
+        translate_stream(stream, pack)
+
+
+def test_allow_uncertified_translates_without_promotion() -> None:
+    pack = sealed_pack()
+    stream = TranslationStream(codes=[0])
+    utterance = translate_stream(stream, pack, allow_uncertified=True)
+    assert utterance.certified is False
+    assert utterance.tokens[0].gloss == "hello"
+
+
+def test_empty_codes_are_unknown() -> None:
+    pack = certified_pack()
+    utterance = translate_stream(TranslationStream(codes=[]), pack)
+    assert utterance.tokens == []
+    assert utterance.unknown_ratio == 1.0
+    assert utterance.mean_confidence == 0.0
+
+
+def test_unknown_code_is_not_hallucinated() -> None:
+    pack = certified_pack()
+    utterance = translate_stream(TranslationStream(codes=[99]), pack)
+    assert utterance.tokens[0].gloss == "[unknown]"
+    assert utterance.tokens[0].confidence == 0.0
+    assert utterance.unknown_ratio == 1.0
+
+
+def test_integrity_policy_does_not_authorize_translation() -> None:
+    pack = certified_pack(policy="integrity")
+    stream = TranslationStream(codes=[0])
+    with pytest.raises(PermissionError, match="does not authorize translation"):
+        translate_stream(stream, pack)
+
+
+def test_strict_policy_is_translatable() -> None:
+    pack = certified_pack(policy="strict")
+    utterance = translate_stream(TranslationStream(codes=[0]), pack)
+    assert utterance.certified is True
+    assert utterance.policy == "strict"
+
+
+def test_unknown_translation_policy_is_refused() -> None:
+    pack = certified_pack()
+    with pytest.raises(PermissionError, match="unknown translation policy"):
+        translate_stream(TranslationStream(codes=[0]), pack, policy="integrity")
+    assert "integrity" not in TRANSLATION_POLICIES
+
+
+def test_truncated_checksum_fails_integrity() -> None:
+    pack = sealed_pack()
+    broken = pack.model_copy(update={"decoder_checksum": pack.decoder_checksum[:16]})
+    report = integrity_report(broken)
+    assert report.ok is False
+    assert any("decoder_checksum must be a full SHA-256" in error for error in report.errors)
+    assert certify(broken).ok is False
+
+
+def test_decoder_version_mismatch_fails_integrity() -> None:
+    pack = sealed_pack().model_copy(update={"decoder_version": "0.0.0-other"})
+    report = integrity_report(pack)
+    assert report.ok is False
+    assert any("decoder_version must equal" in error for error in report.errors)
+
+
+def test_public_pack_omits_raw_examples() -> None:
+    pack = public_pack()
+    assert pack.include_private is False
+    assert pack.symbols[0].examples == []
+    assert pack.symbols[0].example_hashes
+    assert all(SHA256_HEX.match(item) for item in pack.symbols[0].example_hashes)
+
+
+def test_public_pack_definition_is_not_raw_observation() -> None:
+    pack = public_pack([Observation(id="obs-1", text="secret greeting", embedding=[1.0, 0.0])])
+    assert pack.symbols[0].definition == "hello"
+    assert "secret greeting" not in json.dumps(pack.to_dict())
+
+
+def test_alias_hop_bound_is_table_size() -> None:
+    pack = certified_pack()
+    stream = TranslationStream(codes=[0], aliases={0: 0})
+    utterance = translate_stream(stream, pack)
+    assert utterance.tokens[0].code == 0
+    assert utterance.tokens[0].gloss == "hello"
+
+
+def test_rewrite_stream_ignores_unrelated_source_table() -> None:
+    stream = TranslationStream(
+        codes=[7],
+        aliases={"other-pack": {7: 0}},
+        source_pack_checksum="this-pack",
     )
-    cert = certify(pack)
-    assert not cert.passed
-    assert not cert.evidence_valid
-    assert any("not-resolved-anywhere" in f for f in cert.failures)
+    rewritten = rewrite_stream(stream)
+    assert rewritten.codes == [7]
 
 
-def test_reject_decision_fails_admission_and_default_certify():
-    pack = make_pack(
-        decision="reject",
-        guards=passing_guards(pass_all=False, pass_kappa=False),
-    )
-    cert = certify(pack)
-    assert cert.integrity_valid
-    assert not cert.admission_valid
-    assert not cert.passed
+def test_rewrite_stream_without_source_uses_only_legacy_table() -> None:
+    stream = TranslationStream(codes=[7], aliases={"other-pack": {7: 0}})
+    rewritten = rewrite_stream(stream)
+    assert rewritten.codes == [7]
+
+    legacy = TranslationStream(codes=[7], aliases={"legacy": {7: 0}})
+    assert rewrite_stream(legacy).codes == [0]
 
 
-def test_current_code_is_not_redirected_by_alias():
-    pack = make_pack(aliases={0: 1})
-    cert = certify(pack)
-    assert cert.passed
-    glosses = translate_stream(pack, [0])
-    assert glosses[0].state == "ok"
-    assert glosses[0].class_id == 0
-    assert "hello" in glosses[0].english.lower()
+def test_observation_ids_are_canonicalized() -> None:
+    observations = load_observations([{"id": 1, "text": "hello", "embedding": [1.0, 0.0]}])
+    assert observations[0].id == "1"
 
 
-def test_negative_residual_fails_schema():
-    pack = make_pack(reconstruction_error=-5.0)
-    cert = certify(pack)
-    assert not cert.passed
-    assert not cert.integrity_valid
-    assert any("negative" in f for f in cert.failures)
+def test_duplicate_observation_ids_fail_closed() -> None:
+    with pytest.raises(ValueError, match="duplicate observation id"):
+        load_observations(
+            [
+                {"id": "obs-1", "text": "hello", "embedding": [1.0, 0.0]},
+                {"id": "obs-1", "text": "hello again", "embedding": [1.0, 0.0]},
+            ]
+        )
 
 
-def test_duplicate_class_ids_fail_addressable():
-    pack = make_pack(
-        symbols=[
-            Symbol(0, 0, [1.0], ["obs-a"], definition="a", confidence=0.5),
-            Symbol(0, 1, [0.0, 1.0], ["obs-b"], definition="b", confidence=0.5),
-        ]
-    )
-    cert = certify(pack)
-    assert not cert.addressable
-    assert any("duplicate class_id" in f for f in cert.failures)
+def test_cli_rejects_invalid_audit_policy(tmp_path: Path) -> None:
+    pack_path = tmp_path / "pack.json"
+    save_pack(certified_pack(), pack_path)
+    with pytest.raises(SystemExit):
+        main(["audit", str(pack_path), "--policy", "not-a-policy"])
 
 
-def test_public_pack_omits_raw_examples():
-    pack = make_pack(
-        include_private=False,
-        symbols=[
-            Symbol(
-                class_id=0,
-                code=0,
-                proto_embedding=[1.0],
-                observation_ids=["obs-1"],
-                definition="Symbol for hello.",
-                examples=["secret subjective text"],
-                example_hashes=["c" * 64],
-                confidence=0.5,
-            )
-        ],
-    )
-    dumped = pack.to_dict()
-    assert "examples" not in dumped["symbols"][0]
-    assert dumped["symbols"][0]["example_hashes"] == ["c" * 64]
+def test_cli_rejects_invalid_certify_policy(tmp_path: Path) -> None:
+    pack_path = tmp_path / "pack.json"
+    save_pack(sealed_pack(), pack_path)
+    with pytest.raises(SystemExit):
+        main(["certify", str(pack_path), "--policy", "not-a-policy"])
 
 
-def test_integrity_policy_can_pass_when_admission_fails():
-    pack = make_pack(decision="reject")
-    cert = certify(pack, policy="integrity")
-    assert cert.integrity_valid
-    assert cert.passed
-    with pytest.raises(UncertifiedPackError):
-        translate_stream(pack, [0], policy="default")
-    with pytest.raises(ValueError, match="does not authorize translation"):
-        translate_stream(pack, [0], policy="integrity")
-    with pytest.raises(ValueError, match="does not authorize translation"):
-        translate_stream(pack, [0], policy="integrity", require_certified=False)
+def test_cli_rejects_invalid_translate_policy(tmp_path: Path) -> None:
+    pack_path = tmp_path / "pack.json"
+    stream_path = tmp_path / "stream.json"
+    save_pack(certified_pack(), pack_path)
+    save_stream(TranslationStream(codes=[0]), stream_path)
+    with pytest.raises(SystemExit):
+        main(["translate", str(pack_path), str(stream_path), "--policy", "integrity"])
 
 
-def test_blank_observation_id_fails_evidence():
-    pack = make_pack(
-        symbols=[
-            Symbol(
-                class_id=0,
-                code=0,
-                proto_embedding=[1.0],
-                observation_ids=["   "],
-                definition="blank id",
-                confidence=0.5,
-            )
-        ],
-        evidence={"   ": "a" * 64},
-    )
-    cert = certify(pack)
-    assert not cert.evidence_valid
-    assert any("blank observation_id" in f for f in cert.failures)
+def test_cli_translate_refuses_uncertified_pack(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    pack_path = tmp_path / "pack.json"
+    stream_path = tmp_path / "stream.json"
+    save_pack(sealed_pack(), pack_path)
+    save_stream(TranslationStream(codes=[0]), stream_path)
+    with pytest.raises(SystemExit) as exc:
+        main(["translate", str(pack_path), str(stream_path)])
+    assert exc.value.code == 1
+    assert "uncertified" in capsys.readouterr().err
 
 
-def test_fabricated_digest_fails_when_observations_supplied():
-    from neuralese.contracts import Observation
-
-    pack = make_pack(
-        symbols=[
-            Symbol(
-                class_id=0,
-                code=0,
-                proto_embedding=[1.0],
-                observation_ids=["obs-hello"],
-                definition="hello",
-                confidence=0.5,
-            )
-        ],
-        evidence={"obs-hello": "a" * 64},
-    )
-    cert = certify(pack)
-    assert cert.evidence_valid
-    cert = certify(
-        pack,
-        observations=[Observation(observation_id="obs-hello", text="hello there")],
-    )
-    assert not cert.evidence_valid
-    assert cert.details["observations_checked"] is True
-    assert any("does not match content" in f for f in cert.failures)
+def test_roundtrip_pack_and_stream(tmp_path: Path) -> None:
+    pack = certified_pack()
+    stream = TranslationStream(codes=[0, 99], source_pack_checksum=pack.checksum())
+    pack_path = tmp_path / "pack.json"
+    stream_path = tmp_path / "stream.json"
+    save_pack(pack, pack_path)
+    save_stream(stream, stream_path)
+    loaded_pack = load_pack(pack_path)
+    loaded_stream = load_stream(stream_path)
+    utterance = translate_stream(loaded_stream, loaded_pack)
+    assert loaded_pack.checksum() == pack.checksum()
+    assert [token.gloss for token in utterance.tokens] == ["hello", "[unknown]"]
 
 
-def test_unknown_source_pack_does_not_merge_unrelated_aliases():
-    pack = make_pack(aliases={"cccc" * 16: {7: 0}})
-    glosses = translate_stream(pack, [7], source_pack_checksum="dddd" * 16)
-    assert glosses[0].state == "unknown"
-    assert glosses[0].resolved_code is None
+def test_translated_models_roundtrip() -> None:
+    token = dummy_translated()
+    utterance = TranslatedUtterance(tokens=[token], certified=True, policy="default")
+    assert TranslatedToken.from_dict(token.to_dict()).gloss == "hello"
+    assert TranslatedUtterance.from_dict(utterance.to_dict()).unknown_ratio == 0.0
 
 
-def test_example_hashes_normalized_before_seal():
-    symbol = Symbol(
-        class_id=0,
-        code=0,
-        proto_embedding=[1.0],
-        observation_ids=["obs-hello"],
-        definition="hello",
-        examples=["hello there"],
-        confidence=0.5,
-    )
-    assert len(symbol.example_hashes) == 1
-    pack = make_pack(symbols=[symbol])
-    reloaded = pack.from_dict(pack.to_dict())
-    assert reloaded.compute_checksum() == pack.checksum
+def test_receipt_from_dict_requires_complete_payload() -> None:
+    with pytest.raises((TypeError, ValueError, KeyError)):
+        Receipt.from_dict({"ok": True})
 
 
-def test_v010_positional_symbol_confidence_still_binds():
-    symbol = Symbol(0, 0, [1.0], ["obs-a"], None, [], 0.5)
-    assert symbol.confidence == 0.5
-    assert symbol.example_hashes == []
-
-
-def test_non_sha256_example_hash_fails_integrity():
-    pack = make_pack()
-    pack.symbols[0].example_hashes = ["raw secret"]
-    pack.seal()
-    cert = certify(pack, policy="integrity")
-    assert not cert.integrity_valid
-    assert not cert.passed
-    assert any("example_hashes" in f and "not SHA-256" in f for f in cert.failures)
-
-
-def test_example_hash_with_trailing_newline_fails_integrity():
-    pack = make_pack()
-    pack.symbols[0].example_hashes = ["c" * 64 + "\n"]
-    pack.seal()
-    cert = certify(pack, policy="integrity")
-    assert not cert.integrity_valid
-    assert any("example_hashes" in f and "not SHA-256" in f for f in cert.failures)
-
-
-def test_evidence_digest_with_trailing_newline_fails():
-    pack = make_pack()
-    obs_id = pack.symbols[0].observation_ids[0]
-    pack.evidence[obs_id] = pack.evidence[obs_id] + "\n"
-    pack.seal()
-    cert = certify(pack)
-    assert not cert.evidence_valid
-    assert any("not SHA-256" in f for f in cert.failures)
-
-
-def test_empty_source_pack_checksum_is_explicit():
-    pack = make_pack(aliases={"cccc" * 16: {7: 0}})
-    glosses = translate_stream(pack, [7], source_pack_checksum="")
-    assert glosses[0].state == "unknown"
-    assert glosses[0].resolved_code is None
-
-
-def test_versioned_aliases_without_source_do_not_merge():
-    pack = make_pack(aliases={"cccc" * 16: {7: 0}})
-    glosses = translate_stream(pack, [7])
-    assert glosses[0].state == "unknown"
-
-
-def test_duplicate_supplied_observations_fail_evidence():
-    from neuralese.contracts import Observation
-
-    pack = make_pack()
-    obs_id = pack.symbols[0].observation_ids[0]
-    cert = certify(
-        pack,
-        observations=[
-            Observation(observation_id=obs_id, text="hello there"),
-            Observation(observation_id=obs_id, text="different content entirely"),
-        ],
-    )
-    assert not cert.evidence_valid
-    assert not cert.passed
-    assert any("duplicate observation_id" in f for f in cert.failures)
-
-
-def test_observation_without_embedding_or_text_fails_closed():
-    from neuralese.contracts import Observation
-
-    pack = make_pack()
-    obs_id = pack.symbols[0].observation_ids[0]
-    cert = certify(pack, observations=[Observation(observation_id=obs_id)])
-    assert not cert.evidence_valid
-    assert not cert.passed
-    assert any("neither embedding nor text" in f for f in cert.failures)
-
-
-def test_foreign_decoder_version_fails_integrity():
-    pack = make_pack(decoder_version="0.0.0")
-    cert = certify(pack)
-    assert not cert.integrity_valid
-    assert not cert.passed
-    assert any("decoder_version" in f for f in cert.failures)
-
-
-def test_numpy_embedding_can_be_hashed():
-    import numpy as np
-
-    from neuralese.contracts import Observation, observation_content_hash
-
-    vec = np.array([1.0, 0.0, 0.25])
-    digest = observation_content_hash("obs-1", vec, "hello")
-    assert len(digest) == 64
-    obs = Observation(observation_id="obs-1", embedding=vec, text="hello")
-    assert obs.content_hash() == digest
-    assert obs.embedding == [1.0, 0.0, 0.25]
-
-
-def test_unknown_decision_fails_integrity_schema():
-    pack = make_pack(decision="garbage")
-    cert = certify(pack, policy="integrity")
-    assert not cert.integrity_valid
-    assert not cert.passed
-    assert any("decision" in f for f in cert.failures)
-
-
-def test_empty_decoder_version_is_preserved_and_fails_integrity():
-    pack = make_pack()
-    data = pack.to_dict()
+def test_empty_decoder_version_fails_from_dict() -> None:
+    data = sealed_pack().to_dict()
     data["decoder_version"] = ""
-    loaded = pack.from_dict(data)
-    assert loaded.decoder_version == ""
-    loaded.seal()
-    cert = certify(loaded)
-    assert not cert.integrity_valid
-    assert any("decoder_version" in f for f in cert.failures)
+    with pytest.raises((TypeError, ValueError, KeyError)):
+        SymbolPack.from_dict(data)
 
 
-def test_empty_decision_is_not_coerced_to_accept():
-    pack = make_pack()
-    data = pack.to_dict()
-    data["decision"] = ""
-    loaded = pack.from_dict(data)
-    assert loaded.decision == ""
-    loaded.seal()
-    cert = certify(loaded, policy="integrity")
-    assert not cert.integrity_valid
-    assert any("decision" in f for f in cert.failures)
-
-
-def test_null_metadata_loads_as_empty_mapping():
-    pack = make_pack()
-    data = pack.to_dict()
+def test_null_metadata_fails_from_dict() -> None:
+    data = sealed_pack().to_dict()
     data["metadata"] = None
-    loaded = pack.from_dict(data)
-    assert loaded.metadata == {}
-    loaded.seal()
-    cert = certify(loaded)
-    assert cert.passed
+    with pytest.raises((TypeError, ValueError, KeyError)):
+        SymbolPack.from_dict(data)
 
 
-def test_int_and_str_observation_ids_are_duplicates():
-    from neuralese.contracts import Observation
+def test_empty_decision_fails_from_dict() -> None:
+    data = dummy_receipt().to_dict()
+    data["decision"] = ""
+    with pytest.raises((TypeError, ValueError, KeyError)):
+        Receipt.from_dict(data)
 
-    pack = make_pack()
-    cert = certify(
-        pack,
-        observations=[
-            Observation(observation_id=1, text="hello there"),
-            Observation(observation_id="1", text="different content entirely"),
-        ],
+
+def test_unknown_decision_fails_integrity() -> None:
+    pack = sealed_pack()
+    broken = pack.model_copy(
+        update={"receipt": dummy_receipt()._replace(decision="maybe")},
     )
-    assert not cert.evidence_valid
-    assert any("duplicate observation_id" in f for f in cert.failures)
+    report = integrity_report(broken)
+    assert report.ok is False
+    assert any("decision must be one of" in error for error in report.errors)
 
 
-def test_inconsistent_pass_all_fails_integrity():
-    pack = make_pack(guards=passing_guards(pass_all=True, pass_kappa=False))
-    cert = certify(pack)
-    assert not cert.integrity_valid
-    assert not cert.admission_valid
-    assert not cert.passed
-    assert any("inconsistent" in f for f in cert.failures)
-    with pytest.raises(UncertifiedPackError):
-        translate_stream(pack, [0], policy="strict")
+def test_truncated_example_hash_fails_integrity() -> None:
+    pack = public_pack()
+    broken_symbol = pack.symbols[0].model_copy(update={"example_hashes": ["abc"]})
+    broken = pack.model_copy(update={"symbols": [broken_symbol]})
+    report = integrity_report(broken)
+    assert report.ok is False
+    assert any("example_hashes" in error for error in report.errors)
 
 
-def test_shared_live_observation_id_fails_evidence():
-    pack = make_pack(
-        symbols=[
-            Symbol(
-                class_id=0,
-                code=0,
-                proto_embedding=[1.0, 0.0],
-                observation_ids=["shared-obs"],
-                definition="first",
-                confidence=0.5,
-            ),
-            Symbol(
-                class_id=1,
-                code=1,
-                proto_embedding=[0.0, 1.0],
-                observation_ids=["shared-obs"],
-                definition="second",
-                confidence=0.5,
-            ),
-        ]
+def test_unglossed_sentinel_has_zero_confidence() -> None:
+    pack = certified_pack()
+    unglossed = pack.symbols[0].model_copy(update={"definition": "[unglossed]", "confidence": 0.0})
+    utterance = translate_stream(
+        TranslationStream(codes=[0]),
+        pack.model_copy(update={"symbols": [unglossed]}),
     )
-    cert = certify(pack)
-    assert not cert.evidence_valid
-    assert not cert.passed
-    assert any("multiple live symbols" in f for f in cert.failures)
+    assert utterance.tokens[0].gloss == "[unglossed]"
+    assert utterance.tokens[0].confidence == 0.0
+    assert utterance.mean_confidence == 0.0
 
 
-def test_unglossed_sentinel_fails_gloss_bound():
-    pack = make_pack(
-        symbols=[
-            Symbol(
-                class_id=0,
-                code=0,
-                proto_embedding=[1.0],
-                observation_ids=["obs-1"],
-                definition="[unglossed]",
-                confidence=0.0,
-            )
-        ]
+def test_unglossed_does_not_satisfy_gloss_bound() -> None:
+    pack = sealed_pack()
+    unglossed = pack.symbols[0].model_copy(update={"definition": "[unglossed]", "confidence": 0.0})
+    broken = pack.model_copy(update={"symbols": [unglossed]})
+    receipt = certify(broken, policy="default")
+    assert receipt.ok is False
+    assert any("gloss_bound" in reason for reason in receipt.reasons)
+
+
+def test_allow_unglossed_certifies_explicit_gap() -> None:
+    pack = sealed_pack()
+    unglossed = pack.symbols[0].model_copy(update={"definition": "[unglossed]", "confidence": 0.0})
+    opened = pack.model_copy(update={"symbols": [unglossed]})
+    receipt = certify(opened, policy="default", require_gloss=False)
+    assert receipt.ok is True
+    assert receipt.decision == "admit"
+
+
+def test_cli_rejects_malformed_observations(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    pack_path = tmp_path / "pack.json"
+    observations_path = tmp_path / "obs.json"
+    save_pack(sealed_pack(), pack_path)
+    observations_path.write_text("{not-json", encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        main(["certify", str(pack_path), "--observations", str(observations_path)])
+    assert exc.value.code == 1
+    assert "invalid observations" in capsys.readouterr().err
+
+
+def test_non_object_jsonl_observation_fails_closed() -> None:
+    with pytest.raises(ValueError, match="observation records must be objects"):
+        load_observations(["not-an-object"])
+
+
+def test_guards_pass_all_must_match_individual_flags() -> None:
+    pack = sealed_pack()
+    broken_guards = dict(pack.guards)
+    broken_guards["pass_all"] = False
+    broken = pack.model_copy(update={"guards": broken_guards})
+    receipt = certify(broken, policy="default")
+    assert receipt.ok is False
+    assert any("pass_all must equal" in reason for reason in receipt.reasons)
+
+
+def test_string_false_guard_is_not_a_boolean_pass() -> None:
+    pack = sealed_pack()
+    broken_guards = dict(pack.guards)
+    broken_guards["pass_kappa"] = "false"
+    broken = pack.model_copy(update={"guards": broken_guards})
+    receipt = certify(broken, policy="default")
+    assert receipt.ok is False
+    assert any("pass_kappa is not a boolean" in reason for reason in receipt.reasons)
+
+
+def test_same_observation_on_two_classes_fails_evidence() -> None:
+    first = dummy_symbol(class_id=0, members=("obs-1",))
+    second = dummy_symbol(class_id=1, members=("obs-1",), definition="goodbye")
+    pack = sealed_pack().model_copy(update={"symbols": [first, second]})
+    observations = [
+        Observation(id="obs-1", text="hello", embedding=[1.0, 0.0]),
+        Observation(id="obs-2", text="unused", embedding=[0.0, 1.0]),
+    ]
+    receipt = certify(pack, observations, policy="default")
+    assert receipt.ok is False
+    assert any("unique class" in reason for reason in receipt.reasons)
+
+
+def test_string_false_receipt_ok_is_not_boolean_true() -> None:
+    receipt = Receipt.from_dict(
+        {
+            "ok": "false",
+            "decision": "admit",
+            "policy": "default",
+            "reasons": [],
+            "metrics": {},
+        }
     )
-    cert = certify(pack)
-    assert not cert.gloss_bound
-    assert not cert.integrity_valid
-    assert not cert.passed
-    assert any("bound English" in f for f in cert.failures)
-    allowed = certify(pack, require_gloss=False)
-    assert allowed.gloss_bound
-    assert allowed.passed
-    with pytest.raises(UncertifiedPackError):
-        translate_stream(pack, [0])
+    assert receipt.ok == "false"
+    pack = sealed_pack().model_copy(update={"receipt": receipt})
+    report = integrity_report(pack)
+    assert report.ok is False
+    assert any("receipt.ok is not a boolean" in error for error in report.errors)
+    certified = certify(pack, policy="default")
+    assert certified.ok is False
+    assert any("receipt.ok is not a boolean" in reason for reason in certified.reasons)
 
 
-def test_string_guard_flags_fail_admission():
-    pack = make_pack()
-    data = pack.to_dict()
-    guards = data["guards"]
-    for key in ("pass_kappa", "pass_residual", "pass_mdl", "pass_persist", "pass_compat"):
-        guards[key] = "false"
-    guards["pass_all"] = "true"
-    loaded = pack.from_dict(data)
-    loaded.seal()
-    cert = certify(loaded)
-    assert not cert.integrity_valid
-    assert not cert.admission_valid
-    assert not cert.passed
-    assert any("not a boolean" in f for f in cert.failures)
-    with pytest.raises(UncertifiedPackError):
-        translate_stream(loaded, [0], policy="strict")
-
-
-def test_string_false_receipt_ok_fails_admission():
-    pack = make_pack(guards=None)
-    data = pack.to_dict()
-    data["guards"] = None
-    data["receipts"] = [{"step": "finalize", "ok": "false", "timestamp": 1.0}]
-    loaded = pack.from_dict(data)
-    assert loaded.receipts[0].ok == "false"
-    loaded.seal()
-    cert = certify(loaded)
-    assert not cert.admission_valid
-    assert not cert.integrity_valid
-    assert not cert.passed
-    assert any("not a boolean" in f for f in cert.failures)
-
-
-def test_non_mapping_evidence_loads_and_fails_closed():
-    pack = make_pack()
-    data = pack.to_dict()
+def test_non_mapping_evidence_fails_certify_not_load() -> None:
+    data = sealed_pack().to_dict()
     data["evidence"] = []
-    loaded = pack.from_dict(data)
-    assert loaded.evidence == {}
-    loaded.seal()
-    cert = certify(loaded)
-    assert not cert.evidence_valid
-    assert not cert.passed
+    pack = SymbolPack.from_dict(data)
+    assert pack.evidence == {}
+    receipt = certify(pack, policy="default")
+    assert receipt.ok is False
+    assert any("evidence_bound" in reason for reason in receipt.reasons)
 
 
-def test_non_string_definition_fails_load():
-    pack = make_pack()
-    data = pack.to_dict()
-    data["symbols"][0]["definition"] = 1
-    with pytest.raises(TypeError, match="definition"):
-        pack.from_dict(data)
+def test_null_evidence_fails_certify_not_load() -> None:
+    data = sealed_pack().to_dict()
+    data["evidence"] = None
+    pack = SymbolPack.from_dict(data)
+    assert pack.evidence == {}
+    assert certify(pack, policy="default").ok is False
 
 
-def test_string_quarantined_fails_integrity():
-    pack = make_pack()
-    data = pack.to_dict()
-    data["symbols"][0]["quarantined"] = "false"
-    loaded = pack.from_dict(data)
-    assert loaded.symbols[0].quarantined == "false"
-    loaded.seal()
-    cert = certify(loaded)
-    assert not cert.integrity_valid
-    assert not cert.passed
-    assert any("not a boolean" in f for f in cert.failures)
-    with pytest.raises(UncertifiedPackError):
-        translate_stream(loaded, [0])
+def test_jsonl_embedding_must_be_array() -> None:
+    with pytest.raises(ValueError, match="embedding must be an array of numbers"):
+        load_observations([{"id": "obs-1", "text": "hello", "embedding": "1"}])
+
+
+def test_jsonl_null_embedding_fails_closed() -> None:
+    with pytest.raises(ValueError, match="embedding must be an array of numbers"):
+        load_observations([{"id": "obs-1", "text": "hello", "embedding": None}])
+
+
+def test_empty_private_gloss_becomes_unglossed() -> None:
+    symbol = dummy_symbol()._replace(definition="", confidence=0.0)
+    pack = certified_pack().model_copy(update={"symbols": [symbol], "include_private": True})
+    utterance = translate_stream(TranslationStream(codes=[0]), pack)
+    assert utterance.tokens[0].gloss == "[unglossed]"
+    assert utterance.tokens[0].confidence == 0.0
+
+
+def test_non_string_definition_fails_from_dict() -> None:
+    data = dummy_symbol().to_dict()
+    data["definition"] = ["hello"]
+    with pytest.raises(TypeError, match="definition must be a string or null"):
+        Symbol.from_dict(data)
+
+
+def test_string_quarantined_fails_integrity() -> None:
+    data = dummy_symbol().to_dict()
+    data["quarantined"] = "false"
+    symbol = Symbol.from_dict(data)
+    pack = sealed_pack().model_copy(update={"symbols": [symbol]})
+    report = integrity_report(pack)
+    assert report.ok is False
+    assert any("quarantined is not a boolean" in error for error in report.errors)
+
+
+def test_string_include_private_fails_integrity() -> None:
+    data = sealed_pack().to_dict()
+    data["include_private"] = "false"
+    pack = SymbolPack.from_dict(data)
+    assert pack.include_private == "false"
+    report = integrity_report(pack)
+    assert report.ok is False
+    assert any("include_private is not a boolean" in error for error in report.errors)
+    assert certify(pack, policy="integrity").ok is False
+
+
+def test_non_object_pack_fails_from_dict() -> None:
+    with pytest.raises(TypeError, match="pack object"):
+        SymbolPack.from_dict([])  # type: ignore[arg-type]
+
+
+def test_non_object_symbol_fails_from_dict() -> None:
+    with pytest.raises(TypeError, match="symbol object"):
+        Symbol.from_dict("hello")  # type: ignore[arg-type]
+
+
+def test_mixed_alias_shapes_fail_load(tmp_path: Path) -> None:
+    pack_path = tmp_path / "pack.json"
+    data = sealed_pack().to_dict()
+    data["aliases"] = {"": {}, "src": 1}
+    pack_path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError, match="invalid pack"):
+        load_pack(pack_path)
