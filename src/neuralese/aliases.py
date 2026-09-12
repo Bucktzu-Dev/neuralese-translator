@@ -6,11 +6,19 @@ from typing import Dict, List, Optional, Sequence, Union
 from neuralese.contracts import AliasTables, normalize_aliases
 
 
-def follow_aliases(code: int, aliases: Dict[int, int], *, max_hops: int = 64) -> int:
+def follow_aliases(
+    code: int,
+    aliases: Dict[int, int],
+    *,
+    max_hops: Optional[int] = None,
+) -> int:
+    # A finite table's longest acyclic chain is len(aliases). A fixed 64-hop
+    # cap would truncate a valid longer chain to an intermediate code.
+    bound = len(aliases) if max_hops is None else max_hops
     seen: set[int] = set()
     current = int(code)
     hops = 0
-    while current in aliases and hops < max_hops:
+    while current in aliases and hops < bound:
         if current in seen:
             return current
         seen.add(current)

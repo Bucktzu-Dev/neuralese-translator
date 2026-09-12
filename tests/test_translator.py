@@ -75,6 +75,12 @@ def test_rewrite_stream_follows_multiple_hops():
     assert rewrite_stream([7], {7: 8, 8: 0}) == [0]
 
 
+def test_rewrite_stream_follows_chain_longer_than_64():
+    table = {i: i + 1 for i in range(70)}
+    assert rewrite_stream([0], table) == [70]
+    assert len(table) > 64
+
+
 def test_rewrite_stream_versioned_requires_source():
     import pytest
 
