@@ -115,7 +115,7 @@ def certify(
         provided = {}
         duplicate_ids: Set[str] = set()
         for obs in observations:
-            oid = obs.observation_id
+            oid = str(obs.observation_id)
             if oid in provided:
                 duplicate_ids.add(oid)
             provided[oid] = obs
