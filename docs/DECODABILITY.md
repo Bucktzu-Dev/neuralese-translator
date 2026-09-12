@@ -36,10 +36,10 @@ This is the reservoir. An auditor must be able to:
 
 1. Take a code.
 2. Look up its class.
-3. Retrieve the observations (text and/or embeddings) used at mint time, or at least verify their content hashes.
+3. Retrieve the observations (text and/or embeddings) used at mint time, or verify their content hashes (`certify(..., observations=...)`).
 4. Recompute the prototype and residual.
 
-If step 3 is empty, the symbol is not certified. Quarantine it or refuse the pack.
+If step 3 is empty, the symbol is not certified. Quarantine it or refuse the pack. A sealed digest without the original observations is self-consistency only.
 
 ### 3. Gloss is a receipt
 
