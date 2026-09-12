@@ -152,6 +152,8 @@ def test_integrity_policy_can_pass_when_admission_fails():
         translate_stream(pack, [0], policy="default")
     with pytest.raises(ValueError, match="does not authorize translation"):
         translate_stream(pack, [0], policy="integrity")
+    with pytest.raises(ValueError, match="does not authorize translation"):
+        translate_stream(pack, [0], policy="integrity", require_certified=False)
 
 
 def test_blank_observation_id_fails_evidence():
@@ -221,3 +223,32 @@ def test_example_hashes_normalized_before_seal():
     pack = make_pack(symbols=[symbol])
     reloaded = pack.from_dict(pack.to_dict())
     assert reloaded.compute_checksum() == pack.checksum
+
+
+def test_v010_positional_symbol_confidence_still_binds():
+    symbol = Symbol(0, 0, [1.0], ["obs-a"], None, [], 0.5)
+    assert symbol.confidence == 0.5
+    assert symbol.example_hashes == []
+
+
+def test_evidence_digest_with_trailing_newline_fails():
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    pack.evidence[obs_id] = pack.evidence[obs_id] + "\n"
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.evidence_valid
+    assert any("not SHA-256" in f for f in cert.failures)
+
+
+def test_empty_source_pack_checksum_is_explicit():
+    pack = make_pack(aliases={"cccc" * 16: {7: 0}})
+    glosses = translate_stream(pack, [7], source_pack_checksum="")
+    assert glosses[0].state == "unknown"
+    assert glosses[0].resolved_code is None
+
+
+def test_versioned_aliases_without_source_do_not_merge():
+    pack = make_pack(aliases={"cccc" * 16: {7: 0}})
+    glosses = translate_stream(pack, [7])
+    assert glosses[0].state == "unknown"
