@@ -36,22 +36,18 @@ def rewrite_stream(
     """Rewrite a token stream, following alias hops until a current code."""
     if not aliases:
         return [int(token) for token in tokens]
-    nested = isinstance(next(iter(aliases.values())), dict)
-    if nested:
-        tables = normalize_aliases(aliases)
-        if source_pack_checksum is not None:
-            table = dict(tables.get(source_pack_checksum, {}))
-        elif "legacy" in tables:
-            # Match SymbolPack.alias_table(): no source selects only legacy
-            # and ignores versioned parent tables.
-            table = dict(tables.get("legacy", {}))
-        else:
-            raise ValueError(
-                "versioned alias tables require source_pack_checksum; "
-                "refusing to merge unrelated sources"
-            )
+    tables = normalize_aliases(aliases)
+    if source_pack_checksum is not None:
+        table = dict(tables.get(source_pack_checksum, {}))
+    elif "legacy" in tables:
+        # Match SymbolPack.alias_table(): no source selects only legacy
+        # and ignores versioned parent tables.
+        table = dict(tables.get("legacy", {}))
     else:
-        table = {int(k): int(v) for k, v in aliases.items()}
+        raise ValueError(
+            "versioned alias tables require source_pack_checksum; "
+            "refusing to merge unrelated sources"
+        )
     return [follow_aliases(int(token), table) for token in tokens]
 
 
