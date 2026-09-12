@@ -8,6 +8,7 @@ from neuralese.adapters import ensure_embedding
 from neuralese.aliases import follow_aliases, has_alias_cycle
 from neuralese.contracts import (
     CERT_POLICIES,
+    DECISIONS,
     DECODER_VERSION,
     SHA256_HEX,
     AuditCertificate,
@@ -250,6 +251,8 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
             f"decoder_version {pack.decoder_version!r} is not this decoder "
             f"({DECODER_VERSION})"
         )
+    if pack.decision not in DECISIONS:
+        failures.append(f"unknown decision {pack.decision!r}")
     if not _finite(pack.reconstruction_error):
         failures.append("reconstruction_error is not finite")
     if pack.reconstruction_error < 0:
