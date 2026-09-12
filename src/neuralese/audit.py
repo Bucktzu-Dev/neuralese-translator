@@ -266,6 +266,8 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         )
     if pack.decision not in DECISIONS:
         failures.append(f"unknown decision {pack.decision!r}")
+    if not isinstance(pack.include_private, bool):
+        failures.append("include_private is not a boolean")
     if pack.guards is not None:
         for name in (*_GUARD_PASS_FLAGS, "pass_all"):
             if not isinstance(getattr(pack.guards, name), bool):
