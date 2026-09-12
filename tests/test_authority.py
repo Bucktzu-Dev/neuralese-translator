@@ -416,3 +416,73 @@ def test_shared_live_observation_id_fails_evidence():
     assert not cert.evidence_valid
     assert not cert.passed
     assert any("multiple live symbols" in f for f in cert.failures)
+
+
+def test_unglossed_sentinel_fails_gloss_bound():
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0],
+                observation_ids=["obs-1"],
+                definition="[unglossed]",
+                confidence=0.0,
+            )
+        ]
+    )
+    cert = certify(pack)
+    assert not cert.gloss_bound
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("bound English" in f for f in cert.failures)
+    allowed = certify(pack, require_gloss=False)
+    assert allowed.gloss_bound
+    assert allowed.passed
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_string_guard_flags_fail_admission():
+    pack = make_pack()
+    data = pack.to_dict()
+    guards = data["guards"]
+    for key in ("pass_kappa", "pass_residual", "pass_mdl", "pass_persist", "pass_compat"):
+        guards[key] = "false"
+    guards["pass_all"] = "true"
+    loaded = pack.from_dict(data)
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.admission_valid
+    assert not cert.passed
+    assert any("not a boolean" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0], policy="strict")
+
+
+def test_string_false_receipt_ok_fails_admission():
+    pack = make_pack(guards=None)
+    data = pack.to_dict()
+    data["guards"] = None
+    data["receipts"] = [{"step": "finalize", "ok": "false", "timestamp": 1.0}]
+    loaded = pack.from_dict(data)
+    assert loaded.receipts[0].ok == "false"
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.admission_valid
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("not a boolean" in f for f in cert.failures)
+
+
+def test_non_mapping_evidence_loads_and_fails_closed():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["evidence"] = []
+    loaded = pack.from_dict(data)
+    assert loaded.evidence == {}
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.evidence_valid
+    assert not cert.passed
