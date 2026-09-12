@@ -65,6 +65,25 @@ def test_unglossed_live_symbol_is_explicit_gap():
     glosses = translate_stream(pack, [0], require_certified=False)
     assert glosses[0].state == "ok"
     assert glosses[0].english.startswith("[unglossed:")
+    assert glosses[0].confidence == 0.0
+
+
+def test_unglossed_sentinel_translates_at_zero_confidence():
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0],
+                observation_ids=["obs-1"],
+                definition="[unglossed]",
+                confidence=0.9,
+            )
+        ]
+    )
+    glosses = translate_stream(pack, [0], require_certified=False)
+    assert glosses[0].english.startswith("[unglossed:")
+    assert glosses[0].confidence == 0.0
 
 
 def test_rewrite_stream_matches_alias_map():

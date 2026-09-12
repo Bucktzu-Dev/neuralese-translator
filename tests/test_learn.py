@@ -116,6 +116,7 @@ def test_public_single_token_observation_is_not_copied_into_definition():
     assert "topsecret1234" not in gloss["keywords"]
     assert gloss["examples"] == []
     assert gloss["definition"] == "[unglossed]"
+    assert gloss["confidence"] == 0.0
     private = learn_definition(obs, include_private=True)
     assert "topsecret1234" in (private["definition"] or "").lower()
 
