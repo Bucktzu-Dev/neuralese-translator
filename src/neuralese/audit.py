@@ -245,6 +245,11 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
 
 def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[str]]:
     failures: List[str] = []
+    if pack.decoder_version != DECODER_VERSION:
+        failures.append(
+            f"decoder_version {pack.decoder_version!r} is not this decoder "
+            f"({DECODER_VERSION})"
+        )
     if not _finite(pack.reconstruction_error):
         failures.append("reconstruction_error is not finite")
     if pack.reconstruction_error < 0:

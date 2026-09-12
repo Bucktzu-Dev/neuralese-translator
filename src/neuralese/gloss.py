@@ -41,18 +41,27 @@ def learn_definition(
     keywords = [w for w, _ in counted.most_common(8)]
     examples = texts[:8] if include_private else []
 
-    if llm_client is not None and texts:
-        prompt = (
-            "Write one short English sentence defining the shared meaning of these examples. "
-            "Do not add facts that are not in the examples.\n"
-            + "\n".join(f"- {t}" for t in texts[:12])
-        )
+    if llm_client is not None and (texts if include_private else keywords):
+        if include_private:
+            prompt = (
+                "Write one short English sentence defining the shared meaning of these examples. "
+                "Do not add facts that are not in the examples.\n"
+                + "\n".join(f"- {t}" for t in texts[:12])
+            )
+        else:
+            prompt = (
+                "Write one short English sentence defining a symbol whose keywords are: "
+                + ", ".join(keywords)
+                + ". Do not quote private examples or add facts that are not in the keywords."
+            )
         try:
             definition = str(llm_client.generate(prompt, max_tokens=80)).strip()
         except TypeError:
             definition = str(llm_client.generate(prompt)).strip()
         except Exception:
             definition = _heuristic_definition(keywords, examples)
+        if not include_private and _contains_raw_observation(definition, texts):
+            definition = _heuristic_definition(keywords, [])
     else:
         definition = _heuristic_definition(keywords, examples)
 
@@ -68,6 +77,17 @@ def learn_definition(
         "confidence": confidence,
         "observation_count": observation_count,
     }
+
+
+def _contains_raw_observation(definition: str, texts: Sequence[str]) -> bool:
+    blob = (definition or "").lower()
+    if not blob:
+        return False
+    for text in texts:
+        snippet = text.strip()
+        if len(snippet) >= 8 and snippet.lower() in blob:
+            return True
+    return False
 
 
 def _heuristic_definition(keywords: List[str], examples: List[str]) -> str:

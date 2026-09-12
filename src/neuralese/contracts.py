@@ -56,10 +56,12 @@ def observation_content_hash(
     embedding: Optional[Iterable[float]] = None,
     text: Optional[str] = None,
 ) -> str:
+    # NumPy arrays are truthy-ambiguous; never use `embedding or []`.
+    values = [] if embedding is None else embedding
     return sha256_hex(
         {
             "observation_id": str(observation_id),
-            "embedding": round_vec(embedding or []),
+            "embedding": round_vec(values),
             "text": text,
         }
     )
@@ -76,6 +78,12 @@ class Observation:
     text: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if self.embedding is None:
+            self.embedding = []
+        else:
+            self.embedding = [float(x) for x in self.embedding]
+
     def content_hash(self) -> str:
         return observation_content_hash(self.observation_id, self.embedding, self.text)
 
@@ -84,9 +92,12 @@ class Observation:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Observation":
+        raw_embedding = data.get("embedding")
+        if raw_embedding is None:
+            raw_embedding = []
         return cls(
             observation_id=str(data["observation_id"]),
-            embedding=[float(x) for x in data.get("embedding") or []],
+            embedding=[float(x) for x in raw_embedding],
             text=data.get("text"),
             metadata=dict(data.get("metadata") or {}),
         )
