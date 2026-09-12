@@ -119,8 +119,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 2 if pack.decision == "reject" else 0
 
     if args.cmd == "translate":
-        pack = load_pack(args.pack)
-        codes = load_stream(args.stream)
+        try:
+            pack = load_pack(args.pack)
+            codes = load_stream(args.stream)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
         try:
             glosses = translate_stream(
                 pack,
@@ -138,7 +142,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(json.dumps([g.to_dict() for g in glosses], indent=2))
         return 0
 
-    pack = load_pack(args.pack)
+    try:
+        pack = load_pack(args.pack)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     try:
         observations = (
             load_observations_jsonl(args.observations) if args.observations else None
