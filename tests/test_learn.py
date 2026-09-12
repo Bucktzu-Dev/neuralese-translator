@@ -136,3 +136,22 @@ def test_public_llm_echo_of_short_observation_is_discarded():
     assert "secret" not in (gloss["definition"] or "").lower()
     assert gloss["examples"] == []
     assert "secret" not in gloss["keywords"]
+
+
+def test_public_llm_echo_of_observation_prefix_is_discarded():
+    from neuralese.gloss import learn_definition
+
+    obs = [
+        Observation(observation_id="s1", text="LAUNCHCODE99 is classified"),
+        Observation(observation_id="s2", text="hello there friend"),
+    ]
+
+    class Echo:
+        def generate(self, prompt, max_tokens=80):
+            return "keep launchco hidden"
+
+    gloss = learn_definition(obs, llm_client=Echo(), include_private=False)
+    definition = (gloss["definition"] or "").lower()
+    assert "launchco" not in definition
+    assert "launchcode99" not in definition
+    assert gloss["examples"] == []
