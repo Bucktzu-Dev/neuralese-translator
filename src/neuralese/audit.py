@@ -151,7 +151,7 @@ def certify(
             if digest is None:
                 evidence_valid = False
                 failures.append(f"observation {obs_id!r} is not in the evidence manifest")
-            elif not SHA256_HEX.match(digest):
+            elif not isinstance(digest, str) or not SHA256_HEX.match(digest):
                 evidence_valid = False
                 failures.append(f"observation {obs_id!r} evidence hash is not SHA-256")
             elif provided is not None:
@@ -240,20 +240,20 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
     if decision == "reject":
         failures.append("decision=reject is a draft, not an admitted lexicon")
         return False
-    if pack.guards is not None and not _effective_pass_all(pack.guards):
-        if decision == "accept_provisional" and policy != "strict":
-            return True
-        failures.append("guards.pass_all is false")
-        return False
     finalize = [r for r in pack.receipts if r.step == "finalize"]
     if finalize:
         ok = finalize[-1].ok
         if not isinstance(ok, bool):
             failures.append("finalize receipt ok is not a boolean")
             return False
-        if not ok and decision != "accept_provisional":
+        if ok is not True:
             failures.append("finalize receipt is not ok")
             return False
+    if pack.guards is not None and not _effective_pass_all(pack.guards):
+        if decision == "accept_provisional" and policy != "strict":
+            return True
+        failures.append("guards.pass_all is false")
+        return False
     return True
 
 
