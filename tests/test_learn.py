@@ -104,3 +104,35 @@ def test_public_llm_gloss_does_not_keep_raw_observation_text():
     gloss = learn_definition(obs, llm_client=Echo(), include_private=False)
     assert "99887766" not in (gloss["definition"] or "")
     assert gloss["examples"] == []
+
+
+def test_public_single_token_observation_is_not_copied_into_definition():
+    from neuralese.gloss import learn_definition
+
+    obs = [Observation(observation_id="s1", text="TOPSECRET1234")]
+    gloss = learn_definition(obs, include_private=False)
+    definition = (gloss["definition"] or "").lower()
+    assert "topsecret1234" not in definition
+    assert "topsecret1234" not in gloss["keywords"]
+    assert gloss["examples"] == []
+    assert gloss["definition"] == "[unglossed]"
+    private = learn_definition(obs, include_private=True)
+    assert "topsecret1234" in (private["definition"] or "").lower()
+
+
+def test_public_llm_echo_of_short_observation_is_discarded():
+    from neuralese.gloss import learn_definition
+
+    obs = [
+        Observation(observation_id="s1", text="secret"),
+        Observation(observation_id="s2", text="hello there friend"),
+    ]
+
+    class Echo:
+        def generate(self, prompt, max_tokens=80):
+            return "this means secret"
+
+    gloss = learn_definition(obs, llm_client=Echo(), include_private=False)
+    assert "secret" not in (gloss["definition"] or "").lower()
+    assert gloss["examples"] == []
+    assert "secret" not in gloss["keywords"]
