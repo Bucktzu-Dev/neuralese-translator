@@ -15,4 +15,4 @@ Still not claimed:
 - **Cluster ids are not stable labels.** Code `0` is whatever k-means assigned, not a universal “hello” token across runs unless you keep the sealed pack.
 - **Not Eris.** Subject-aware dynamics are included as an optional module. The mothership SLAR pipeline, event bus, and identity system are not in this repo.
 
-If a claim is not certified by `neuralese certify`, it is not part of the audit contract. If `translate` emits English, the pack passed the named policy.
+If a claim is not certified by `neuralese certify`, it is not part of the audit contract. If `translate` emits English under `default` or `strict`, the pack passed that policy. `--allow-uncertified` is an explicit debug override and is not an audit.

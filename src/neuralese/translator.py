@@ -24,14 +24,15 @@ def translate_stream(
     """Map each code to a gloss. Never invent English for a missing symbol.
 
     By default translation is refused unless `certify(pack, policy=policy)` passes.
-    `integrity` may inspect a seal; it does not authorize emitting English.
+    `integrity` may inspect a seal; it does not authorize emitting English,
+    including when `require_certified` is false.
     """
+    if policy not in TRANSLATION_POLICIES:
+        raise ValueError(
+            f"policy {policy!r} does not authorize translation; "
+            f"use one of {TRANSLATION_POLICIES}"
+        )
     if require_certified:
-        if policy not in TRANSLATION_POLICIES:
-            raise ValueError(
-                f"policy {policy!r} does not authorize translation; "
-                f"use one of {TRANSLATION_POLICIES}"
-            )
         certificate = certify(pack, policy=policy)
         if not certificate.passed:
             raise UncertifiedPackError(certificate)
