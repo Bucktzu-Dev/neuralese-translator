@@ -55,7 +55,7 @@ def test_text_only_pack_certifies_against_original_observations():
 
 def test_load_observations_rejects_non_object_records(tmp_path):
     path = tmp_path / "bad.jsonl"
-    path.write_text("[]\n")
+    path.write_text("[\n")
     with pytest.raises(ValueError, match="must be a JSON object"):
         load_observations_jsonl(path)
     path.write_text("null\n")
@@ -155,6 +155,32 @@ def test_public_single_token_observation_is_not_copied_into_definition():
     assert "topsecret1234" in (private["definition"] or "").lower()
 
 
+def test_private_examples_preserve_observation_whitespace():
+    from neuralese.alphabet import LearnConfig, learn_pack
+    from neuralese.contracts import example_hash
+    from neuralese.gloss import learn_definition
+
+    padded = "  hello there friend  "
+    obs = [
+        Observation(observation_id="t-1", text=padded),
+        Observation(observation_id="t-2", text="hello there pal"),
+        Observation(observation_id="t-3", text="audit the trail please"),
+        Observation(observation_id="t-4", text="audit receipts stay bound"),
+    ]
+    gloss = learn_definition(obs, include_private=True)
+    assert padded in gloss["examples"]
+    assert padded.strip() not in gloss["examples"]
+    pack = learn_pack(
+        obs,
+        config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0, include_private=True),
+    )
+    hashed = example_hash(padded)
+    stripped = example_hash(padded.strip())
+    assert any(padded in symbol.examples for symbol in pack.symbols)
+    assert any(hashed in symbol.example_hashes for symbol in pack.symbols)
+    assert all(stripped not in symbol.example_hashes for symbol in pack.symbols)
+
+
 def test_public_llm_echo_of_short_observation_is_discarded():
     from neuralese.gloss import learn_definition
 
@@ -236,7 +262,7 @@ def test_load_pack_rejects_non_object(tmp_path):
     from neuralese.adapters import load_pack
 
     path = tmp_path / "pack.json"
-    path.write_text("[]\n")
+    path.write_text("[\n")
     with pytest.raises(ValueError, match="invalid pack"):
         load_pack(path)
     path.write_text("null\n")
