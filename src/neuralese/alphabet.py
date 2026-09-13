@@ -13,6 +13,7 @@ from neuralese.adapters import ensure_embedding, stack_embeddings
 from neuralese.clustering import cluster_survival, kmeans
 from neuralese.contracts import (
     DECODER_VERSION,
+    SHA256_HEX,
     GuardSnapshot,
     Observation,
     Receipt,
@@ -146,10 +147,16 @@ def learn_pack(
     evidence = {row.observation_id: row.content_hash() for row in rows}
 
     aliases: Dict[str, Dict[int, int]] = {}
+    parent_checksum = None
     if previous is not None:
+        parent_checksum = previous.checksum
+        if not isinstance(parent_checksum, str) or not SHA256_HEX.match(parent_checksum):
+            raise ValueError(
+                "previous pack is unsealed; parent_checksum must be full SHA-256"
+            )
         remap = _match_aliases(previous, symbols, threshold=cfg.match_threshold)
         if remap:
-            aliases[previous.checksum] = remap
+            aliases[parent_checksum] = remap
 
     gloss_chars = sum(len(s.definition or "") for s in symbols)
     bits = mdl_bits(len(symbols), residual, X.shape[1], X.shape[0], gloss_chars)
@@ -217,7 +224,7 @@ def learn_pack(
         aliases=aliases,
         reconstruction_error=residual,
         parent_pack_id=None if previous is None else previous.pack_id,
-        parent_checksum=None if previous is None else previous.checksum,
+        parent_checksum=parent_checksum,
         receipts=receipts,
         guards=guards,
         mdl_bits=bits,
