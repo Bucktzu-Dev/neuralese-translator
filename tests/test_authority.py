@@ -799,6 +799,28 @@ def test_constructed_none_observation_id_fails_certify():
     assert any("not a string" in f for f in cert.failures)
 
 
+def test_constructed_string_confidence_fails_certify():
+    pack = make_pack()
+    pack.symbols[0].confidence = "0.5"
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("confidence is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_constructed_bool_survival_fails_certify():
+    pack = make_pack()
+    pack.symbols[0].survival = True
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("survival is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
 def test_certificate_string_false_passed_is_rejected():
     cert = certify(make_pack())
     data = cert.to_dict()
