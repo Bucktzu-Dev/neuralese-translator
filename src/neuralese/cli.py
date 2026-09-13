@@ -45,6 +45,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="translate even if the pack fails certification (debug only)",
     )
     tr_p.add_argument(
+        "--allow-unglossed",
+        action="store_true",
+        help="translate packs that record [unglossed]; still requires evidence and admission",
+    )
+    tr_p.add_argument(
         "--source-pack",
         default=None,
         help="parent/source pack checksum whose alias table should be used",
@@ -131,6 +136,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 codes,
                 policy=args.policy,
                 require_certified=not args.allow_uncertified,
+                require_gloss=not args.allow_unglossed,
                 source_pack_checksum=args.source_pack,
             )
         except UncertifiedPackError as exc:
