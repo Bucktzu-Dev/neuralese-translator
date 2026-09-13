@@ -757,6 +757,35 @@ def test_null_observation_ids_in_symbol_fail_from_dict():
         pack.from_dict(data)
 
 
+def test_example_hash_uses_canonical_json_envelope():
+    import hashlib
+
+    from neuralese.contracts import example_hash, sha256_hex
+
+    text = "hello there"
+    assert example_hash(text) == sha256_hex({"example": text})
+    assert example_hash(text) != hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def test_learn_hashes_original_nonblank_observation_text():
+    from neuralese.alphabet import LearnConfig, learn_pack
+    from neuralese.contracts import example_hash
+
+    padded = "  hello there friend  "
+    obs = [
+        Observation(observation_id="t-1", text=padded),
+        Observation(observation_id="t-2", text="hello there pal"),
+        Observation(observation_id="t-3", text="audit the trail please"),
+        Observation(observation_id="t-4", text="audit receipts stay bound"),
+    ]
+    pack = learn_pack(obs, config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0))
+    hashed = example_hash(padded)
+    stripped = example_hash(padded.strip())
+    assert hashed != stripped
+    assert any(hashed in symbol.example_hashes for symbol in pack.symbols)
+    assert all(stripped not in symbol.example_hashes for symbol in pack.symbols)
+
+
 def test_constructed_none_observation_id_fails_certify():
     pack = make_pack()
     obs_id = pack.symbols[0].observation_ids[0]
