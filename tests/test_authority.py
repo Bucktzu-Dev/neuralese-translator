@@ -2,6 +2,8 @@ import pytest
 
 from neuralese.audit import certify
 from neuralese.contracts import (
+    AuditCertificate,
+    Observation,
     Receipt,
     Symbol,
     UncertifiedPackError,
@@ -313,7 +315,7 @@ def test_foreign_decoder_version_fails_integrity():
 def test_numpy_embedding_can_be_hashed():
     import numpy as np
 
-    from neuralese.contracts import Observation, observation_content_hash
+    from neuralese.contracts import observation_content_hash
 
     vec = np.array([1.0, 0.0, 0.25])
     digest = observation_content_hash("obs-1", vec, "hello")
@@ -321,6 +323,24 @@ def test_numpy_embedding_can_be_hashed():
     obs = Observation(observation_id="obs-1", embedding=vec, text="hello")
     assert obs.content_hash() == digest
     assert obs.embedding == [1.0, 0.0, 0.25]
+
+
+def test_text_only_content_hash_matches_learn_evidence():
+    from neuralese.adapters import ensure_embedding
+    from neuralese.alphabet import LearnConfig, learn_pack
+
+    obs = [
+        Observation(observation_id="t-1", text="hello there friend"),
+        Observation(observation_id="t-2", text="hello there pal"),
+        Observation(observation_id="t-3", text="audit the trail please"),
+        Observation(observation_id="t-4", text="audit receipts stay bound"),
+    ]
+    pack = learn_pack(obs, config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0))
+    for row in obs:
+        filled = ensure_embedding(Observation.from_dict(row.to_dict()))
+        assert row.content_hash() == filled.content_hash()
+        assert pack.evidence[row.observation_id] == row.content_hash()
+        assert row.embedding == []
 
 
 def test_unknown_decision_fails_integrity_schema():
@@ -364,6 +384,15 @@ def test_null_metadata_loads_as_empty_mapping():
     loaded.seal()
     cert = certify(loaded)
     assert cert.passed
+
+
+def test_falsey_metadata_fails_from_dict():
+    pack = make_pack()
+    data = pack.to_dict()
+    for metadata in ([], False, ""):
+        data["metadata"] = metadata
+        with pytest.raises(TypeError, match="metadata must be an object or null"):
+            pack.from_dict(data)
 
 
 def test_int_and_str_observation_ids_are_duplicates():
@@ -712,3 +741,29 @@ def test_empty_alias_source_key_is_not_selectable():
     assert select_alias_table({"": {7: 0}}, "") == {}
     glosses = translate_stream(pack, [7], source_pack_checksum="")
     assert glosses[0].state == "unknown"
+
+
+def test_null_observation_ids_in_symbol_fail_from_dict():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["observation_ids"] = [None]
+    with pytest.raises(TypeError, match="observation_ids must contain strings"):
+        pack.from_dict(data)
+    data["symbols"][0]["observation_ids"] = "obs-hello"
+    with pytest.raises(TypeError, match="observation_ids must be an array"):
+        pack.from_dict(data)
+    data["symbols"][0]["observation_ids"] = 0
+    with pytest.raises(TypeError, match="observation_ids must be an array"):
+        pack.from_dict(data)
+
+
+def test_certificate_string_false_passed_is_rejected():
+    cert = certify(make_pack())
+    data = cert.to_dict()
+    data["passed"] = "false"
+    with pytest.raises(TypeError, match="passed must be a boolean"):
+        AuditCertificate.from_dict(data)
+    data = cert.to_dict()
+    data["integrity_valid"] = "false"
+    with pytest.raises(TypeError, match="integrity_valid must be a boolean"):
+        AuditCertificate.from_dict(data)
