@@ -134,7 +134,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 source_pack_checksum=args.source_pack,
             )
         except UncertifiedPackError as exc:
-            print(json.dumps(exc.certificate.to_dict(), indent=2, sort_keys=True))
+            print(
+                json.dumps(exc.certificate.to_dict(), indent=2, sort_keys=True),
+                file=sys.stderr,
+            )
             return 1
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
