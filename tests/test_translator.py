@@ -84,6 +84,9 @@ def test_unglossed_sentinel_translates_at_zero_confidence():
     glosses = translate_stream(pack, [0], require_certified=False)
     assert glosses[0].english.startswith("[unglossed:")
     assert glosses[0].confidence == 0.0
+    glosses = translate_stream(pack, [0], require_gloss=False)
+    assert glosses[0].english.startswith("[unglossed:")
+    assert glosses[0].confidence == 0.0
 
 
 def test_rewrite_stream_matches_alias_map():
