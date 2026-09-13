@@ -254,7 +254,13 @@ class Symbol:
         if not isinstance(data, dict):
             raise TypeError("symbol record must be an object")
         examples = [str(x) for x in data.get("examples") or []]
-        hashes = [str(x) for x in data.get("example_hashes") or []]
+        if "example_hashes" not in data or data["example_hashes"] is None:
+            hashes: List[Any] = []
+        else:
+            raw_hashes = data["example_hashes"]
+            if not isinstance(raw_hashes, (list, tuple)):
+                raise TypeError("example_hashes must be an array")
+            hashes = list(raw_hashes)
         if examples and not hashes:
             hashes = [example_hash(x) for x in examples]
         definition = data.get("definition")
@@ -355,7 +361,7 @@ class SymbolPack:
             mdl_bits=float(data.get("mdl_bits") or 0.0),
             timestamp=float(data.get("timestamp") or 0.0),
             metadata=metadata,
-            evidence={str(k): str(v) for k, v in _mapping(data.get("evidence")).items()},
+            evidence={str(k): v for k, v in _mapping(data.get("evidence")).items()},
             decoder_version=_present_str(data, "decoder_version", DECODER_VERSION),
             decision=_load_decision(data, metadata),
             include_private=data["include_private"] if "include_private" in data else False,
