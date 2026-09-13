@@ -671,6 +671,36 @@ def test_non_string_evidence_digest_fails_closed():
     assert any("not SHA-256" in f for f in cert.failures)
 
 
+def test_numeric_64_digit_evidence_digest_is_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    obs_id = pack.symbols[0].observation_ids[0]
+    numeric = 10**63
+    assert len(str(numeric)) == 64
+    data["evidence"][obs_id] = numeric
+    loaded = pack.from_dict(data)
+    assert loaded.evidence[obs_id] == numeric
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("not SHA-256" in f for f in cert.failures)
+
+
+def test_numeric_64_digit_example_hash_is_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    numeric = 10**63
+    data["symbols"][0]["example_hashes"] = [numeric]
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].example_hashes == [numeric]
+    loaded.seal()
+    cert = certify(loaded, policy="integrity")
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("example_hashes" in f and "not SHA-256" in f for f in cert.failures)
+
+
 def test_empty_alias_source_key_is_not_selectable():
     from neuralese.contracts import select_alias_table
 
