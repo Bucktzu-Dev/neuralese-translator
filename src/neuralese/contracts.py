@@ -37,6 +37,40 @@ def _mapping(value: Any) -> Dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _optional_object(data: Dict[str, Any], key: str, label: str) -> Dict[str, Any]:
+    if key not in data or data[key] is None:
+        return {}
+    value = data[key]
+    if not isinstance(value, dict):
+        raise TypeError(f"{label} must be an object or null")
+    return dict(value)
+
+
+def _string_id_list(data: Dict[str, Any], key: str) -> List[str]:
+    if key not in data or data[key] is None:
+        return []
+    raw = data[key]
+    if isinstance(raw, (str, bytes)) or not isinstance(raw, (list, tuple)):
+        raise TypeError(f"{key} must be an array")
+    ids: List[str] = []
+    for item in raw:
+        if not isinstance(item, str):
+            raise TypeError(f"{key} must contain strings")
+        ids.append(item)
+    return ids
+
+
+def _json_bool(data: Dict[str, Any], key: str, *, default: Any = None, required: bool = False) -> Any:
+    if key not in data:
+        if required:
+            raise KeyError(key)
+        return default
+    value = data[key]
+    if not isinstance(value, bool):
+        raise TypeError(f"{key} must be a boolean")
+    return value
+
+
 def _present_str(data: Dict[str, Any], key: str, default: str) -> str:
     if key not in data:
         return default
@@ -142,7 +176,12 @@ class Observation:
             self.embedding = [float(x) for x in self.embedding]
 
     def content_hash(self) -> str:
-        return observation_content_hash(self.observation_id, self.embedding, self.text)
+        values: Optional[Iterable[float]] = self.embedding
+        if not self.embedding and self.text:
+            from neuralese.adapters import hashed_ngram_vector
+
+            values = hashed_ngram_vector(self.text)
+        return observation_content_hash(self.observation_id, values, self.text)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -270,7 +309,7 @@ class Symbol:
             class_id=int(data["class_id"]),
             code=int(data["code"]),
             proto_embedding=[float(x) for x in data.get("proto_embedding") or []],
-            observation_ids=[str(x) for x in data.get("observation_ids") or []],
+            observation_ids=_string_id_list(data, "observation_ids"),
             definition=definition,
             examples=examples,
             example_hashes=hashes,
@@ -329,7 +368,7 @@ class SymbolPack:
     def from_dict(cls, data: Dict[str, Any]) -> "SymbolPack":
         if not isinstance(data, dict):
             raise TypeError("pack must be a JSON object")
-        metadata = _mapping(data.get("metadata"))
+        metadata = _optional_object(data, "metadata", "metadata")
         if "symbols" not in data:
             symbols_raw: Any = []
         else:
@@ -495,19 +534,33 @@ class AuditCertificate:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AuditCertificate":
+        passed = _json_bool(data, "passed", required=True)
+        unfoldable = _json_bool(data, "unfoldable", required=True)
+        if "integrity_valid" in data:
+            integrity_valid = _json_bool(data, "integrity_valid")
+        else:
+            integrity_valid = passed
+        if "evidence_valid" in data:
+            evidence_valid = _json_bool(data, "evidence_valid")
+        else:
+            evidence_valid = unfoldable
+        if "admission_valid" in data:
+            admission_valid = _json_bool(data, "admission_valid")
+        else:
+            admission_valid = passed
         return cls(
             pack_id=str(data["pack_id"]),
             pack_checksum=str(data["pack_checksum"]),
             expected_checksum=str(data["expected_checksum"]),
-            passed=bool(data["passed"]),
-            integrity_valid=bool(data.get("integrity_valid", data.get("passed"))),
-            evidence_valid=bool(data.get("evidence_valid", data.get("unfoldable"))),
-            admission_valid=bool(data.get("admission_valid", data.get("passed"))),
-            addressable=bool(data["addressable"]),
-            unfoldable=bool(data["unfoldable"]),
-            gloss_bound=bool(data["gloss_bound"]),
-            residual_ok=bool(data["residual_ok"]),
-            fail_closed=bool(data.get("fail_closed", True)),
+            passed=passed,
+            integrity_valid=integrity_valid,
+            evidence_valid=evidence_valid,
+            admission_valid=admission_valid,
+            addressable=_json_bool(data, "addressable", required=True),
+            unfoldable=unfoldable,
+            gloss_bound=_json_bool(data, "gloss_bound", required=True),
+            residual_ok=_json_bool(data, "residual_ok", required=True),
+            fail_closed=_json_bool(data, "fail_closed", default=True),
             failures=[str(x) for x in data.get("failures") or []],
             timestamp=float(data["timestamp"]),
             policy=str(data.get("policy") or "default"),
