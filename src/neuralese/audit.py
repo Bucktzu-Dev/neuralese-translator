@@ -169,6 +169,10 @@ def certify(
                     f"observation {obs_id!r} is attached to multiple live symbols"
                 )
             live_ids.add(obs_id)
+            if not isinstance(pack.evidence, dict):
+                evidence_valid = False
+                unfoldable = False
+                continue
             digest = pack.evidence.get(obs_id)
             if digest is None:
                 evidence_valid = False
@@ -240,8 +244,12 @@ def certify(
             "n_symbols": len(pack.symbols),
             "n_live": len(live),
             "n_quarantined": sum(1 for s in pack.symbols if s.quarantined),
-            "n_aliases": sum(len(m) for m in pack.aliases.values()),
-            "n_evidence": len(pack.evidence),
+            "n_aliases": (
+                sum(len(m) for m in pack.aliases.values())
+                if isinstance(pack.aliases, dict)
+                else 0
+            ),
+            "n_evidence": len(pack.evidence) if isinstance(pack.evidence, dict) else 0,
             "reconstruction_error": pack.reconstruction_error,
             "tau_residual": tau_residual,
             "require_gloss": require_gloss,
@@ -301,6 +309,12 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
     for index, receipt in enumerate(pack.receipts):
         if not isinstance(receipt.ok, bool):
             failures.append(f"receipts[{index}].ok is not a boolean")
+    if not isinstance(pack.evidence, dict):
+        failures.append("evidence is not an object")
+    if pack.parent_checksum is not None and (
+        not isinstance(pack.parent_checksum, str) or not SHA256_HEX.match(pack.parent_checksum)
+    ):
+        failures.append("parent_checksum is not full SHA-256")
     if not _real_number(pack.reconstruction_error):
         failures.append("reconstruction_error is not a number")
     elif not _finite(pack.reconstruction_error):
@@ -338,10 +352,10 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
                         f"class {symbol.class_id} example_hashes[{index}] is not SHA-256"
                     )
         examples = symbol.examples
-        if examples is not None and (
-            isinstance(examples, (str, bytes)) or not isinstance(examples, (list, tuple))
-        ):
+        if isinstance(examples, (str, bytes)) or not isinstance(examples, (list, tuple)):
             failures.append(f"class {symbol.class_id} examples is not an array")
+        elif pack.include_private is not True and examples:
+            failures.append(f"class {symbol.class_id} public pack must not retain examples")
         elif pack.include_private is True and examples and isinstance(hashes, (list, tuple)):
             if len(examples) != len(hashes):
                 failures.append(
