@@ -39,9 +39,9 @@ def rewrite_stream(
     source_pack_checksum: Optional[str] = None,
 ) -> List[int]:
     """Rewrite a token stream, following alias hops until a current code."""
-    if not aliases:
-        return [int(token) for token in tokens]
     tables = normalize_aliases(aliases)
+    if not tables:
+        return [int(token) for token in tokens]
     if source_pack_checksum is None and LEGACY_ALIAS_KEY not in tables:
         raise ValueError(
             "versioned alias tables require source_pack_checksum; "
