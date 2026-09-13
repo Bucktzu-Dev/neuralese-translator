@@ -20,13 +20,16 @@ def translate_stream(
     *,
     policy: str = "default",
     require_certified: bool = True,
+    require_gloss: bool = True,
     source_pack_checksum: Optional[str] = None,
 ) -> List[Gloss]:
     """Map each code to a gloss. Never invent English for a missing symbol.
 
     By default translation is refused unless `certify(pack, policy=policy)` passes.
-    `integrity` may inspect a seal; it does not authorize emitting English,
-    including when `require_certified` is false.
+    Pass `require_gloss=False` to opt into translating packs that record
+    `[unglossed]`. That still requires evidence and admission when
+    `require_certified` is true. `integrity` may inspect a seal; it does not
+    authorize emitting English, including when `require_certified` is false.
     """
     if policy not in TRANSLATION_POLICIES:
         raise ValueError(
@@ -34,7 +37,7 @@ def translate_stream(
             f"use one of {TRANSLATION_POLICIES}"
         )
     if require_certified:
-        certificate = certify(pack, policy=policy)
+        certificate = certify(pack, policy=policy, require_gloss=require_gloss)
         if not certificate.passed:
             raise UncertifiedPackError(certificate)
 
