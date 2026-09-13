@@ -135,3 +135,12 @@ def test_rewrite_stream_empty_source_does_not_select_empty_key():
         rewrite_stream([7], {"": {7: 0}}, source_pack_checksum="")
     assert select_alias_table({"": {7: 0}}, "") == {}
     assert rewrite_stream([7], {"a" * 64: {7: 0}}, source_pack_checksum="") == [7]
+
+
+def test_rewrite_stream_rejects_falsey_non_mapping_aliases():
+    import pytest
+
+    for aliases in ([], False, ""):
+        with pytest.raises(ValueError, match="aliases must be a mapping"):
+            rewrite_stream([7], aliases)
+    assert rewrite_stream([7], {}) == [7]
