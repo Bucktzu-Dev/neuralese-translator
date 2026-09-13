@@ -821,6 +821,74 @@ def test_constructed_bool_survival_fails_certify():
         translate_stream(pack, [0])
 
 
+def test_constructed_string_reconstruction_error_fails_certify():
+    pack = make_pack()
+    pack.reconstruction_error = "0.1"
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("reconstruction_error is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_constructed_non_numeric_confidence_returns_failed_certificate():
+    pack = make_pack()
+    pack.symbols[0].confidence = "not-a-number"
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("confidence is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_string_confidence_is_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["confidence"] = "0.5"
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].confidence == "0.5"
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert any("confidence is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_loaded_bool_survival_is_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["survival"] = True
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].survival is True
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert any("survival is not a number" in f for f in cert.failures)
+
+
+def test_private_mismatched_example_hashes_fail_integrity():
+    pack = make_pack(
+        include_private=True,
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0, 0.0, 0.0],
+                observation_ids=["obs-hello"],
+                definition="Symbol for hello.",
+                examples=["secret"],
+                example_hashes=["c" * 64],
+                confidence=0.5,
+            )
+        ],
+    )
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("does not match examples" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
 def test_certificate_string_false_passed_is_rejected():
     cert = certify(make_pack())
     data = cert.to_dict()
