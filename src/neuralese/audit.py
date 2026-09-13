@@ -128,13 +128,24 @@ def certify(
                     f"duplicate observation_id {oid!r} in supplied observations"
                 )
     for symbol in iter_live_symbols(pack):
+        if not isinstance(symbol.observation_ids, (list, tuple)):
+            unfoldable = False
+            evidence_valid = False
+            failures.append(f"class {symbol.class_id} observation_ids is not an array")
+            continue
         if not symbol.observation_ids:
             unfoldable = False
             evidence_valid = False
             failures.append(f"class {symbol.class_id} has no observation_ids")
             continue
         for obs_id in symbol.observation_ids:
-            obs_id = str(obs_id)
+            if not isinstance(obs_id, str):
+                unfoldable = False
+                evidence_valid = False
+                failures.append(
+                    f"class {symbol.class_id} observation_id is not a string"
+                )
+                continue
             if not obs_id.strip():
                 unfoldable = False
                 evidence_valid = False
@@ -290,6 +301,14 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
             failures.append(f"class {symbol.class_id} confidence out of [0, 1]")
         if not (0.0 <= float(symbol.survival) <= 1.0):
             failures.append(f"class {symbol.class_id} survival out of [0, 1]")
+        if not isinstance(symbol.observation_ids, (list, tuple)):
+            failures.append(f"class {symbol.class_id} observation_ids is not an array")
+        else:
+            for index, obs_id in enumerate(symbol.observation_ids):
+                if not isinstance(obs_id, str):
+                    failures.append(
+                        f"class {symbol.class_id} observation_ids[{index}] is not a string"
+                    )
         for index, digest in enumerate(symbol.example_hashes):
             if not isinstance(digest, str) or not SHA256_HEX.match(digest):
                 failures.append(
