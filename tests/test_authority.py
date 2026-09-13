@@ -5,6 +5,7 @@ from neuralese.contracts import (
     Receipt,
     Symbol,
     UncertifiedPackError,
+    normalize_aliases,
 )
 from neuralese.translator import translate_stream
 
@@ -579,6 +580,26 @@ def test_falsey_guards_fail_from_dict():
     data["guards"] = None
     loaded = pack.from_dict(data)
     assert loaded.guards is None
+
+
+def test_falsey_aliases_fail_from_dict():
+    pack = make_pack()
+    data = pack.to_dict()
+    for aliases in ([], False, "", 0):
+        data["aliases"] = aliases
+        with pytest.raises(ValueError, match="aliases must be a mapping"):
+            pack.from_dict(data)
+        with pytest.raises(ValueError, match="aliases must be a mapping"):
+            normalize_aliases(aliases)
+    assert normalize_aliases(None) == {}
+    assert normalize_aliases({}) == {}
+    missing = dict(pack.to_dict())
+    del missing["aliases"]
+    loaded = pack.from_dict(missing)
+    assert loaded.aliases == {}
+    data["aliases"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.aliases == {}
 
 
 def test_string_include_private_does_not_serialize_examples():
