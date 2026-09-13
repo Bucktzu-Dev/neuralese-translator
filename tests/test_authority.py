@@ -889,6 +889,69 @@ def test_private_mismatched_example_hashes_fail_integrity():
         translate_stream(pack, [0])
 
 
+def test_loaded_null_confidence_is_not_defaulted():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["confidence"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].confidence is None
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert any("confidence is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_loaded_null_reconstruction_error_is_not_defaulted():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["reconstruction_error"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.reconstruction_error is None
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert any("reconstruction_error is not a number" in f for f in cert.failures)
+
+
+def test_scalar_examples_fail_from_dict():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["include_private"] = True
+    data["symbols"][0]["examples"] = "secret"
+    with pytest.raises(TypeError, match="examples must be an array"):
+        pack.from_dict(data)
+
+
+def test_constructed_non_string_checksum_returns_failed_certificate():
+    pack = make_pack()
+    pack.checksum = 123
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("checksum is not full SHA-256" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_constructed_none_example_hashes_returns_failed_certificate():
+    pack = make_pack()
+    pack.symbols[0].example_hashes = None
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("example_hashes is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_constructed_non_string_definition_returns_failed_certificate():
+    pack = make_pack()
+    pack.symbols[0].definition = 1
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("definition is not a string" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
 def test_certificate_string_false_passed_is_rejected():
     cert = certify(make_pack())
     data = cert.to_dict()
