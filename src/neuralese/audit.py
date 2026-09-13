@@ -121,6 +121,10 @@ def certify(
 
     unfoldable = True
     evidence_valid = True
+    map_errors = _evidence_map_errors(pack.evidence)
+    if map_errors:
+        evidence_valid = False
+        unfoldable = False
     live_ids: Set[str] = set()
     provided = None
     if observations is not None:
@@ -262,6 +266,20 @@ def certify(
     )
 
 
+def _evidence_map_errors(evidence: object) -> List[str]:
+    failures: List[str] = []
+    if not isinstance(evidence, dict):
+        failures.append("evidence is not an object")
+        return failures
+    for key, digest in evidence.items():
+        if not isinstance(key, str) or not key.strip():
+            failures.append("evidence key is not a non-blank string")
+            continue
+        if not isinstance(digest, str) or not SHA256_HEX.match(digest):
+            failures.append(f"observation {key!r} evidence hash is not SHA-256")
+    return failures
+
+
 def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool:
     decision = pack.decision
     if decision not in ("accept", "accept_provisional", "reject"):
@@ -309,8 +327,7 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
     for index, receipt in enumerate(pack.receipts):
         if not isinstance(receipt.ok, bool):
             failures.append(f"receipts[{index}].ok is not a boolean")
-    if not isinstance(pack.evidence, dict):
-        failures.append("evidence is not an object")
+    failures.extend(_evidence_map_errors(pack.evidence))
     if pack.parent_checksum is not None and (
         not isinstance(pack.parent_checksum, str) or not SHA256_HEX.match(pack.parent_checksum)
     ):
