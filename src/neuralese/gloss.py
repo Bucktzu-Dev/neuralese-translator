@@ -36,13 +36,22 @@ def learn_definition(
     llm_client: Any = None,
     include_private: bool = False,
 ) -> Dict[str, Any]:
-    texts = [obs.text.strip() for obs in observations if obs.text and obs.text.strip()]
+    original_texts: List[str] = []
+    texts: List[str] = []
+    for obs in observations:
+        if not isinstance(obs.text, str):
+            continue
+        stripped = obs.text.strip()
+        if not stripped:
+            continue
+        original_texts.append(obs.text)
+        texts.append(stripped)
     tokens: List[str] = []
     for text in texts:
         tokens.extend(_TOKEN.findall(text.lower()))
     counted = Counter(t for t in tokens if t not in STOP)
     keywords = [w for w, _ in counted.most_common(8)]
-    examples = texts[:8] if include_private else []
+    examples = original_texts[:8] if include_private else []
     if not include_private:
         keywords = _public_keywords(keywords, texts)
 
