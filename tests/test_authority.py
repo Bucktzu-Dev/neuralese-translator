@@ -579,3 +579,85 @@ def test_falsey_guards_fail_from_dict():
     data["guards"] = None
     loaded = pack.from_dict(data)
     assert loaded.guards is None
+
+
+def test_string_include_private_does_not_serialize_examples():
+    pack = make_pack(
+        include_private=True,
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0],
+                observation_ids=["obs-hello"],
+                definition="hello",
+                examples=["secret subjective text"],
+                confidence=0.5,
+            )
+        ],
+    )
+    data = pack.to_dict()
+    assert data["symbols"][0]["examples"] == ["secret subjective text"]
+    data["include_private"] = "false"
+    loaded = pack.from_dict(data)
+    assert loaded.include_private == "false"
+    dumped = loaded.to_dict()
+    assert "examples" not in dumped["symbols"][0]
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+
+
+def test_provisional_failed_finalize_fails_admission():
+    pack = make_pack(
+        decision="accept_provisional",
+        guards=passing_guards(pass_all=False, pass_kappa=False),
+        receipts=[Receipt(step="finalize", ok=False, timestamp=1.0)],
+    )
+    cert = certify(pack)
+    assert cert.integrity_valid
+    assert not cert.admission_valid
+    assert not cert.passed
+    assert any("finalize receipt is not ok" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_provisional_passing_finalize_allows_failed_guards():
+    pack = make_pack(
+        decision="accept_provisional",
+        guards=passing_guards(pass_all=False, pass_kappa=False),
+        receipts=[Receipt(step="finalize", ok=True, timestamp=1.0)],
+    )
+    cert = certify(pack)
+    assert cert.admission_valid
+    assert cert.passed
+
+
+def test_non_string_evidence_digest_fails_closed():
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    pack.evidence[obs_id] = None
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.evidence_valid
+    assert not cert.passed
+    pack.evidence[obs_id] = 123
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.evidence_valid
+    assert any("not SHA-256" in f for f in cert.failures)
+
+
+def test_empty_alias_source_key_is_not_selectable():
+    from neuralese.contracts import select_alias_table
+
+    pack = make_pack()
+    data = pack.to_dict()
+    data["aliases"] = {"": {"7": 0}}
+    with pytest.raises(ValueError, match="non-empty"):
+        pack.from_dict(data)
+    assert select_alias_table({"": {7: 0}}, "") == {}
+    glosses = translate_stream(pack, [7], source_pack_checksum="")
+    assert glosses[0].state == "unknown"
