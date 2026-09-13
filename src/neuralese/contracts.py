@@ -55,10 +55,12 @@ def _load_decision(data: Dict[str, Any], metadata: Dict[str, Any]) -> str:
 
 def normalize_aliases(raw: Any) -> AliasTables:
     """Accept legacy {code: code} or versioned {source_checksum: {old: new}}."""
-    if not raw:
+    if raw is None:
         return {}
     if not isinstance(raw, dict):
         raise ValueError("aliases must be a mapping")
+    if not raw:
+        return {}
     values = list(raw.values())
     nested = [isinstance(value, dict) for value in values]
     if any(nested):
@@ -335,11 +337,15 @@ class SymbolPack:
             if not isinstance(guards_raw, dict):
                 raise TypeError("guards must be an object or null")
             guards = GuardSnapshot.from_dict(guards_raw)
+        if "aliases" not in data or data["aliases"] is None:
+            aliases_raw: Any = {}
+        else:
+            aliases_raw = data["aliases"]
         return cls(
             pack_id=str(data["pack_id"]),
             symbols=[Symbol.from_dict(s) for s in symbols_raw],
             codebook=_int_keyed(data.get("codebook") or {}),
-            aliases=normalize_aliases(data.get("aliases") or {}),
+            aliases=normalize_aliases(aliases_raw),
             reconstruction_error=float(data.get("reconstruction_error") or 0.0),
             checksum=str(data.get("checksum") or ""),
             parent_pack_id=data.get("parent_pack_id"),
