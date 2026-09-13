@@ -302,10 +302,12 @@ class Symbol:
         return payload
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Symbol":
+    def from_dict(cls, data: Dict[str, Any], *, include_private: bool = False) -> "Symbol":
         if not isinstance(data, dict):
             raise TypeError("symbol record must be an object")
         examples = _string_id_list(data, "examples")
+        if include_private is not True:
+            examples = []
         if "example_hashes" not in data or data["example_hashes"] is None:
             hashes: List[Any] = []
         else:
@@ -399,9 +401,13 @@ class SymbolPack:
             aliases_raw: Any = {}
         else:
             aliases_raw = data["aliases"]
+        include_private = data["include_private"] if "include_private" in data else False
         return cls(
             pack_id=str(data["pack_id"]),
-            symbols=[Symbol.from_dict(s) for s in symbols_raw],
+            symbols=[
+                Symbol.from_dict(s, include_private=include_private is True)
+                for s in symbols_raw
+            ],
             codebook=_int_keyed(data.get("codebook") or {}),
             aliases=normalize_aliases(aliases_raw),
             reconstruction_error=_present_value(data, "reconstruction_error", 0.0),
@@ -416,7 +422,7 @@ class SymbolPack:
             evidence={str(k): v for k, v in _mapping(data.get("evidence")).items()},
             decoder_version=_present_str(data, "decoder_version", DECODER_VERSION),
             decision=_load_decision(data, metadata),
-            include_private=data["include_private"] if "include_private" in data else False,
+            include_private=include_private,
         )
 
     def seal(self) -> "SymbolPack":
