@@ -286,3 +286,14 @@ def test_load_stream_rejects_unusable_codes(tmp_path):
     path.write_text("[true]\n")
     with pytest.raises(ValueError, match="stream codes"):
         load_stream(path)
+
+
+def test_learn_unsealed_parent_is_rejected():
+    obs = load_observations_jsonl(TOY)
+    first = learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
+    first.checksum = ""
+    with pytest.raises(ValueError, match="unsealed"):
+        learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
+    first.checksum = None
+    with pytest.raises(ValueError, match="unsealed"):
+        learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
