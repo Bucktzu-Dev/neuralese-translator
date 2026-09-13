@@ -291,7 +291,7 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         if not (0.0 <= float(symbol.survival) <= 1.0):
             failures.append(f"class {symbol.class_id} survival out of [0, 1]")
         for index, digest in enumerate(symbol.example_hashes):
-            if not SHA256_HEX.match(str(digest)):
+            if not isinstance(digest, str) or not SHA256_HEX.match(digest):
                 failures.append(
                     f"class {symbol.class_id} example_hashes[{index}] is not SHA-256"
                 )
