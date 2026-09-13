@@ -757,6 +757,19 @@ def test_null_observation_ids_in_symbol_fail_from_dict():
         pack.from_dict(data)
 
 
+def test_constructed_none_observation_id_fails_certify():
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    digest = pack.evidence[obs_id]
+    pack.symbols[0].observation_ids = [None]
+    pack.evidence["None"] = digest
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.evidence_valid
+    assert any("not a string" in f for f in cert.failures)
+
+
 def test_certificate_string_false_passed_is_rejected():
     cert = certify(make_pack())
     data = cert.to_dict()
