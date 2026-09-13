@@ -154,6 +154,16 @@ def learn_pack(
             raise ValueError(
                 "previous pack is unsealed; parent_checksum must be full SHA-256"
             )
+        try:
+            actual = previous.compute_checksum()
+        except (TypeError, ValueError, AttributeError):
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            ) from None
+        if actual != parent_checksum:
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            )
         remap = _match_aliases(previous, symbols, threshold=cfg.match_threshold)
         if remap:
             aliases[parent_checksum] = remap
