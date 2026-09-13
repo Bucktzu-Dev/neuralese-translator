@@ -78,6 +78,18 @@ def _present_str(data: Dict[str, Any], key: str, default: str) -> str:
     return "" if value is None else str(value)
 
 
+def _present_value(data: Dict[str, Any], key: str, default: Any) -> Any:
+    if key not in data or data[key] is None:
+        return default
+    return data[key]
+
+
+def _round_real(value: Any) -> Any:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    return round(float(value), 8)
+
+
 def _load_decision(data: Dict[str, Any], metadata: Dict[str, Any]) -> str:
     if "decision" in data:
         return _present_str(data, "decision", "")
@@ -154,7 +166,7 @@ def observation_content_hash(
 
 
 def example_hash(text: str) -> str:
-    """Unsalted SHA-256 of canonical JSON ``{\"example\": text}``, not of UTF-8 bytes alone."""
+    """Unsalted SHA-256 of canonical JSON {'example': text}, not of UTF-8 bytes alone."""
     return sha256_hex({"example": text})
 
 
@@ -314,9 +326,9 @@ class Symbol:
             definition=definition,
             examples=examples,
             example_hashes=hashes,
-            confidence=float(data.get("confidence") or 0.0),
+            confidence=_present_value(data, "confidence", 0.0),
             quarantined=data["quarantined"] if "quarantined" in data else False,
-            survival=float(data.get("survival") if data.get("survival") is not None else 1.0),
+            survival=_present_value(data, "survival", 1.0),
             metadata=dict(data.get("metadata") or {}),
         )
 
@@ -392,7 +404,7 @@ class SymbolPack:
             symbols=[Symbol.from_dict(s) for s in symbols_raw],
             codebook=_int_keyed(data.get("codebook") or {}),
             aliases=normalize_aliases(aliases_raw),
-            reconstruction_error=float(data.get("reconstruction_error") or 0.0),
+            reconstruction_error=_present_value(data, "reconstruction_error", 0.0),
             checksum=str(data.get("checksum") or ""),
             parent_pack_id=data.get("parent_pack_id"),
             parent_checksum=data.get("parent_checksum"),
@@ -420,8 +432,8 @@ class SymbolPack:
             "parent_checksum": self.parent_checksum,
             "codebook": {str(k): int(v) for k, v in sorted(self.codebook.items())},
             "aliases": aliases_to_dict(self.aliases),
-            "reconstruction_error": round(float(self.reconstruction_error), 8),
-            "mdl_bits": round(float(self.mdl_bits), 8),
+            "reconstruction_error": _round_real(self.reconstruction_error),
+            "mdl_bits": _round_real(self.mdl_bits),
             "guards": None if self.guards is None else self.guards.to_dict(),
             "receipts": [r.to_dict() for r in self.receipts],
             "evidence": {k: self.evidence[k] for k in sorted(self.evidence)},
@@ -436,9 +448,9 @@ class SymbolPack:
                     "definition": self._normalize_definition(s.definition),
                     "example_hashes": list(s.example_hashes),
                     "examples": list(s.examples) if self.include_private is True else [],
-                    "confidence": round(float(s.confidence), 8),
+                    "confidence": _round_real(s.confidence),
                     "quarantined": bool(s.quarantined),
-                    "survival": round(float(s.survival), 8),
+                    "survival": _round_real(s.survival),
                     "metadata": dict(s.metadata),
                 }
                 for s in sorted(self.symbols, key=lambda x: x.class_id)
