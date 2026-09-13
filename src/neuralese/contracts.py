@@ -37,6 +37,15 @@ def _mapping(value: Any) -> Dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _load_evidence(data: Dict[str, Any]) -> Any:
+    if "evidence" not in data:
+        return {}
+    value = data["evidence"]
+    if not isinstance(value, dict):
+        return value
+    return {str(k): v for k, v in value.items()}
+
+
 def _optional_object(data: Dict[str, Any], key: str, label: str) -> Dict[str, Any]:
     if key not in data or data[key] is None:
         return {}
@@ -419,7 +428,7 @@ class SymbolPack:
             mdl_bits=float(data.get("mdl_bits") or 0.0),
             timestamp=float(data.get("timestamp") or 0.0),
             metadata=metadata,
-            evidence={str(k): v for k, v in _mapping(data.get("evidence")).items()},
+            evidence=_load_evidence(data),
             decoder_version=_present_str(data, "decoder_version", DECODER_VERSION),
             decision=_load_decision(data, metadata),
             include_private=include_private,
