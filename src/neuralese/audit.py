@@ -83,7 +83,7 @@ def certify(
         checksum_ok = bool(pack.checksum) and expected == pack.checksum
         if not pack.checksum:
             failures.append("pack is unsealed (empty checksum)")
-        elif not SHA256_HEX.match(pack.checksum):
+        elif not isinstance(pack.checksum, str) or not SHA256_HEX.match(pack.checksum):
             checksum_ok = False
             failures.append("checksum is not full SHA-256")
         elif expected != pack.checksum:
@@ -108,6 +108,10 @@ def certify(
     gloss_bound = checksum_ok
     if require_gloss:
         for symbol in iter_live_symbols(pack):
+            if symbol.definition is not None and not isinstance(symbol.definition, str):
+                gloss_bound = False
+                failures.append(f"class {symbol.class_id} definition is not a string")
+                continue
             definition = (symbol.definition or "").strip()
             if not definition or definition == UNGLOSSED:
                 gloss_bound = False
@@ -314,6 +318,8 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
             failures.append(f"class {symbol.class_id} survival is not a number")
         elif not _finite(symbol.survival) or not (0.0 <= float(symbol.survival) <= 1.0):
             failures.append(f"class {symbol.class_id} survival out of [0, 1]")
+        if symbol.definition is not None and not isinstance(symbol.definition, str):
+            failures.append(f"class {symbol.class_id} definition is not a string")
         if not isinstance(symbol.observation_ids, (list, tuple)):
             failures.append(f"class {symbol.class_id} observation_ids is not an array")
         else:
@@ -322,19 +328,28 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
                     failures.append(
                         f"class {symbol.class_id} observation_ids[{index}] is not a string"
                     )
-        for index, digest in enumerate(symbol.example_hashes):
-            if not isinstance(digest, str) or not SHA256_HEX.match(digest):
-                failures.append(
-                    f"class {symbol.class_id} example_hashes[{index}] is not SHA-256"
-                )
-        if pack.include_private is True and symbol.examples:
-            if len(symbol.examples) != len(symbol.example_hashes):
+        hashes = symbol.example_hashes
+        if not isinstance(hashes, (list, tuple)):
+            failures.append(f"class {symbol.class_id} example_hashes is not an array")
+        else:
+            for index, digest in enumerate(hashes):
+                if not isinstance(digest, str) or not SHA256_HEX.match(digest):
+                    failures.append(
+                        f"class {symbol.class_id} example_hashes[{index}] is not SHA-256"
+                    )
+        examples = symbol.examples
+        if examples is not None and (
+            isinstance(examples, (str, bytes)) or not isinstance(examples, (list, tuple))
+        ):
+            failures.append(f"class {symbol.class_id} examples is not an array")
+        elif pack.include_private is True and examples and isinstance(hashes, (list, tuple)):
+            if len(examples) != len(hashes):
                 failures.append(
                     f"class {symbol.class_id} example_hashes length does not match examples"
                 )
             else:
-                for index, example in enumerate(symbol.examples):
-                    digest = symbol.example_hashes[index]
+                for index, example in enumerate(examples):
+                    digest = hashes[index]
                     if not isinstance(example, str) or example_hash(example) != digest:
                         failures.append(
                             f"class {symbol.class_id} example_hashes[{index}] does not match examples"
