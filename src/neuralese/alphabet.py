@@ -118,7 +118,7 @@ def learn_pack(
         unglossed = (definition or "").strip() == UNGLOSSED
         examples = list(gloss["examples"])
         hash_source = examples or [
-            o.text.strip() for o in member_obs if o.text and o.text.strip()
+            o.text for o in member_obs if o.text and o.text.strip()
         ][:8]
         symbol = Symbol(
             class_id=class_id,
