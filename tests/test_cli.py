@@ -361,3 +361,43 @@ def test_cli_learn_duplicate_ids_is_clean_error(tmp_path, capsys):
     assert rc == 1
     assert "duplicate observation_id" in capsys.readouterr().err
     assert not (tmp_path / "pack.json").exists()
+
+
+def test_cli_translate_allow_unglossed(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text(
+        '{"observation_id":"e1","embedding":[1.0,0.0,0.0]}\n'
+        '{"observation_id":"e2","embedding":[0.95,0.05,0.0]}\n'
+        '{"observation_id":"e3","embedding":[0.9,0.1,0.0]}\n'
+    )
+    pack_path = tmp_path / "pack.json"
+    rc = main(
+        [
+            "learn",
+            str(obs),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "1",
+            "--include-private",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    live = [s for s in data["symbols"] if not s.get("quarantined")]
+    assert live
+    assert live[0]["definition"] == "[unglossed]"
+    stream = tmp_path / "stream.json"
+    stream.write_text(json.dumps({"codes": [live[0]["code"]]}))
+    rc = main(["translate", str(pack_path), str(stream)])
+    assert rc == 1
+    failed = capsys.readouterr()
+    assert failed.out == ""
+    cert = json.loads(failed.err)
+    assert cert["passed"] is False
+    rc = main(["translate", str(pack_path), str(stream), "--allow-unglossed"])
+    assert rc == 0
+    glosses = json.loads(capsys.readouterr().out)
+    assert glosses[0]["english"].startswith("[unglossed:")
+    assert glosses[0]["confidence"] == 0.0
