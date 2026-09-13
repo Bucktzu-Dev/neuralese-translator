@@ -79,7 +79,7 @@ def _present_str(data: Dict[str, Any], key: str, default: str) -> str:
 
 
 def _present_value(data: Dict[str, Any], key: str, default: Any) -> Any:
-    if key not in data or data[key] is None:
+    if key not in data:
         return default
     return data[key]
 
@@ -305,7 +305,7 @@ class Symbol:
     def from_dict(cls, data: Dict[str, Any]) -> "Symbol":
         if not isinstance(data, dict):
             raise TypeError("symbol record must be an object")
-        examples = [str(x) for x in data.get("examples") or []]
+        examples = _string_id_list(data, "examples")
         if "example_hashes" not in data or data["example_hashes"] is None:
             hashes: List[Any] = []
         else:
@@ -460,8 +460,8 @@ class SymbolPack:
 
     @staticmethod
     def _normalize_definition(definition: Optional[str]) -> Optional[str]:
-        if definition is None:
-            return None
+        if definition is None or not isinstance(definition, str):
+            return definition
         stripped = definition.strip()
         return stripped if stripped else None
 
