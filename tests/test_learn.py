@@ -55,7 +55,7 @@ def test_text_only_pack_certifies_against_original_observations():
 
 def test_load_observations_rejects_non_object_records(tmp_path):
     path = tmp_path / "bad.jsonl"
-    path.write_text("[\n")
+    path.write_text("[]\n")
     with pytest.raises(ValueError, match="must be a JSON object"):
         load_observations_jsonl(path)
     path.write_text("null\n")
@@ -262,7 +262,7 @@ def test_load_pack_rejects_non_object(tmp_path):
     from neuralese.adapters import load_pack
 
     path = tmp_path / "pack.json"
-    path.write_text("[\n")
+    path.write_text("[]\n")
     with pytest.raises(ValueError, match="invalid pack"):
         load_pack(path)
     path.write_text("null\n")
