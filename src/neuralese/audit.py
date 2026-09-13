@@ -14,6 +14,7 @@ from neuralese.contracts import (
     AuditCertificate,
     Observation,
     SymbolPack,
+    example_hash,
     iter_live_symbols,
 )
 from neuralese.gloss import UNGLOSSED
@@ -75,28 +76,34 @@ def certify(
                     f"alias {source}:{old}->{new} does not resolve to a current symbol"
                 )
 
-    expected = pack.compute_checksum()
-    checksum_ok = bool(pack.checksum) and expected == pack.checksum
-    if not pack.checksum:
-        failures.append("pack is unsealed (empty checksum)")
-    elif not SHA256_HEX.match(pack.checksum):
-        checksum_ok = False
-        failures.append("checksum is not full SHA-256")
-    elif expected != pack.checksum:
-        failures.append("checksum mismatch: pack mutated after sealing")
+    expected = pack.checksum or ""
+    checksum_ok = False
+    if schema_ok:
+        expected = pack.compute_checksum()
+        checksum_ok = bool(pack.checksum) and expected == pack.checksum
+        if not pack.checksum:
+            failures.append("pack is unsealed (empty checksum)")
+        elif not SHA256_HEX.match(pack.checksum):
+            checksum_ok = False
+            failures.append("checksum is not full SHA-256")
+        elif expected != pack.checksum:
+            failures.append("checksum mismatch: pack mutated after sealing")
 
-    residual_ok = (
-        _finite(pack.reconstruction_error)
-        and pack.reconstruction_error >= 0.0
-        and pack.reconstruction_error <= tau_residual
-    )
-    if pack.reconstruction_error < 0:
+    if not _real_number(pack.reconstruction_error):
         residual_ok = False
-        failures.append(f"reconstruction_error {pack.reconstruction_error} is negative")
-    elif not residual_ok:
-        failures.append(
-            f"reconstruction_error {pack.reconstruction_error:.6f} exceeds tau_residual {tau_residual}"
+    else:
+        residual_ok = (
+            _finite(pack.reconstruction_error)
+            and pack.reconstruction_error >= 0.0
+            and pack.reconstruction_error <= tau_residual
         )
+        if pack.reconstruction_error < 0:
+            residual_ok = False
+            failures.append(f"reconstruction_error {pack.reconstruction_error} is negative")
+        elif not residual_ok:
+            failures.append(
+                f"reconstruction_error {pack.reconstruction_error:.6f} exceeds tau_residual {tau_residual}"
+            )
 
     gloss_bound = checksum_ok
     if require_gloss:
@@ -290,9 +297,11 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
     for index, receipt in enumerate(pack.receipts):
         if not isinstance(receipt.ok, bool):
             failures.append(f"receipts[{index}].ok is not a boolean")
-    if not _finite(pack.reconstruction_error):
+    if not _real_number(pack.reconstruction_error):
+        failures.append("reconstruction_error is not a number")
+    elif not _finite(pack.reconstruction_error):
         failures.append("reconstruction_error is not finite")
-    if pack.reconstruction_error < 0:
+    elif pack.reconstruction_error < 0:
         failures.append("reconstruction_error must be >= 0")
     for symbol in pack.symbols:
         if not isinstance(symbol.quarantined, bool):
@@ -318,6 +327,18 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
                 failures.append(
                     f"class {symbol.class_id} example_hashes[{index}] is not SHA-256"
                 )
+        if pack.include_private is True and symbol.examples:
+            if len(symbol.examples) != len(symbol.example_hashes):
+                failures.append(
+                    f"class {symbol.class_id} example_hashes length does not match examples"
+                )
+            else:
+                for index, example in enumerate(symbol.examples):
+                    digest = symbol.example_hashes[index]
+                    if not isinstance(example, str) or example_hash(example) != digest:
+                        failures.append(
+                            f"class {symbol.class_id} example_hashes[{index}] does not match examples"
+                        )
     return (len(failures) == 0, failures)
 
 
