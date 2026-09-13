@@ -297,9 +297,13 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
     for symbol in pack.symbols:
         if not isinstance(symbol.quarantined, bool):
             failures.append(f"class {symbol.class_id} quarantined is not a boolean")
-        if not (0.0 <= float(symbol.confidence) <= 1.0):
+        if not _real_number(symbol.confidence):
+            failures.append(f"class {symbol.class_id} confidence is not a number")
+        elif not _finite(symbol.confidence) or not (0.0 <= float(symbol.confidence) <= 1.0):
             failures.append(f"class {symbol.class_id} confidence out of [0, 1]")
-        if not (0.0 <= float(symbol.survival) <= 1.0):
+        if not _real_number(symbol.survival):
+            failures.append(f"class {symbol.class_id} survival is not a number")
+        elif not _finite(symbol.survival) or not (0.0 <= float(symbol.survival) <= 1.0):
             failures.append(f"class {symbol.class_id} survival out of [0, 1]")
         if not isinstance(symbol.observation_ids, (list, tuple)):
             failures.append(f"class {symbol.class_id} observation_ids is not an array")
@@ -328,6 +332,10 @@ _GUARD_PASS_FLAGS = (
 
 def _effective_pass_all(guards) -> bool:
     return all(getattr(guards, name) is True for name in _GUARD_PASS_FLAGS)
+
+
+def _real_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _finite(value: float) -> bool:
