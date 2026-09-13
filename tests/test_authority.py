@@ -474,6 +474,9 @@ def test_unglossed_sentinel_fails_gloss_bound():
     assert allowed.passed
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
+    glosses = translate_stream(pack, [0], require_gloss=False)
+    assert glosses[0].english.startswith("[unglossed:")
+    assert glosses[0].confidence == 0.0
 
 
 def test_string_guard_flags_fail_admission():
@@ -514,11 +517,19 @@ def test_non_mapping_evidence_loads_and_fails_closed():
     data = pack.to_dict()
     data["evidence"] = []
     loaded = pack.from_dict(data)
-    assert loaded.evidence == {}
-    loaded.seal()
+    assert loaded.evidence == []
+    cert = certify(loaded)
+    assert not cert.evidence_valid
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("evidence is not an object" in f for f in cert.failures)
+    data["evidence"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.evidence is None
     cert = certify(loaded)
     assert not cert.evidence_valid
     assert not cert.passed
+    assert any("evidence is not an object" in f for f in cert.failures)
 
 
 def test_non_string_definition_fails_load():
@@ -1027,3 +1038,42 @@ def test_loaded_public_pack_strips_examples():
     loaded.seal()
     cert = certify(loaded)
     assert cert.passed, cert.failures
+
+
+def test_orphan_none_evidence_entry_fails_evidence():
+    pack = make_pack()
+    pack.evidence["orphan"] = None
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.evidence_valid
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("orphan" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_null_evidence_fails_when_all_quarantined():
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0],
+                observation_ids=["obs-1"],
+                definition="quarantined",
+                quarantined=True,
+            )
+        ]
+    )
+    data = pack.to_dict()
+    data["evidence"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.evidence is None
+    cert = certify(loaded)
+    assert not cert.evidence_valid
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("evidence is not an object" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
