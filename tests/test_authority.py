@@ -144,6 +144,9 @@ def test_public_pack_omits_raw_examples():
     dumped = pack.to_dict()
     assert "examples" not in dumped["symbols"][0]
     assert dumped["symbols"][0]["example_hashes"] == ["c" * 64]
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("must not retain examples" in f for f in cert.failures)
 
 
 def test_integrity_policy_can_pass_when_admission_fails():
@@ -651,6 +654,7 @@ def test_string_include_private_does_not_serialize_examples():
     data["include_private"] = "false"
     loaded = pack.from_dict(data)
     assert loaded.include_private == "false"
+    assert loaded.symbols[0].examples == []
     dumped = loaded.to_dict()
     assert "examples" not in dumped["symbols"][0]
     loaded.seal()
@@ -962,3 +966,64 @@ def test_certificate_string_false_passed_is_rejected():
     data["integrity_valid"] = "false"
     with pytest.raises(TypeError, match="integrity_valid must be a boolean"):
         AuditCertificate.from_dict(data)
+
+
+def test_constructed_none_examples_returns_failed_certificate():
+    pack = make_pack()
+    pack.symbols[0].examples = None
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("examples is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_constructed_non_mapping_evidence_returns_failed_certificate():
+    pack = make_pack()
+    pack.evidence = []
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.evidence_valid
+    assert any("evidence is not an object" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    pack.evidence = None
+    cert = certify(pack)
+    assert not cert.evidence_valid
+    assert any("evidence is not an object" in f for f in cert.failures)
+
+
+def test_empty_parent_checksum_fails_schema():
+    pack = make_pack()
+    pack.parent_checksum = ""
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert any("parent_checksum is not full SHA-256" in f for f in cert.failures)
+
+
+def test_loaded_public_pack_strips_examples():
+    pack = make_pack(
+        include_private=True,
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0, 0.0, 0.0],
+                observation_ids=["obs-hello"],
+                definition="Symbol for hello.",
+                examples=["secret subjective text"],
+                confidence=0.5,
+            )
+        ],
+    )
+    data = pack.to_dict()
+    assert data["symbols"][0]["examples"] == ["secret subjective text"]
+    data["include_private"] = False
+    loaded = pack.from_dict(data)
+    assert loaded.include_private is False
+    assert loaded.symbols[0].examples == []
+    assert "examples" not in loaded.to_dict()["symbols"][0]
+    loaded.seal()
+    cert = certify(loaded)
+    assert cert.passed, cert.failures
