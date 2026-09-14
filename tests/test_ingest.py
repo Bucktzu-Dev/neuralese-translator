@@ -186,3 +186,46 @@ def test_ingest_helpers_are_exported_from_neuralese():
         "save_observations_jsonl",
     ):
         assert name in neuralese.__all__
+
+
+def test_unicode_npy_activations_fail_closed(tmp_path):
+    path = tmp_path / "unicode.npy"
+    np.save(path, np.array([["1.0"]], dtype="<U8"))
+    with pytest.raises(ValueError, match="real numbers"):
+        load_activation_matrix(path)
+
+
+def test_npz_named_as_npy_is_clean_cli_failure(tmp_path, capsys):
+    archive = tmp_path / "states.npz"
+    np.savez(archive, hidden_states=np.array([[1.0, 0.0]]))
+    misnamed = tmp_path / "states.npy"
+    misnamed.write_bytes(archive.read_bytes())
+    rc = main(["ingest", str(misnamed), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert str(misnamed) in err
+    assert "Traceback" not in err
+
+
+def test_corrupt_npz_is_clean_cli_failure(tmp_path, capsys):
+    path = tmp_path / "states.npz"
+    path.write_bytes(b"not a zip archive")
+    rc = main(["ingest", str(path), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert str(path) in err
+    assert "Traceback" not in err
+
+
+def test_overflowing_jsonl_activation_is_clean_cli_failure(tmp_path, capsys):
+    path = tmp_path / "states.jsonl"
+    path.write_text(
+        json.dumps({"observation_id": "obs-1", "hidden_state": [10**1000, 0]}) + "\n",
+        encoding="utf-8",
+    )
+    rc = main(["ingest", str(path), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert "real number" in err or "hidden_state" in err
+
