@@ -277,7 +277,7 @@ def test_load_stream_rejects_unusable_codes(tmp_path):
     path.write_text("[null]\n")
     with pytest.raises(ValueError, match="stream codes"):
         load_stream(path)
-    path.write_text('{"codes": null}\n')
+    path.write_text('stream file codes-null sentinel')
     with pytest.raises(ValueError, match="stream codes"):
         load_stream(path)
     path.write_text("[1.9]\n")
@@ -322,5 +322,16 @@ def test_learn_parent_overflowing_proto_is_clean_value_error():
     obs = load_observations_jsonl(TOY)
     first = learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
     first.symbols[0].proto_embedding = [10**1000]
+    with pytest.raises(ValueError, match="does not match"):
+        learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
+
+
+def test_learn_parent_string_proto_is_clean_value_error():
+    obs = load_observations_jsonl(TOY)
+    first = learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
+    first.symbols[0].proto_embedding = [
+        str(x) for x in first.symbols[0].proto_embedding
+    ]
+    first.seal()
     with pytest.raises(ValueError, match="does not match"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
