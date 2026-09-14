@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
@@ -117,7 +118,10 @@ def _as_activation_vector(value: object, *, label: str) -> List[float]:
     for index, item in enumerate(items):
         if not _is_real_number(item):
             raise ValueError(f"{label}[{index}] is not a real number")
-        number = float(item)
+        try:
+            number = float(item)
+        except OverflowError as exc:
+            raise ValueError(f"{label}[{index}] is not a real number") from exc
         if not np.isfinite(number):
             raise ValueError(f"{label}[{index}] is not finite")
         out.append(number)
@@ -138,6 +142,10 @@ def _require_2d_finite(array: np.ndarray, *, label: str) -> np.ndarray:
         array.dtype == object
         or np.issubdtype(array.dtype, np.bool_)
         or np.issubdtype(array.dtype, np.complexfloating)
+        or not (
+            np.issubdtype(array.dtype, np.integer)
+            or np.issubdtype(array.dtype, np.floating)
+        )
     ):
         raise ValueError(f"{label} must contain real numbers")
     try:
@@ -172,11 +180,16 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
             array = np.load(source, allow_pickle=False)
         except (OSError, ValueError) as exc:
             raise ValueError(f"invalid activation matrix in {source}") from exc
+        if not isinstance(array, np.ndarray):
+            closer = getattr(array, "close", None)
+            if callable(closer):
+                closer()
+            raise ValueError(f"invalid activation matrix in {source}")
     elif suffix == ".npz":
         try:
             with np.load(source, allow_pickle=False) as bundle:
                 array = _array_from_npz(bundle)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
             raise ValueError(f"invalid activation archive in {source}") from exc
     else:
         raise ValueError("activation matrix must be a .npy or .npz file")
@@ -392,8 +405,10 @@ def load_activations(path: PathLike) -> List[Observation]:
 
 def save_observations_jsonl(observations: Sequence[Observation], path: PathLike) -> None:
     target = Path(path)
-    lines = [json.dumps(obs.to_dict(), sort_keys=True, ensure_ascii=True) for obs in observations]
-    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with target.open("w", encoding="utf-8") as handle:
+        for obs in observations:
+            handle.write(json.dumps(obs.to_dict(), sort_keys=True, ensure_ascii=True))
+            handle.write("\n")
 
 
 def save_pack(pack: SymbolPack, path: PathLike) -> None:
