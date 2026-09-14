@@ -180,10 +180,10 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
 
 
 def observations_from_activations(
-    hidden_states: Union[np.ndarray, Sequence[Sequence[float]]],
+    hidden_states,
     *,
-    texts: Optional[Sequence[Optional[str]]] = None,
-    observation_ids: Optional[Sequence[object]] = None,
+    texts=None,
+    observation_ids=None,
     layer: Optional[int] = None,
     source: Optional[str] = None,
 ) -> List[Observation]:
@@ -244,7 +244,7 @@ def observations_from_activations(
     return rows
 
 
-def _text_row(data: object, *, path: PathLike, line_no: int) -> Tuple[Optional[str], Optional[str]]:
+def _text_row(data: object, *, path: PathLike, line_no: int):
     if isinstance(data, str):
         return None, data
     if not isinstance(data, dict):
@@ -261,9 +261,7 @@ def _text_row(data: object, *, path: PathLike, line_no: int) -> Tuple[Optional[s
     return oid, text
 
 
-def load_alignment_texts(
-    path: PathLike,
-) -> Tuple[List[Optional[str]], List[Optional[str]]:
+def load_alignment_texts(path: PathLike):
     source = Path(path)
     raw = source.read_text(encoding="utf-8").strip()
     if not raw:
