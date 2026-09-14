@@ -217,6 +217,28 @@ def test_corrupt_npz_is_clean_cli_failure(tmp_path, capsys):
     assert "Traceback" not in err
 
 
+def test_corrupt_npy_zip_is_clean_cli_failure(tmp_path, capsys):
+    path = tmp_path / "states.npy"
+    path.write_bytes(b"PK\x03\x04truncated-zip")
+    rc = main(["ingest", str(path), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert str(path) in err
+    assert "Traceback" not in err
+
+
+def test_numpy_scalar_activation_rows_are_accepted():
+    rows = observations_from_activations(
+        [np.array([1.0, 0.0], dtype=np.float32), np.array([0.0, 1.0], dtype=np.int64)]
+    )
+    assert len(rows) == 2
+    assert rows[0].embedding[0] == 1.0
+    assert observations_from_activations([[np.float32(1.0), np.int64(0)]])[0].embedding == [
+        1.0,
+        0.0,
+    ]
+
+
 def test_overflowing_jsonl_activation_is_clean_cli_failure(tmp_path, capsys):
     path = tmp_path / "states.jsonl"
     path.write_text(
@@ -228,4 +250,3 @@ def test_overflowing_jsonl_activation_is_clean_cli_failure(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "Traceback" not in err
     assert "real number" in err or "hidden_state" in err
-
