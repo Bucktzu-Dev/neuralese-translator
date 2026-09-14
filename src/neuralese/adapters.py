@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Iterable, List, Sequence, Union
 
@@ -61,8 +62,20 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
             if text is not None and not isinstance(text, str):
                 raise ValueError(f"{path}:{line_no} invalid observation record")
             embedding = data.get("embedding")
-            if embedding is not None and not isinstance(embedding, list):
-                raise ValueError(f"{path}:{line_no} invalid observation record")
+            if embedding is not None:
+                if not isinstance(embedding, list):
+                    raise ValueError(f"{path}:{line_no} invalid observation record")
+                for item in embedding:
+                    if isinstance(item, bool) or not isinstance(item, (int, float)):
+                        raise ValueError(f"{path}:{line_no} invalid observation record")
+                    try:
+                        number = float(item)
+                    except OverflowError as exc:
+                        raise ValueError(
+                            f"{path}:{line_no} invalid observation record"
+                        ) from exc
+                    if not math.isfinite(number):
+                        raise ValueError(f"{path}:{line_no} invalid observation record")
             try:
                 rows.append(Observation.from_dict(data))
             except (TypeError, ValueError, KeyError, OverflowError) as exc:
