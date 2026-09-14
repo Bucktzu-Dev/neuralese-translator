@@ -349,3 +349,37 @@ def test_overflowing_pack_timestamp_is_clean_cli_failure(tmp_path, capsys):
     assert rc == 1
     err = capsys.readouterr().err
     assert "invalid pack" in err
+
+
+def test_loaded_float_and_bool_codebook_values_are_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    key = next(iter(data["codebook"]))
+    data["codebook"][key] = 0.9
+    loaded = pack.from_dict(data)
+    assert loaded.codebook[int(key)] == 0.9
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("codebook entries must be integer-to-integer" in f for f in cert.failures)
+    data["codebook"][key] = True
+    loaded = pack.from_dict(data)
+    assert loaded.codebook[int(key)] is True
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("codebook entries must be integer-to-integer" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_unhashable_symbol_code_fails_closed():
+    pack = make_pack()
+    pack.symbols[0].code = []
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any(
+        "code is not an integer" in f or "not hashable" in f for f in cert.failures
+    )
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
