@@ -54,6 +54,21 @@ def _serialize_evidence(evidence: Any, *, sort_keys: bool = False) -> Any:
     return dict(evidence)
 
 
+def _copy_seq(value: Any) -> Any:
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    return value
+
+
+def _checksum_vec(values: Any) -> Any:
+    if isinstance(values, (str, bytes)) or not isinstance(values, (list, tuple)):
+        return values
+    try:
+        return round_vec(values)
+    except (TypeError, ValueError):
+        return list(values)
+
+
 def _optional_object(data: Dict[str, Any], key: str, label: str) -> Dict[str, Any]:
     if key not in data or data[key] is None:
         return {}
@@ -131,10 +146,12 @@ def normalize_aliases(raw: Any) -> AliasTables:
             raise ValueError("aliases must be uniformly nested mappings")
         tables: AliasTables = {}
         for src, mapping in raw.items():
-            key = str(src)
-            if not key:
+            if not isinstance(src, str):
+                tables[src] = _int_keyed(mapping)
+                continue
+            if not src:
                 raise ValueError("alias source keys must be non-empty")
-            tables[key] = _int_keyed(mapping)
+            tables[src] = _int_keyed(mapping)
         return tables
     return {LEGACY_ALIAS_KEY: _int_keyed(raw)}
 
@@ -159,10 +176,13 @@ def select_alias_table(
     return {}
 
 
-def aliases_to_dict(aliases: AliasTables) -> Dict[str, Dict[str, int]]:
+def aliases_to_dict(aliases: AliasTables) -> Dict[Any, Dict[str, int]]:
+    items = list(aliases.items())
+    if all(isinstance(src, str) for src, _ in items):
+        items.sort()
     return {
-        str(src): {str(k): int(v) for k, v in sorted(mapping.items())}
-        for src, mapping in sorted(aliases.items())
+        src: {str(k): int(v) for k, v in sorted(mapping.items())}
+        for src, mapping in items
     }
 
 
@@ -466,11 +486,13 @@ class SymbolPack:
                 {
                     "class_id": s.class_id,
                     "code": s.code,
-                    "proto_embedding": round_vec(s.proto_embedding),
-                    "observation_ids": list(s.observation_ids),
+                    "proto_embedding": _checksum_vec(s.proto_embedding),
+                    "observation_ids": list(s.observation_ids)
+                    if isinstance(s.observation_ids, (list, tuple))
+                    else s.observation_ids,
                     "definition": self._normalize_definition(s.definition),
-                    "example_hashes": list(s.example_hashes),
-                    "examples": list(s.examples) if self.include_private is True else [],
+                    "example_hashes": _copy_seq(s.example_hashes),
+                    "examples": _copy_seq(s.examples) if self.include_private is True else [],
                     "confidence": _round_real(s.confidence),
                     "quarantined": bool(s.quarantined),
                     "survival": _round_real(s.survival),

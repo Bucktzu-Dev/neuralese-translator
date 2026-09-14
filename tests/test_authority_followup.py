@@ -123,3 +123,63 @@ def test_cli_translate_tau_residual_is_operator_gate(tmp_path, capsys):
     assert rc == 0
     glosses = json.loads(capsys.readouterr().out)
     assert glosses[0]["state"] in {"ok", "unknown", "aliased"}
+
+
+def test_none_alias_source_key_is_not_stringified():
+    from neuralese.contracts import normalize_aliases
+
+    tables = normalize_aliases({None: {7: 0}})
+    assert None in tables
+    assert "None" not in tables
+    pack = make_pack()
+    pack.aliases = tables
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("alias source key is not a non-empty string" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [7])
+
+
+def test_none_proto_embedding_fails_schema_not_checksum():
+    pack = make_pack()
+    pack.symbols[0].proto_embedding = None
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("proto_embedding is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    pack.symbols[0].proto_embedding = [1.0, None]
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.passed
+    assert any("proto_embedding[1] is not a number" in f for f in cert.failures)
+
+
+def test_nan_mdl_bits_fails_schema():
+    pack = make_pack()
+    pack.mdl_bits = float("nan")
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("mdl_bits is not finite" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_constructed_private_none_examples_seal_returns_failed_certificate():
+    pack = make_pack(include_private=True)
+    pack.symbols[0].examples = None
+    pack.symbols[0].example_hashes = None
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("examples is not an array" in f for f in cert.failures)
+    assert any("example_hashes is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
