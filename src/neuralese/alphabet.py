@@ -74,6 +74,24 @@ def learn_pack(
     rows = [ensure_embedding(Observation.from_dict(o.to_dict())) for o in observations]
     X = stack_embeddings(rows)
 
+    parent_checksum = None
+    if previous is not None:
+        parent_checksum = previous.checksum
+        if not isinstance(parent_checksum, str) or not SHA256_HEX.match(parent_checksum):
+            raise ValueError(
+                "previous pack is unsealed; parent_checksum must be full SHA-256"
+            )
+        try:
+            actual = previous.compute_checksum()
+        except (TypeError, ValueError, AttributeError):
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            ) from None
+        if actual != parent_checksum:
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            )
+
     rank = cfg.svd_rank or min(max(cfg.n_symbols, 1), X.shape[0], X.shape[1])
     _, _, svd_residual = svd_factors(X, rank)
 
@@ -84,7 +102,14 @@ def learn_pack(
 
     old_protos = None
     if previous and previous.symbols:
-        old_protos = np.asarray([s.proto_embedding for s in previous.symbols], dtype=np.float64)
+        try:
+            old_protos = np.asarray(
+                [s.proto_embedding for s in previous.symbols], dtype=np.float64
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            ) from exc
     survivals = cluster_survival(
         old_protos if old_protos is not None else np.zeros((0, X.shape[1])),
         centroids,
@@ -147,23 +172,7 @@ def learn_pack(
     evidence = {row.observation_id: row.content_hash() for row in rows}
 
     aliases: Dict[str, Dict[int, int]] = {}
-    parent_checksum = None
     if previous is not None:
-        parent_checksum = previous.checksum
-        if not isinstance(parent_checksum, str) or not SHA256_HEX.match(parent_checksum):
-            raise ValueError(
-                "previous pack is unsealed; parent_checksum must be full SHA-256"
-            )
-        try:
-            actual = previous.compute_checksum()
-        except (TypeError, ValueError, AttributeError):
-            raise ValueError(
-                "previous pack checksum does not match its semantic manifest"
-            ) from None
-        if actual != parent_checksum:
-            raise ValueError(
-                "previous pack checksum does not match its semantic manifest"
-            )
         remap = _match_aliases(previous, symbols, threshold=cfg.match_threshold)
         if remap:
             aliases[parent_checksum] = remap

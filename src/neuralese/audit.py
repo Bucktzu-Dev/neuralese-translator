@@ -1,6 +1,7 @@
 """Fail-closed certification of a SymbolPack."""
 from __future__ import annotations
 
+import math
 import time
 from typing import List, Optional, Sequence, Set
 
@@ -57,12 +58,19 @@ def certify(
 
     class_ids = [s.class_id for s in pack.symbols]
     codes = [s.code for s in pack.symbols]
-    if len(class_ids) != len(set(class_ids)):
+    try:
+        unique_class_ids = set(class_ids)
+        unique_codes = set(codes)
+    except TypeError:
         addressable = False
-        failures.append("duplicate class_id identities")
-    if len(codes) != len(set(codes)):
-        addressable = False
-        failures.append("duplicate code identities")
+        failures.append("class_id or code identities are not hashable")
+    else:
+        if len(class_ids) != len(unique_class_ids):
+            addressable = False
+            failures.append("duplicate class_id identities")
+        if len(codes) != len(unique_codes):
+            addressable = False
+            failures.append("duplicate code identities")
 
     if isinstance(pack.aliases, dict):
         if not all(isinstance(mapping, dict) for mapping in pack.aliases.values()):
@@ -363,6 +371,11 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
                 failures.append("alias source key is not a non-empty string")
             if not isinstance(mapping, dict):
                 failures.append("alias table is not an object")
+                continue
+            for key, value in mapping.items():
+                if not _integral_code(key) or not _integral_code(value):
+                    failures.append("alias entries must be integer-to-integer")
+                    break
     if pack.parent_checksum is not None and (
         not isinstance(pack.parent_checksum, str) or not SHA256_HEX.match(pack.parent_checksum)
     ):
@@ -378,6 +391,10 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
     elif not _finite(pack.mdl_bits):
         failures.append("mdl_bits is not finite")
     for symbol in pack.symbols:
+        if not _integral_code(symbol.class_id):
+            failures.append(f"class {symbol.class_id} class_id is not an integer")
+        if not _integral_code(symbol.code):
+            failures.append(f"class {symbol.class_id} code is not an integer")
         if not isinstance(symbol.quarantined, bool):
             failures.append(f"class {symbol.class_id} quarantined is not a boolean")
         if not _real_number(symbol.confidence):
@@ -399,7 +416,7 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
                     failures.append(
                         f"class {symbol.class_id} proto_embedding[{index}] is not a number"
                     )
-                elif not _finite(float(value)):
+                elif not _finite(value):
                     failures.append(
                         f"class {symbol.class_id} proto_embedding[{index}] is not finite"
                     )
@@ -463,8 +480,15 @@ def _real_number(value: object) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def _finite(value: float) -> bool:
-    return value == value and value not in (float("inf"), float("-inf"))
+def _integral_code(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _finite(value: object) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 def _unique(items: List[str]) -> List[str]:
