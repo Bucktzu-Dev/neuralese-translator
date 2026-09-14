@@ -16,6 +16,7 @@ from neuralese.contracts import (
     GuardSnapshot,
     Observation,
     Receipt,
+    Symbol,
     SymbolPack,
     example_hash,
     iter_live_symbols,
@@ -53,31 +54,44 @@ def certify(
             if symbol is None:
                 addressable = False
                 failures.append(f"code {code} maps to missing class {class_id}")
-        for symbol in pack.symbols:
-            if not _integral_code(symbol.code):
-                addressable = False
-                continue
-            try:
-                mapped = pack.codebook.get(symbol.code)
-            except TypeError:
-                addressable = False
-                failures.append(
-                    f"symbol class {symbol.class_id} code {symbol.code} is not a codebook key"
-                )
-                continue
-            if mapped is None:
-                addressable = False
-                failures.append(
-                    f"symbol class {symbol.class_id} code {symbol.code} missing from codebook"
-                )
-            elif mapped != symbol.class_id:
-                addressable = False
-                failures.append(
-                    f"code {symbol.code} codebook class {mapped} != symbol class {symbol.class_id}"
-                )
+        if not _is_array(pack.symbols):
+            addressable = False
+        else:
+            for symbol in pack.symbols:
+                if not isinstance(symbol, Symbol):
+                    addressable = False
+                    continue
+                if not _integral_code(symbol.code):
+                    addressable = False
+                    continue
+                try:
+                    mapped = pack.codebook.get(symbol.code)
+                except TypeError:
+                    addressable = False
+                    failures.append(
+                        f"symbol class {symbol.class_id} code {symbol.code} is not a codebook key"
+                    )
+                    continue
+                if mapped is None:
+                    addressable = False
+                    failures.append(
+                        f"symbol class {symbol.class_id} code {symbol.code} missing from codebook"
+                    )
+                elif mapped != symbol.class_id:
+                    addressable = False
+                    failures.append(
+                        f"code {symbol.code} codebook class {mapped} != symbol class {symbol.class_id}"
+                    )
 
-    class_ids = [s.class_id for s in pack.symbols]
-    codes = [s.code for s in pack.symbols]
+    if not _is_array(pack.symbols):
+        addressable = False
+        class_ids: List[object] = []
+        codes: List[object] = []
+    else:
+        if any(not isinstance(symbol, Symbol) for symbol in pack.symbols):
+            addressable = False
+        class_ids = [s.class_id for s in pack.symbols if isinstance(s, Symbol)]
+        codes = [s.code for s in pack.symbols if isinstance(s, Symbol)]
     try:
         unique_class_ids = set(class_ids)
         unique_codes = set(codes)
@@ -294,9 +308,13 @@ def certify(
         timestamp=time.time(),
         policy=policy,
         details={
-            "n_symbols": len(pack.symbols),
+            "n_symbols": len(pack.symbols) if _is_array(pack.symbols) else 0,
             "n_live": len(live),
-            "n_quarantined": sum(1 for s in pack.symbols if s.quarantined),
+            "n_quarantined": (
+                sum(1 for s in pack.symbols if isinstance(s, Symbol) and s.quarantined)
+                if _is_array(pack.symbols)
+                else 0
+            ),
             "n_aliases": (
                 sum(len(m) for m in pack.aliases.values() if isinstance(m, dict))
                 if isinstance(pack.aliases, dict)
@@ -435,7 +453,13 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         failures.append("mdl_bits is not a number")
     elif not _finite(pack.mdl_bits):
         failures.append("mdl_bits is not finite")
-    for symbol in pack.symbols:
+    if not _is_array(pack.symbols):
+        failures.append("symbols is not an array")
+        return (len(failures) == 0, failures)
+    for index, symbol in enumerate(pack.symbols):
+        if not isinstance(symbol, Symbol):
+            failures.append(f"symbols[{index}] is not a Symbol")
+            continue
         if not _integral_code(symbol.class_id):
             failures.append(f"class {symbol.class_id} class_id is not an integer")
         if not _integral_code(symbol.code):
@@ -521,6 +545,10 @@ def _effective_pass_all(guards) -> bool:
     if not isinstance(guards, GuardSnapshot):
         return False
     return all(getattr(guards, name) is True for name in _GUARD_PASS_FLAGS)
+
+
+def _is_array(value: object) -> bool:
+    return not isinstance(value, (str, bytes)) and isinstance(value, (list, tuple))
 
 
 def _real_number(value: object) -> bool:
