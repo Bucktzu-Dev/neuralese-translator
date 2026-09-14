@@ -4,7 +4,7 @@ Inner representations are not a mythical language. They are a **compact symbol s
 
 If a code cannot be unfolded to the observations that produced it, it is residue — not a symbol.
 
-Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what v0.1.1 does not claim.
+Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what v0.1.2 does not claim.
 
 ## Why this exists
 
@@ -35,6 +35,13 @@ JSONL observations:
 ```
 
 If `embedding` is omitted, the tool builds a deterministic hashed n-gram vector from `text`.
+
+Dumped hidden states (`.npy` / `.npz` / activation JSONL) become that observation JSONL with `neuralese ingest`. The package does not import HuggingFace; pool token/layer axes before ingest. See [examples/activations/README.md](examples/activations/README.md).
+
+```bash
+neuralese ingest states.npy -o observations.jsonl --texts prompts.jsonl --layer 12
+neuralese learn observations.jsonl -o pack.json
+```
 
 A stream file is `{"codes": [0, 1, 0]}` or a JSON list of integers.
 
