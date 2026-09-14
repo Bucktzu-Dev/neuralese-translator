@@ -15,6 +15,7 @@ from neuralese.contracts import (
     AuditCertificate,
     GuardSnapshot,
     Observation,
+    Receipt,
     SymbolPack,
     example_hash,
     iter_live_symbols,
@@ -148,7 +149,7 @@ def certify(
         if pack.reconstruction_error < 0:
             residual_ok = False
             failures.append(f"reconstruction_error {pack.reconstruction_error} is negative")
-        elif not residual_ok:
+        elif not residual_ok and _finite(pack.reconstruction_error):
             failures.append(
                 f"reconstruction_error {pack.reconstruction_error:.6f} exceeds tau_residual {tau_residual}"
             )
@@ -336,7 +337,10 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
     if decision == "reject":
         failures.append("decision=reject is a draft, not an admitted lexicon")
         return False
-    finalize = [r for r in pack.receipts if r.step == "finalize"]
+    if isinstance(pack.receipts, (str, bytes)) or not isinstance(pack.receipts, (list, tuple)):
+        failures.append("receipts is not an array")
+        return False
+    finalize = [r for r in pack.receipts if isinstance(r, Receipt) and r.step == "finalize"]
     if finalize:
         ok = finalize[-1].ok
         if not isinstance(ok, bool):
@@ -368,6 +372,8 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         failures.append(f"unknown decision {pack.decision!r}")
     if not isinstance(pack.include_private, bool):
         failures.append("include_private is not a boolean")
+    if not isinstance(pack.metadata, dict):
+        failures.append("metadata is not an object")
     if pack.guards is not None:
         if not isinstance(pack.guards, GuardSnapshot):
             failures.append("guards is not a GuardSnapshot")
@@ -385,9 +391,15 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
                     failures.append(f"guards.{name} is not a number")
                 elif not _finite(value):
                     failures.append(f"guards.{name} is not finite")
-    for index, receipt in enumerate(pack.receipts):
-        if not isinstance(receipt.ok, bool):
-            failures.append(f"receipts[{index}].ok is not a boolean")
+    if isinstance(pack.receipts, (str, bytes)) or not isinstance(pack.receipts, (list, tuple)):
+        failures.append("receipts is not an array")
+    else:
+        for index, receipt in enumerate(pack.receipts):
+            if not isinstance(receipt, Receipt):
+                failures.append(f"receipts[{index}] is not a Receipt")
+                continue
+            if not isinstance(receipt.ok, bool):
+                failures.append(f"receipts[{index}].ok is not a boolean")
     failures.extend(_evidence_map_errors(pack.evidence))
     if not isinstance(pack.codebook, dict):
         failures.append("codebook is not an object")
