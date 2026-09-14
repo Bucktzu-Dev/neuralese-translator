@@ -449,3 +449,59 @@ def test_overflowing_reconstruction_error_fails_closed_not_overflow():
     assert any("reconstruction_error is not finite" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
+
+
+def test_jsonl_bool_and_nonfinite_embedding_elements_are_rejected(tmp_path, capsys):
+    from neuralese.adapters import load_observations_jsonl
+
+    path = tmp_path / "obs.jsonl"
+    path.write_text('{"observation_id":"o1","embedding":[true]}\n')
+    with pytest.raises(ValueError, match="invalid observation record"):
+        load_observations_jsonl(path)
+    path.write_text('{"observation_id":"o1","embedding":[1e309]}\n')
+    with pytest.raises(ValueError, match="invalid observation record"):
+        load_observations_jsonl(path)
+    rc = main(["learn", str(path), "-o", str(tmp_path / "pack.json")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid observation record" in err
+
+
+def test_malformed_symbols_fail_schema_not_attribute_error():
+    pack = make_pack()
+    pack.symbols = [{}]
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("symbols[0] is not a Symbol" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    pack.symbols = [None]
+    cert = certify(pack)
+    assert not cert.passed
+    assert any("symbols[0] is not a Symbol" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    pack.symbols = None
+    cert = certify(pack)
+    assert not cert.passed
+    assert any("symbols is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_null_codebook_is_not_normalized_to_empty():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["codebook"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.codebook is None
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("codebook is not an object" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+    del data["codebook"]
+    omitted = pack.from_dict(data)
+    assert omitted.codebook == {}
