@@ -4,6 +4,7 @@ from neuralese.adapters import (
     load_observations_jsonl,
     load_pack,
     load_stream,
+    observations_from_activations,
     save_pack,
 )
 from neuralese.alphabet import LearnConfig, learn_pack
@@ -20,7 +21,7 @@ from neuralese.contracts import (
 from neuralese.dynamics import SubjectiveSymbolDynamics
 from neuralese.translator import translate_stream
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "__version__",
@@ -37,6 +38,7 @@ __all__ = [
     "load_observations_jsonl",
     "load_pack",
     "load_stream",
+    "observations_from_activations",
     "save_pack",
     "SubjectiveSymbolDynamics",
     "UncertifiedPackError",
