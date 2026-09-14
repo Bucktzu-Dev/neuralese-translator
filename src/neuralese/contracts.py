@@ -133,6 +133,17 @@ def _string_id_list(data: Dict[str, Any], key: str) -> List[str]:
     return ids
 
 
+def _receipts_list(data: Dict[str, Any]) -> List[Any]:
+    if "receipts" not in data:
+        return []
+    raw = data["receipts"]
+    if raw is None:
+        return []
+    if isinstance(raw, (str, bytes)) or not isinstance(raw, (list, tuple)):
+        raise TypeError("receipts must be an array")
+    return list(raw)
+
+
 def _json_bool(data: Dict[str, Any], key: str, *, default: Any = None, required: bool = False) -> Any:
     if key not in data:
         if required:
@@ -400,14 +411,15 @@ class Symbol:
         examples = _string_id_list(data, "examples")
         if include_private is not True:
             examples = []
-        if "example_hashes" not in data or data["example_hashes"] is None:
-            hashes: List[Any] = []
+        if "example_hashes" not in data:
+            hashes: Any = []
         else:
-            raw_hashes = data["example_hashes"]
-            if not isinstance(raw_hashes, (list, tuple)):
-                raise TypeError("example_hashes must be an array")
-            hashes = list(raw_hashes)
-        if examples and not hashes:
+            hashes = data["example_hashes"]
+            if hashes is not None:
+                if isinstance(hashes, (str, bytes)) or not isinstance(hashes, (list, tuple)):
+                    raise TypeError("example_hashes must be an array")
+                hashes = list(hashes)
+        if examples and hashes is not None and not hashes:
             hashes = [example_hash(x) for x in examples]
         definition = data.get("definition")
         if definition is not None and not isinstance(definition, str):
@@ -506,7 +518,7 @@ class SymbolPack:
             checksum=str(data.get("checksum") or ""),
             parent_pack_id=data.get("parent_pack_id"),
             parent_checksum=data.get("parent_checksum"),
-            receipts=[Receipt.from_dict(r) for r in data.get("receipts") or []],
+            receipts=[Receipt.from_dict(r) for r in _receipts_list(data)],
             guards=guards,
             mdl_bits=_present_value(data, "mdl_bits", 0.0),
             timestamp=float(data.get("timestamp") or 0.0),

@@ -350,7 +350,6 @@ def test_overflowing_pack_timestamp_is_clean_cli_failure(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "invalid pack" in err
 
-
 def test_loaded_float_and_bool_codebook_values_are_not_coerced():
     pack = make_pack()
     data = pack.to_dict()
@@ -381,5 +380,72 @@ def test_unhashable_symbol_code_fails_closed():
     assert any(
         "code is not an integer" in f or "not hashable" in f for f in cert.failures
     )
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+def test_malformed_receipts_fail_schema_not_attribute_error():
+    pack = make_pack()
+    pack.receipts = [{}]
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("receipts[0] is not a Receipt" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    pack.receipts = None
+    cert = certify(pack)
+    assert not cert.passed
+    assert any("receipts is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_constructed_non_object_metadata_fails_schema():
+    pack = make_pack()
+    pack.metadata = []
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("metadata is not an object" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_null_example_hashes_are_not_normalized_to_empty():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["example_hashes"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].example_hashes is None
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("example_hashes is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_loaded_falsey_receipts_are_not_normalized_to_empty():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["receipts"] = {}
+    with pytest.raises(TypeError, match="receipts must be an array"):
+        pack.from_dict(data)
+    data["receipts"] = False
+    with pytest.raises(TypeError, match="receipts must be an array"):
+        pack.from_dict(data)
+    data["receipts"] = 0
+    with pytest.raises(TypeError, match="receipts must be an array"):
+        pack.from_dict(data)
+
+
+def test_overflowing_reconstruction_error_fails_closed_not_overflow():
+    pack = make_pack()
+    pack.reconstruction_error = 10**1000
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("reconstruction_error is not finite" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
