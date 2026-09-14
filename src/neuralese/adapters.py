@@ -134,7 +134,11 @@ def _require_2d_finite(array: np.ndarray, *, label: str) -> np.ndarray:
         )
     if array.shape[0] < 1 or array.shape[1] < 1:
         raise ValueError(f"{label} must be nonempty")
-    if array.dtype == object or np.issubdtype(array.dtype, np.bool_):
+    if (
+        array.dtype == object
+        or np.issubdtype(array.dtype, np.bool_)
+        or np.issubdtype(array.dtype, np.complexfloating)
+    ):
         raise ValueError(f"{label} must contain real numbers")
     try:
         matrix = np.asarray(array, dtype=np.float64)
@@ -206,10 +210,16 @@ def observations_from_activations(
         if any(len(row) != dim for row in vectors):
             raise ValueError("hidden_states rows must share one hidden_dim")
     n_rows = len(vectors)
-    if texts is not None and len(texts) != n_rows:
-        raise ValueError("texts length must match hidden_states rows")
-    if observation_ids is not None and len(observation_ids) != n_rows:
-        raise ValueError("observation_ids length must match hidden_states rows")
+    if texts is not None:
+        if isinstance(texts, (str, bytes)):
+            raise TypeError("texts must be a sequence of strings, not a string")
+        if len(texts) != n_rows:
+            raise ValueError("texts length must match hidden_states rows")
+    if observation_ids is not None:
+        if isinstance(observation_ids, (str, bytes)):
+            raise TypeError("observation_ids must be a sequence of ids, not a string")
+        if len(observation_ids) != n_rows:
+            raise ValueError("observation_ids length must match hidden_states rows")
     if layer is not None and (isinstance(layer, bool) or not isinstance(layer, int)):
         raise ValueError("layer must be an integer")
     rows: List[Observation] = []
