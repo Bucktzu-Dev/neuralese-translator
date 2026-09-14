@@ -179,10 +179,12 @@ def test_ingest_helpers_are_exported_from_neuralese():
 
     assert neuralese.load_activation_matrix is load_activation_matrix
     assert neuralese.load_activations is load_activations
+    assert neuralese.observations_from_activations is observations_from_activations
     assert neuralese.save_observations_jsonl is save_observations_jsonl
     for name in (
         "load_activation_matrix",
         "load_activations",
+        "observations_from_activations",
         "save_observations_jsonl",
     ):
         assert name in neuralese.__all__
