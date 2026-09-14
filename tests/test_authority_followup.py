@@ -4,7 +4,7 @@ import pytest
 
 from neuralese.audit import certify
 from neuralese.cli import main
-from neuralese.contracts import UncertifiedPackError
+from neuralese.contracts import Observation, Receipt, UncertifiedPackError
 from neuralese.translator import translate_stream
 
 from packutil import make_pack
@@ -505,3 +505,154 @@ def test_loaded_null_codebook_is_not_normalized_to_empty():
     del data["codebook"]
     omitted = pack.from_dict(data)
     assert omitted.codebook == {}
+
+def test_nan_receipt_timestamp_fails_schema():
+    pack = make_pack(
+        guards=None,
+        receipts=[Receipt(step="finalize", ok=True, timestamp=float("nan"))],
+    )
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("receipts[0].timestamp is not finite" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_nonfinite_receipt_metrics_fail_schema():
+    pack = make_pack(
+        receipts=[Receipt(step="finalize", ok=True, timestamp=1.0, kappa=float("inf"))],
+    )
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("receipts[0].kappa is not finite" in f for f in cert.failures)
+    pack.receipts[0].kappa = None
+    pack.receipts[0].reconstruction_error = float("nan")
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.passed
+    assert any("receipts[0].reconstruction_error is not finite" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_scalar_supplied_embedding_fails_evidence_not_type_error():
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    obs = Observation(observation_id=obs_id, embedding=[1.0], text="hello there")
+    obs.embedding = 1.0
+    cert = certify(pack, observations=[obs])
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("evidence content is not verifiable" in f for f in cert.failures)
+
+
+def test_overflowing_supplied_embedding_fails_evidence_not_overflow():
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    obs = Observation(observation_id=obs_id, embedding=[1.0], text="hello there")
+    obs.embedding = [10**1000]
+    cert = certify(pack, observations=[obs])
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("evidence content is not verifiable" in f for f in cert.failures)
+
+
+def test_constructed_symbol_metadata_none_fails_schema():
+    pack = make_pack()
+    pack.symbols[0].metadata = None
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("metadata is not an object" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_infinite_alias_target_fails_closed_not_overflow():
+    pack = make_pack()
+    pack.aliases = {"src": {7: float("inf")}}
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_null_codebook_with_aliases_fails_closed_not_type_error():
+    pack = make_pack(aliases={"src": {7: 0}})
+    pack.codebook = None
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("codebook is not an object" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_falsey_symbol_metadata_fails_from_dict():
+    pack = make_pack()
+    data = pack.to_dict()
+    for metadata in ([], False, ""):
+        data["symbols"][0]["metadata"] = metadata
+        with pytest.raises(TypeError, match="metadata must be an object or null"):
+            pack.from_dict(data)
+    data["symbols"][0]["metadata"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].metadata == {}
+
+
+def test_nonfinite_pack_timestamp_fails_schema():
+    pack = make_pack()
+    pack.timestamp = float("nan")
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("timestamp is not finite" in f for f in cert.failures)
+    pack.timestamp = float("inf")
+    cert = certify(pack)
+    assert not cert.passed
+    assert any("timestamp is not finite" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_falsey_receipt_metadata_fails_from_dict():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["receipts"] = [
+        {"step": "finalize", "ok": True, "timestamp": 1.0, "metadata": False}
+    ]
+    with pytest.raises(TypeError, match="metadata must be an object or null"):
+        pack.from_dict(data)
+    data["receipts"] = [
+        {"step": "finalize", "ok": True, "timestamp": 1.0, "metadata": []}
+    ]
+    with pytest.raises(TypeError, match="metadata must be an object or null"):
+        pack.from_dict(data)
+    data["receipts"] = [
+        {"step": "finalize", "ok": True, "timestamp": 1.0, "metadata": ""}
+    ]
+    with pytest.raises(TypeError, match="metadata must be an object or null"):
+        pack.from_dict(data)
+    data["receipts"] = [
+        {"step": "finalize", "ok": True, "timestamp": 1.0, "metadata": None}
+    ]
+    loaded = pack.from_dict(data)
+    assert loaded.receipts[0].metadata == {}
+
+
+def test_private_null_example_hashes_are_not_derived_from_examples():
+    pack = make_pack(include_private=True)
+    data = pack.to_dict()
+    data["symbols"][0]["examples"] = ["hello there"]
+    data["symbols"][0]["example_hashes"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].example_hashes is None
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("example_hashes is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
