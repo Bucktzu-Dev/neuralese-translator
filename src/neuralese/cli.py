@@ -180,10 +180,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if args.layer is not None:
                     for row in rows:
                         row.metadata["layer"] = args.layer
-        except (TypeError, ValueError) as exc:
+            save_observations_jsonl(rows, args.output)
+        except (TypeError, ValueError, OSError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
-        save_observations_jsonl(rows, args.output)
         print(
             json.dumps(
                 {
