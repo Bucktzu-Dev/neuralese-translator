@@ -43,7 +43,7 @@ neuralese ingest states.npy -o observations.jsonl --texts prompts.jsonl --layer 
 neuralese learn observations.jsonl -o pack.json
 ```
 
-A stream file is {"codes": [0, 1, 0]} or a JSON list of integers.
+A stream file is `{"codes": [0, 1, 0]}` or a JSON list of integers.
 
 ## What a gloss looks like
 
