@@ -113,24 +113,25 @@ def certify(
         else:
             try:
                 cyclic = has_alias_cycle(pack.aliases)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 addressable = False
                 failures.append("aliases is not an object")
             else:
                 if cyclic:
                     addressable = False
                     failures.append("alias map contains a cycle")
+                codebook = pack.codebook if isinstance(pack.codebook, dict) else {}
                 for source, mapping in pack.aliases.items():
                     for old, new in mapping.items():
                         try:
                             resolved = follow_aliases(int(old), mapping)
-                        except (TypeError, ValueError):
+                        except (TypeError, ValueError, OverflowError):
                             addressable = False
                             failures.append(
                                 f"alias {source}:{old}->{new} does not resolve to a current symbol"
                             )
                             continue
-                        if resolved not in pack.codebook and pack.symbol_by_code(resolved) is None:
+                        if resolved not in codebook and pack.symbol_by_code(resolved) is None:
                             addressable = False
                             failures.append(
                                 f"alias {source}:{old}->{new} does not resolve to a current symbol"
@@ -261,6 +262,12 @@ def certify(
                         evidence_valid = False
                         failures.append(
                             f"observation {obs_id!r} has neither embedding nor text"
+                        )
+                        continue
+                    except (TypeError, OverflowError):
+                        evidence_valid = False
+                        failures.append(
+                            f"observation {obs_id!r} evidence content is not verifiable"
                         )
                         continue
                     if normalized.content_hash() != digest:
@@ -416,8 +423,26 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
             if not isinstance(receipt, Receipt):
                 failures.append(f"receipts[{index}] is not a Receipt")
                 continue
+            if not isinstance(receipt.step, str):
+                failures.append(f"receipts[{index}].step is not a string")
             if not isinstance(receipt.ok, bool):
                 failures.append(f"receipts[{index}].ok is not a boolean")
+            if not _real_number(receipt.timestamp):
+                failures.append(f"receipts[{index}].timestamp is not a number")
+            elif not _finite(receipt.timestamp):
+                failures.append(f"receipts[{index}].timestamp is not finite")
+            for field_name in ("kappa", "reconstruction_error", "delta_mdl_bits"):
+                value = getattr(receipt, field_name)
+                if value is None:
+                    continue
+                if not _real_number(value):
+                    failures.append(f"receipts[{index}].{field_name} is not a number")
+                elif not _finite(value):
+                    failures.append(f"receipts[{index}].{field_name} is not finite")
+            if not isinstance(receipt.metadata, dict) or isinstance(
+                receipt.metadata, (str, bytes)
+            ):
+                failures.append(f"receipts[{index}].metadata is not an object")
     failures.extend(_evidence_map_errors(pack.evidence))
     if not isinstance(pack.codebook, dict):
         failures.append("codebook is not an object")
@@ -453,6 +478,10 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         failures.append("mdl_bits is not a number")
     elif not _finite(pack.mdl_bits):
         failures.append("mdl_bits is not finite")
+    if not _real_number(pack.timestamp):
+        failures.append("timestamp is not a number")
+    elif not _finite(pack.timestamp):
+        failures.append("timestamp is not finite")
     if not _is_array(pack.symbols):
         failures.append("symbols is not an array")
         return (len(failures) == 0, failures)
@@ -476,6 +505,8 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
             failures.append(f"class {symbol.class_id} survival out of [0, 1]")
         if symbol.definition is not None and not isinstance(symbol.definition, str):
             failures.append(f"class {symbol.class_id} definition is not a string")
+        if not isinstance(symbol.metadata, dict) or isinstance(symbol.metadata, (str, bytes)):
+            failures.append(f"class {symbol.class_id} metadata is not an object")
         proto = symbol.proto_embedding
         if isinstance(proto, (str, bytes)) or not isinstance(proto, (list, tuple)):
             failures.append(f"class {symbol.class_id} proto_embedding is not an array")
