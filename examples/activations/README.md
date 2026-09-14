@@ -27,12 +27,15 @@ import numpy as np
 from transformers import AutoModel, AutoTokenizer
 
 tokenizer = AutoTokenizer.from_pretrained("gpt2")
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 model = AutoModel.from_pretrained("gpt2")
 prompts = ["hello there friend", "audit the trail please"]
 encoded = tokenizer(prompts, return_tensors="pt", padding=True)
 states = model(**encoded).last_hidden_state
-pooled = states.mean(dim=1).detach().cpu().numpy()
-np.save("states.npy", pooled)
+mask = encoded["attention_mask"].unsqueeze(-1)
+pooled = (states * mask).sum(dim=1) / mask.sum(dim=1).clamp(min=1)
+np.save("states.npy", pooled.detach().cpu().numpy())
 ```
 
 Then write `prompts.jsonl` with one `{"text": ...}` per row, in the same order.
