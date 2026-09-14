@@ -81,7 +81,7 @@ def load_stream(path: PathLike) -> List[int]:
     elif isinstance(payload, list):
         codes = payload
     else:
-        raise ValueError("stream file must be a JSON list or {\"codes\": [...]}")
+        raise ValueError("stream file must be a JSON list or an object with a codes array")
     if not isinstance(codes, (list, tuple)):
         raise ValueError("stream codes must be an array")
     try:
