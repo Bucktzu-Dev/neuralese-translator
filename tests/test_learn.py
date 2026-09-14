@@ -277,7 +277,7 @@ def test_load_stream_rejects_unusable_codes(tmp_path):
     path.write_text("[null]\n")
     with pytest.raises(ValueError, match="stream codes"):
         load_stream(path)
-    path.write_text('stream file codes-null sentinel')
+    path.write_text('\u007b"codes": null}\n')
     with pytest.raises(ValueError, match="stream codes"):
         load_stream(path)
     path.write_text("[1.9]\n")
