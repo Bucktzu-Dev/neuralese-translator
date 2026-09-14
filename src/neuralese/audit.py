@@ -39,23 +39,41 @@ def certify(
     failures.extend(schema_failures)
 
     addressable = True
-    for code, class_id in pack.codebook.items():
-        symbol = pack.symbol_by_class(int(class_id))
-        if symbol is None:
-            addressable = False
-            failures.append(f"code {code} maps to missing class {class_id}")
-    for symbol in pack.symbols:
-        mapped = pack.codebook.get(symbol.code)
-        if mapped is None:
-            addressable = False
-            failures.append(
-                f"symbol class {symbol.class_id} code {symbol.code} missing from codebook"
-            )
-        elif mapped != symbol.class_id:
-            addressable = False
-            failures.append(
-                f"code {symbol.code} codebook class {mapped} != symbol class {symbol.class_id}"
-            )
+    if not isinstance(pack.codebook, dict):
+        addressable = False
+        failures.append("codebook is not an object")
+    else:
+        for code, class_id in pack.codebook.items():
+            if not _integral_code(class_id):
+                addressable = False
+                failures.append(f"code {code} maps to non-integer class {class_id}")
+                continue
+            symbol = pack.symbol_by_class(class_id)
+            if symbol is None:
+                addressable = False
+                failures.append(f"code {code} maps to missing class {class_id}")
+        for symbol in pack.symbols:
+            if not _integral_code(symbol.code):
+                addressable = False
+                continue
+            try:
+                mapped = pack.codebook.get(symbol.code)
+            except TypeError:
+                addressable = False
+                failures.append(
+                    f"symbol class {symbol.class_id} code {symbol.code} is not a codebook key"
+                )
+                continue
+            if mapped is None:
+                addressable = False
+                failures.append(
+                    f"symbol class {symbol.class_id} code {symbol.code} missing from codebook"
+                )
+            elif mapped != symbol.class_id:
+                addressable = False
+                failures.append(
+                    f"code {symbol.code} codebook class {mapped} != symbol class {symbol.class_id}"
+                )
 
     class_ids = [s.class_id for s in pack.symbols]
     codes = [s.code for s in pack.symbols]
@@ -371,6 +389,13 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         if not isinstance(receipt.ok, bool):
             failures.append(f"receipts[{index}].ok is not a boolean")
     failures.extend(_evidence_map_errors(pack.evidence))
+    if not isinstance(pack.codebook, dict):
+        failures.append("codebook is not an object")
+    else:
+        for key, value in pack.codebook.items():
+            if not _integral_code(key) or not _integral_code(value):
+                failures.append("codebook entries must be integer-to-integer")
+                break
     if not isinstance(pack.aliases, dict):
         failures.append("aliases is not an object")
     else:

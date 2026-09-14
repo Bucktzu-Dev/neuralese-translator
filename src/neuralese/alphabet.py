@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Sequence
 import numpy as np
 
 from neuralese.adapters import ensure_embedding, stack_embeddings
+from neuralese.audit import _schema_errors
 from neuralese.clustering import cluster_survival, kmeans
 from neuralese.contracts import (
     DECODER_VERSION,
@@ -91,6 +92,11 @@ def learn_pack(
             raise ValueError(
                 "previous pack checksum does not match its semantic manifest"
             )
+        schema_ok, _schema_failures = _schema_errors(previous, 0.55)
+        if not schema_ok:
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            )
 
     rank = cfg.svd_rank or min(max(cfg.n_symbols, 1), X.shape[0], X.shape[1])
     _, _, svd_residual = svd_factors(X, rank)
@@ -106,7 +112,7 @@ def learn_pack(
             old_protos = np.asarray(
                 [s.proto_embedding for s in previous.symbols], dtype=np.float64
             )
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
             raise ValueError(
                 "previous pack checksum does not match its semantic manifest"
             ) from exc
