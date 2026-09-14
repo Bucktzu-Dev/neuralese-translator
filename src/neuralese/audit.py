@@ -324,6 +324,12 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
             pack.guards
         ):
             failures.append("guards.pass_all is inconsistent with component flags")
+        for name in _GUARD_METRIC_FIELDS:
+            value = getattr(pack.guards, name)
+            if not _real_number(value):
+                failures.append(f"guards.{name} is not a number")
+            elif not _finite(value):
+                failures.append(f"guards.{name} is not finite")
     for index, receipt in enumerate(pack.receipts):
         if not isinstance(receipt.ok, bool):
             failures.append(f"receipts[{index}].ok is not a boolean")
@@ -394,6 +400,12 @@ _GUARD_PASS_FLAGS = (
     "pass_mdl",
     "pass_persist",
     "pass_compat",
+)
+_GUARD_METRIC_FIELDS = (
+    "kappa_avg",
+    "reconstruction_error",
+    "delta_mdl",
+    "min_survival",
 )
 
 
