@@ -83,7 +83,7 @@ def learn_pack(
             )
         try:
             actual = previous.compute_checksum()
-        except (TypeError, ValueError, AttributeError):
+        except (TypeError, ValueError, AttributeError, OverflowError):
             raise ValueError(
                 "previous pack checksum does not match its semantic manifest"
             ) from None
