@@ -66,7 +66,7 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
                 raise ValueError(f"{path}:{line_no} invalid observation record")
             try:
                 rows.append(Observation.from_dict(data))
-            except (TypeError, ValueError, KeyError) as exc:
+            except (TypeError, ValueError, KeyError, OverflowError) as exc:
                 raise ValueError(
                     f"{path}:{line_no} invalid observation record"
                 ) from exc
@@ -424,7 +424,7 @@ def load_pack(path: PathLike) -> SymbolPack:
         raise ValueError(f"invalid pack in {path}")
     try:
         return SymbolPack.from_dict(data)
-    except (TypeError, ValueError, KeyError, AttributeError) as exc:
+    except (TypeError, ValueError, KeyError, AttributeError, OverflowError) as exc:
         raise ValueError(f"invalid pack in {path}") from exc
 
 

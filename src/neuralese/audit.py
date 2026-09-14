@@ -13,6 +13,7 @@ from neuralese.contracts import (
     DECODER_VERSION,
     SHA256_HEX,
     AuditCertificate,
+    GuardSnapshot,
     Observation,
     SymbolPack,
     example_hash,
@@ -326,11 +327,15 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
         if ok is not True:
             failures.append("finalize receipt is not ok")
             return False
-    if pack.guards is not None and not _effective_pass_all(pack.guards):
-        if decision == "accept_provisional" and policy != "strict":
-            return True
-        failures.append("guards.pass_all is false")
-        return False
+    if pack.guards is not None:
+        if not isinstance(pack.guards, GuardSnapshot):
+            failures.append("guards is not a GuardSnapshot")
+            return False
+        if not _effective_pass_all(pack.guards):
+            if decision == "accept_provisional" and policy != "strict":
+                return True
+            failures.append("guards.pass_all is false")
+            return False
     return True
 
 
@@ -346,19 +351,22 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
     if not isinstance(pack.include_private, bool):
         failures.append("include_private is not a boolean")
     if pack.guards is not None:
-        for name in (*_GUARD_PASS_FLAGS, "pass_all"):
-            if not isinstance(getattr(pack.guards, name), bool):
-                failures.append(f"guards.{name} is not a boolean")
-        if isinstance(pack.guards.pass_all, bool) and pack.guards.pass_all != _effective_pass_all(
-            pack.guards
-        ):
-            failures.append("guards.pass_all is inconsistent with component flags")
-        for name in _GUARD_METRIC_FIELDS:
-            value = getattr(pack.guards, name)
-            if not _real_number(value):
-                failures.append(f"guards.{name} is not a number")
-            elif not _finite(value):
-                failures.append(f"guards.{name} is not finite")
+        if not isinstance(pack.guards, GuardSnapshot):
+            failures.append("guards is not a GuardSnapshot")
+        else:
+            for name in (*_GUARD_PASS_FLAGS, "pass_all"):
+                if not isinstance(getattr(pack.guards, name), bool):
+                    failures.append(f"guards.{name} is not a boolean")
+            if isinstance(pack.guards.pass_all, bool) and pack.guards.pass_all != _effective_pass_all(
+                pack.guards
+            ):
+                failures.append("guards.pass_all is inconsistent with component flags")
+            for name in _GUARD_METRIC_FIELDS:
+                value = getattr(pack.guards, name)
+                if not _real_number(value):
+                    failures.append(f"guards.{name} is not a number")
+                elif not _finite(value):
+                    failures.append(f"guards.{name} is not finite")
     for index, receipt in enumerate(pack.receipts):
         if not isinstance(receipt.ok, bool):
             failures.append(f"receipts[{index}].ok is not a boolean")
@@ -473,6 +481,8 @@ _GUARD_METRIC_FIELDS = (
 
 
 def _effective_pass_all(guards) -> bool:
+    if not isinstance(guards, GuardSnapshot):
+        return False
     return all(getattr(guards, name) is True for name in _GUARD_PASS_FLAGS)
 
 

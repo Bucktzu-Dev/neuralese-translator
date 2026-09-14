@@ -317,3 +317,10 @@ def test_learn_malformed_unsealed_parent_is_clean_value_error():
     with pytest.raises(ValueError, match="unsealed"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
 
+
+def test_learn_parent_overflowing_proto_is_clean_value_error():
+    obs = load_observations_jsonl(TOY)
+    first = learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
+    first.symbols[0].proto_embedding = [10**1000]
+    with pytest.raises(ValueError, match="does not match"):
+        learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)

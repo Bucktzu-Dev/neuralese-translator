@@ -83,7 +83,7 @@ def _checksum_vec(values: Any) -> Any:
         return values
     try:
         return round_vec(values)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return list(values)
 
 
@@ -390,8 +390,8 @@ class Symbol:
         if definition is not None and not isinstance(definition, str):
             raise TypeError("definition must be a string or null")
         return cls(
-            class_id=int(data["class_id"]),
-            code=int(data["code"]),
+            class_id=data["class_id"],
+            code=data["code"],
             proto_embedding=_copy_seq(_present_value(data, "proto_embedding", [])),
             observation_ids=_string_id_list(data, "observation_ids"),
             definition=definition,
