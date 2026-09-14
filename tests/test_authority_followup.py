@@ -1,6 +1,9 @@
+import json
+
 import pytest
 
 from neuralese.audit import certify
+from neuralese.cli import main
 from neuralese.contracts import UncertifiedPackError
 from neuralese.translator import translate_stream
 
@@ -79,3 +82,44 @@ def test_translate_uses_caller_tau_residual_not_pack_metadata():
     assert certify(pack, tau_residual=0.9).passed
     glosses = translate_stream(pack, [0], tau_residual=0.9)
     assert glosses[0].state == "ok"
+
+
+def test_cli_translate_tau_residual_is_operator_gate(tmp_path, capsys):
+    from pathlib import Path
+
+    toy = Path(__file__).resolve().parents[1] / "examples" / "toy_stream"
+    pack_path = tmp_path / "pack.json"
+    stream = tmp_path / "stream.json"
+    rc = main(
+        [
+            "learn",
+            str(toy / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["reconstruction_error"] = 0.6
+    data["metadata"]["tau_residual"] = 0.9
+    if data.get("guards"):
+        data["guards"]["reconstruction_error"] = 0.6
+    from neuralese.contracts import SymbolPack
+
+    pack = SymbolPack.from_dict(data)
+    pack.seal()
+    pack_path.write_text(json.dumps(pack.to_dict(), indent=2) + "\n")
+    stream.write_text("[0]\n")
+    rc = main(["translate", str(pack_path), str(stream)])
+    assert rc == 1
+    failed = capsys.readouterr()
+    assert failed.out == ""
+    cert = json.loads(failed.err)
+    assert cert["passed"] is False
+    rc = main(["translate", str(pack_path), str(stream), "--tau-residual", "0.9"])
+    assert rc == 0
+    glosses = json.loads(capsys.readouterr().out)
+    assert glosses[0]["state"] in {"ok", "unknown", "aliased"}
