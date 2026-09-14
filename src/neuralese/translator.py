@@ -22,6 +22,7 @@ def translate_stream(
     require_certified: bool = True,
     require_gloss: bool = True,
     source_pack_checksum: Optional[str] = None,
+    tau_residual: float = 0.55,
 ) -> List[Gloss]:
     """Map each code to a gloss. Never invent English for a missing symbol.
 
@@ -30,6 +31,8 @@ def translate_stream(
     `[unglossed]`. That still requires evidence and admission when
     `require_certified` is true. `integrity` may inspect a seal; it does not
     authorize emitting English, including when `require_certified` is false.
+    Residual admission uses the caller `tau_residual` (default 0.55), never a
+    threshold persisted in pack metadata.
     """
     if policy not in TRANSLATION_POLICIES:
         raise ValueError(
@@ -37,7 +40,12 @@ def translate_stream(
             f"use one of {TRANSLATION_POLICIES}"
         )
     if require_certified:
-        certificate = certify(pack, policy=policy, require_gloss=require_gloss)
+        certificate = certify(
+            pack,
+            policy=policy,
+            require_gloss=require_gloss,
+            tau_residual=tau_residual,
+        )
         if not certificate.passed:
             raise UncertifiedPackError(certificate)
 
