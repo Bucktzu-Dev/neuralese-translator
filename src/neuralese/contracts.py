@@ -47,8 +47,31 @@ def _copy_alias_table(mapping: Dict[Any, Any]) -> Dict[Any, Any]:
     return {_alias_key(key): value for key, value in mapping.items()}
 
 
-def _int_keyed(d: Dict[Any, Any]) -> Dict[int, int]:
-    return {int(k): int(v) for k, v in d.items()}
+def _copy_codebook(raw: Any) -> Any:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        return raw
+    return {_alias_key(key): value for key, value in raw.items()}
+
+
+def _codebook_to_dict(codebook: Any) -> Any:
+    if not isinstance(codebook, dict):
+        return codebook
+    try:
+        entries = sorted(codebook.items())
+    except TypeError:
+        entries = list(codebook.items())
+    serialized: Dict[Any, Any] = {}
+    for key, value in entries:
+        serialized[str(key) if _integral_code(key) else key] = (
+            int(value) if _integral_code(value) else value
+        )
+    return serialized
+
+
+def _int_keyed(d: Dict[Any, Any]) -> Dict[Any, Any]:
+    return _copy_codebook(d)
 
 
 def _mapping(value: Any) -> Dict[str, Any]:
@@ -82,7 +105,7 @@ def _checksum_vec(values: Any) -> Any:
     if isinstance(values, (str, bytes)) or not isinstance(values, (list, tuple)):
         return values
     try:
-        return round_vec(values)
+        return [_round_real(x) for x in values]
     except (TypeError, ValueError, OverflowError):
         return list(values)
 
@@ -433,7 +456,7 @@ class SymbolPack:
             "decoder_version": self.decoder_version,
             "decision": self.decision,
             "symbols": [s.to_dict(include_private=self.include_private is True) for s in self.symbols],
-            "codebook": {str(k): int(v) for k, v in self.codebook.items()},
+            "codebook": _codebook_to_dict(self.codebook),
             "aliases": aliases_to_dict(self.aliases),
             "reconstruction_error": self.reconstruction_error,
             "checksum": self.checksum,
@@ -477,7 +500,7 @@ class SymbolPack:
                 Symbol.from_dict(s, include_private=include_private is True)
                 for s in symbols_raw
             ],
-            codebook=_int_keyed(data.get("codebook") or {}),
+            codebook=_copy_codebook(data["codebook"] if "codebook" in data else {}),
             aliases=normalize_aliases(aliases_raw),
             reconstruction_error=_present_value(data, "reconstruction_error", 0.0),
             checksum=str(data.get("checksum") or ""),
@@ -505,7 +528,7 @@ class SymbolPack:
             "decision": self.decision,
             "parent_pack_id": self.parent_pack_id,
             "parent_checksum": self.parent_checksum,
-            "codebook": {str(k): int(v) for k, v in sorted(self.codebook.items())},
+            "codebook": _codebook_to_dict(self.codebook),
             "aliases": aliases_to_dict(self.aliases),
             "reconstruction_error": _round_real(self.reconstruction_error),
             "mdl_bits": _round_real(self.mdl_bits),
@@ -549,7 +572,10 @@ class SymbolPack:
         return None
 
     def symbol_by_code(self, code: int) -> Optional[Symbol]:
-        class_id = self.codebook.get(code)
+        try:
+            class_id = self.codebook.get(code) if isinstance(self.codebook, dict) else None
+        except TypeError:
+            class_id = None
         if class_id is not None:
             found = self.symbol_by_class(class_id)
             if found is not None:
