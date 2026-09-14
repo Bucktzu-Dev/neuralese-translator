@@ -36,6 +36,13 @@ JSONL observations:
 
 If `embedding` is omitted, the tool builds a deterministic hashed n-gram vector from `text`.
 
+Dumped hidden states (`.npy` / `.npz` / activation JSONL) become that observation JSONL with `neuralese ingest`. The package does not import HuggingFace; pool token/layer axes before ingest. See [examples/activations/README.md](examples/activations/README.md).
+
+```bash
+neuralese ingest states.npy -o observations.jsonl --texts prompts.jsonl --layer 12
+neuralese learn observations.jsonl -o pack.json
+```
+
 A stream file is `{"codes": [0, 1, 0]}` or a JSON list of integers.
 
 ## What a gloss looks like
