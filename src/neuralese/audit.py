@@ -64,17 +64,21 @@ def certify(
         addressable = False
         failures.append("duplicate code identities")
 
-    if has_alias_cycle(pack.aliases):
+    if isinstance(pack.aliases, dict):
+        if has_alias_cycle(pack.aliases):
+            addressable = False
+            failures.append("alias map contains a cycle")
+        for source, mapping in pack.aliases.items():
+            for old, new in mapping.items():
+                resolved = follow_aliases(int(old), mapping)
+                if resolved not in pack.codebook and pack.symbol_by_code(resolved) is None:
+                    addressable = False
+                    failures.append(
+                        f"alias {source}:{old}->{new} does not resolve to a current symbol"
+                    )
+    else:
         addressable = False
-        failures.append("alias map contains a cycle")
-    for source, mapping in pack.aliases.items():
-        for old, new in mapping.items():
-            resolved = follow_aliases(int(old), mapping)
-            if resolved not in pack.codebook and pack.symbol_by_code(resolved) is None:
-                addressable = False
-                failures.append(
-                    f"alias {source}:{old}->{new} does not resolve to a current symbol"
-                )
+        failures.append("aliases is not an object")
 
     expected = pack.checksum or ""
     checksum_ok = False
@@ -334,6 +338,12 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         if not isinstance(receipt.ok, bool):
             failures.append(f"receipts[{index}].ok is not a boolean")
     failures.extend(_evidence_map_errors(pack.evidence))
+    if not isinstance(pack.aliases, dict):
+        failures.append("aliases is not an object")
+    else:
+        for source in pack.aliases:
+            if not isinstance(source, str) or not source.strip():
+                failures.append("alias source key is not a non-empty string")
     if pack.parent_checksum is not None and (
         not isinstance(pack.parent_checksum, str) or not SHA256_HEX.match(pack.parent_checksum)
     ):
@@ -344,6 +354,10 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         failures.append("reconstruction_error is not finite")
     elif pack.reconstruction_error < 0:
         failures.append("reconstruction_error must be >= 0")
+    if not _real_number(pack.mdl_bits):
+        failures.append("mdl_bits is not a number")
+    elif not _finite(pack.mdl_bits):
+        failures.append("mdl_bits is not finite")
     for symbol in pack.symbols:
         if not isinstance(symbol.quarantined, bool):
             failures.append(f"class {symbol.class_id} quarantined is not a boolean")
@@ -357,6 +371,19 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
             failures.append(f"class {symbol.class_id} survival out of [0, 1]")
         if symbol.definition is not None and not isinstance(symbol.definition, str):
             failures.append(f"class {symbol.class_id} definition is not a string")
+        proto = symbol.proto_embedding
+        if isinstance(proto, (str, bytes)) or not isinstance(proto, (list, tuple)):
+            failures.append(f"class {symbol.class_id} proto_embedding is not an array")
+        else:
+            for index, value in enumerate(proto):
+                if not _real_number(value):
+                    failures.append(
+                        f"class {symbol.class_id} proto_embedding[{index}] is not a number"
+                    )
+                elif not _finite(float(value)):
+                    failures.append(
+                        f"class {symbol.class_id} proto_embedding[{index}] is not finite"
+                    )
         if not isinstance(symbol.observation_ids, (list, tuple)):
             failures.append(f"class {symbol.class_id} observation_ids is not an array")
         else:
