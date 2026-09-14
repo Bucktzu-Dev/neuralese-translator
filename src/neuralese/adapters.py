@@ -356,12 +356,13 @@ def load_activation_jsonl(path: PathLike) -> List[Observation]:
                 raise ValueError(
                     f"{source}:{line_no} embedding dim mismatch: {len(vector)}, expected {dim}"
                 )
-            if "observation_id" in data:
-                obs_id = str(data["observation_id"]).strip()
+            raw_id = data.get("observation_id")
+            if raw_id is None:
+                obs_id = f"obs-{line_no}"
+            else:
+                obs_id = str(raw_id).strip()
                 if not obs_id:
                     raise ValueError(f"{source}:{line_no} observation_id is blank")
-            else:
-                obs_id = f"obs-{line_no}"
             if obs_id in seen:
                 raise ValueError(f"duplicate observation_id {obs_id!r}")
             seen.add(obs_id)
