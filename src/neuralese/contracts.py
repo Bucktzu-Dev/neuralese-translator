@@ -340,7 +340,7 @@ class Receipt:
             kappa=_opt_float(data.get("kappa")),
             reconstruction_error=_opt_float(data.get("reconstruction_error")),
             delta_mdl_bits=_opt_float(data.get("delta_mdl_bits")),
-            metadata=dict(data.get("metadata") or {}),
+            metadata=_optional_object(data, "metadata", "metadata"),
         )
 
 
@@ -382,7 +382,11 @@ class Symbol:
     def __post_init__(self) -> None:
         if self.definition is not None and not isinstance(self.definition, str):
             raise TypeError("definition must be a string or null")
-        if self.examples and not self.example_hashes:
+        if (
+            self.examples
+            and isinstance(self.example_hashes, (list, tuple))
+            and not self.example_hashes
+        ):
             self.example_hashes = [example_hash(x) for x in self.examples]
 
     def to_dict(self, *, include_private: bool = False) -> Dict[str, Any]:
@@ -433,7 +437,7 @@ class Symbol:
             confidence=_present_value(data, "confidence", 0.0),
             quarantined=data["quarantined"] if "quarantined" in data else False,
             survival=_present_value(data, "survival", 1.0),
-            metadata=dict(data.get("metadata") or {}),
+            metadata=_optional_object(data, "metadata", "metadata"),
         )
 
 
