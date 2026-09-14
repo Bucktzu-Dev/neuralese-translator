@@ -74,6 +74,18 @@ def test_jsonl_hidden_state_ingest(tmp_path, capsys):
     assert "hidden_state" not in rows[0]
 
 
+def test_null_jsonl_observation_id_is_treated_as_missing(tmp_path):
+    src = tmp_path / "acts.jsonl"
+    src.write_text(
+        '{"observation_id":null,"hidden_state":[1.0,0.0]}\n'
+        '{"hidden_state":[0.0,1.0]}\n'
+        '{"observation_id":null,"hidden_state":[0.5,0.5]}\n'
+    )
+    rows = load_activations(src)
+    assert [row.observation_id for row in rows] == ["obs-1", "obs-2", "obs-3"]
+    assert "None" not in [row.observation_id for row in rows]
+
+
 def test_3d_activations_fail_closed(tmp_path, capsys):
     npy = tmp_path / "tokens.npy"
     np.save(npy, np.ones((2, 4, 8)))
