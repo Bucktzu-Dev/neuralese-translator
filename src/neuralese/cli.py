@@ -1,4 +1,4 @@
-"""CLI: neuralese learn | translate | audit | certify."""
+"""CLI: neuralese learn | ingest | translate | audit | certify."""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,17 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from neuralese.adapters import load_observations_jsonl, load_pack, load_stream, save_pack
+from neuralese.adapters import (
+    load_activation_matrix,
+    load_activations,
+    load_alignment_texts,
+    load_observations_jsonl,
+    load_pack,
+    load_stream,
+    observations_from_activations,
+    save_observations_jsonl,
+    save_pack,
+)
 from neuralese.alphabet import LearnConfig, learn_pack
 from neuralese.audit import certify
 from neuralese.contracts import CERT_POLICIES, UncertifiedPackError
@@ -33,6 +43,25 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--include-private",
         action="store_true",
         help="serialize raw example text (off by default)",
+    )
+
+    ingest_p = sub.add_parser(
+        "ingest",
+        help="turn dumped hidden states into observation JSONL",
+    )
+    ingest_p.add_argument("activations", type=Path)
+    ingest_p.add_argument("-o", "--output", type=Path, required=True)
+    ingest_p.add_argument(
+        "--texts",
+        type=Path,
+        default=None,
+        help="JSONL or JSON array of texts aligned to activation rows",
+    )
+    ingest_p.add_argument(
+        "--layer",
+        type=int,
+        default=None,
+        help="optional layer index stored on each observation's metadata",
     )
 
     tr_p = sub.add_parser("translate", help="gloss a code stream using a sealed pack")
@@ -122,6 +151,44 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
         )
         return 2 if pack.decision == "reject" else 0
+
+    if args.cmd == "ingest":
+        try:
+            suffix = args.activations.suffix.lower()
+            if suffix in {".npy", ".npz"}:
+                ids = None
+                texts = None
+                if args.texts is not None:
+                    ids, texts = load_alignment_texts(args.texts)
+                rows = observations_from_activations(
+                    load_activation_matrix(args.activations),
+                    texts=texts,
+                    observation_ids=ids,
+                    layer=args.layer,
+                    source=str(args.activations),
+                )
+            else:
+                if args.texts is not None:
+                    raise ValueError("--texts is only valid with .npy or .npz activations")
+                rows = load_activations(args.activations)
+                if args.layer is not None:
+                    for row in rows:
+                        row.metadata["layer"] = args.layer
+        except (TypeError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        save_observations_jsonl(rows, args.output)
+        print(
+            json.dumps(
+                {
+                    "n_observations": len(rows),
+                    "dim": len(rows[0].embedding),
+                    "output": str(args.output),
+                },
+                indent=2,
+            )
+        )
+        return 0
 
     if args.cmd == "translate":
         try:
