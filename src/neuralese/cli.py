@@ -83,6 +83,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         default=None,
         help="parent/source pack checksum whose alias table should be used",
     )
+    tr_p.add_argument(
+        "--tau-residual",
+        type=float,
+        default=0.55,
+        help="operator residual gate for certification; not read from pack metadata",
+    )
 
     audit_p = sub.add_parser("audit", help="print an AuditCertificate for a pack")
     audit_p.add_argument("pack", type=Path)
@@ -205,6 +211,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 require_certified=not args.allow_uncertified,
                 require_gloss=not args.allow_unglossed,
                 source_pack_checksum=args.source_pack,
+                tau_residual=args.tau_residual,
             )
         except UncertifiedPackError as exc:
             print(
