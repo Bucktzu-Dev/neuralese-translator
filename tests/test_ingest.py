@@ -133,3 +133,56 @@ def test_save_observations_jsonl_round_trip(tmp_path):
     reloaded = json.loads(path.read_text().splitlines()[0])
     assert reloaded["text"] == "hello"
     assert reloaded["embedding"] == [1.0, 0.0]
+
+
+def test_string_texts_are_not_indexed_as_rows():
+    with pytest.raises(TypeError, match="sequence of strings"):
+        observations_from_activations([[1.0, 0.0], [0.0, 1.0]], texts="ab")
+
+
+def test_string_observation_ids_are_not_indexed_as_rows():
+    with pytest.raises(TypeError, match="sequence of ids"):
+        observations_from_activations(
+            [[1.0, 0.0], [0.0, 1.0]],
+            observation_ids="xy",
+        )
+
+
+def test_complex_activations_fail_closed():
+    matrix = np.array([[1.0 + 1.0j, 0.0], [0.0, 1.0]], dtype=np.complex128)
+    with pytest.raises(ValueError, match="real numbers"):
+        observations_from_activations(matrix)
+
+
+def test_missing_activation_jsonl_is_clean_cli_failure(tmp_path, capsys):
+    missing = tmp_path / "missing.jsonl"
+    rc = main(["ingest", str(missing), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert str(missing) in err
+    assert "Traceback" not in err
+
+
+def test_missing_texts_file_is_clean_cli_failure(tmp_path, capsys):
+    npy = tmp_path / "states.npy"
+    np.save(npy, np.array([[1.0, 0.0], [0.0, 1.0]]))
+    missing = tmp_path / "texts.jsonl"
+    rc = main(["ingest", str(npy), "-o", str(tmp_path / "obs.jsonl"), "--texts", str(missing)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert str(missing) in err
+    assert "Traceback" not in err
+
+
+def test_ingest_helpers_are_exported_from_neuralese():
+    import neuralese
+
+    assert neuralese.load_activation_matrix is load_activation_matrix
+    assert neuralese.load_activations is load_activations
+    assert neuralese.save_observations_jsonl is save_observations_jsonl
+    for name in (
+        "load_activation_matrix",
+        "load_activations",
+        "save_observations_jsonl",
+    ):
+        assert name in neuralese.__all__
