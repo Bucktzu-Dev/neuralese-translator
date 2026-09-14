@@ -48,8 +48,6 @@ def _copy_alias_table(mapping: Dict[Any, Any]) -> Dict[Any, Any]:
 
 
 def _copy_codebook(raw: Any) -> Any:
-    if raw is None:
-        return {}
     if not isinstance(raw, dict):
         return raw
     return {_alias_key(key): value for key, value in raw.items()}
@@ -578,7 +576,7 @@ class SymbolPack:
         return stripped if stripped else None
 
     def symbol_by_class(self, class_id: int) -> Optional[Symbol]:
-        for symbol in self.symbols:
+        for symbol in _iter_symbol_objects(self.symbols):
             if symbol.class_id == class_id:
                 return symbol
         return None
@@ -592,7 +590,7 @@ class SymbolPack:
             found = self.symbol_by_class(class_id)
             if found is not None:
                 return found
-        for symbol in self.symbols:
+        for symbol in _iter_symbol_objects(self.symbols):
             if symbol.code == code:
                 return symbol
         return None
@@ -711,7 +709,19 @@ def _opt_float(value: Any) -> Optional[float]:
     return float(value)
 
 
+def _is_array(value: Any) -> bool:
+    return not isinstance(value, (str, bytes)) and isinstance(value, (list, tuple))
+
+
+def _iter_symbol_objects(symbols: Any) -> Iterable["Symbol"]:
+    if not _is_array(symbols):
+        return
+    for symbol in symbols:
+        if isinstance(symbol, Symbol):
+            yield symbol
+
+
 def iter_live_symbols(pack: SymbolPack) -> Iterable[Symbol]:
-    for symbol in pack.symbols:
+    for symbol in _iter_symbol_objects(pack.symbols):
         if not symbol.quarantined:
             yield symbol
