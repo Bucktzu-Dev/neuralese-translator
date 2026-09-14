@@ -103,7 +103,9 @@ def _as_stream_code(value: object) -> int:
 
 
 def _is_real_number(value: object) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if isinstance(value, (bool, np.bool_)):
+        return False
+    return isinstance(value, (int, float, np.integer, np.floating))
 
 
 def _as_activation_vector(value: object, *, label: str) -> List[float]:
@@ -178,7 +180,7 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
     if suffix == ".npy":
         try:
             array = np.load(source, allow_pickle=False)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
             raise ValueError(f"invalid activation matrix in {source}") from exc
         if not isinstance(array, np.ndarray):
             closer = getattr(array, "close", None)
