@@ -277,7 +277,7 @@ def test_load_stream_rejects_unusable_codes(tmp_path):
     path.write_text("[null]\n")
     with pytest.raises(ValueError, match="stream codes"):
         load_stream(path)
-    path.write_text('\u007b"codes": null}\n')
+    path.write_text('{"codes": null}\n')
     with pytest.raises(ValueError, match="stream codes"):
         load_stream(path)
     path.write_text("[1.9]\n")
@@ -335,3 +335,4 @@ def test_learn_parent_string_proto_is_clean_value_error():
     first.seal()
     with pytest.raises(ValueError, match="does not match"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
+
