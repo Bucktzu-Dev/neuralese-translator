@@ -284,3 +284,68 @@ def test_unhashable_class_id_fails_closed():
     )
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
+
+
+def test_malformed_guards_object_fails_schema_not_attribute_error():
+    pack = make_pack()
+    pack.guards = {}
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("guards is not a GuardSnapshot" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_float_and_bool_identities_are_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["class_id"] = 0.9
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].class_id == 0.9
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("class_id is not an integer" in f for f in cert.failures)
+    data = pack.to_dict()
+    data["symbols"][0]["code"] = True
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].code is True
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("code is not an integer" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_overflowing_jsonl_embedding_is_clean_cli_failure(tmp_path, capsys):
+    from neuralese.adapters import load_observations_jsonl
+
+    path = tmp_path / "obs.jsonl"
+    huge = 10**1000
+    path.write_text('{"observation_id":"o1","embedding":[' + str(huge) + ']}\n')
+    with pytest.raises(ValueError, match="invalid observation record"):
+        load_observations_jsonl(path)
+    rc = main(["learn", str(path), "-o", str(tmp_path / "pack.json")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid observation record" in err
+
+
+def test_overflowing_pack_timestamp_is_clean_cli_failure(tmp_path, capsys):
+    from neuralese.adapters import load_pack
+
+    pack = make_pack()
+    pack.seal()
+    data = pack.to_dict()
+    data["timestamp"] = 10**1000
+    path = tmp_path / "pack.json"
+    path.write_text(json.dumps(data) + "\n")
+    with pytest.raises(ValueError, match="invalid pack"):
+        load_pack(path)
+    stream = tmp_path / "stream.json"
+    stream.write_text("[0]\n")
+    rc = main(["translate", str(path), str(stream)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid pack" in err
