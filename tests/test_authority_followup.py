@@ -230,3 +230,57 @@ def test_none_alias_table_fails_closed():
     assert any("alias table is not an object" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
+
+
+def test_non_integer_alias_targets_fail_schema_not_checksum():
+    pack = make_pack()
+    pack.aliases = {"src": {1: "bad"}}
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("alias entries must be integer-to-integer" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_bool_and_float_alias_targets_are_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["aliases"] = {"src": {"1": False}}
+    loaded = pack.from_dict(data)
+    assert loaded.aliases["src"][1] is False
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("alias entries must be integer-to-integer" in f for f in cert.failures)
+    data["aliases"] = {"src": {"1": 1.9}}
+    loaded = pack.from_dict(data)
+    assert loaded.aliases["src"][1] == 1.9
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("alias entries must be integer-to-integer" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_oversized_confidence_fails_schema_not_overflow():
+    pack = make_pack()
+    pack.symbols[0].confidence = 10**1000
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("confidence" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_unhashable_class_id_fails_closed():
+    pack = make_pack()
+    pack.symbols[0].class_id = [0]
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any(
+        "class_id is not an integer" in f or "not hashable" in f for f in cert.failures
+    )
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
