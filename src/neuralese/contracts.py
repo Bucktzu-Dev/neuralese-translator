@@ -29,6 +29,24 @@ def round_vec(values: Iterable[float]) -> List[float]:
     return [round(float(x), 8) for x in values]
 
 
+def _integral_code(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _alias_key(value: Any) -> Any:
+    if _integral_code(value):
+        return value
+    if isinstance(value, str):
+        body = value[1:] if value.startswith("-") else value
+        if body.isdigit() and body:
+            return int(value)
+    return value
+
+
+def _copy_alias_table(mapping: Dict[Any, Any]) -> Dict[Any, Any]:
+    return {_alias_key(key): value for key, value in mapping.items()}
+
+
 def _int_keyed(d: Dict[Any, Any]) -> Dict[int, int]:
     return {int(k): int(v) for k, v in d.items()}
 
@@ -147,13 +165,13 @@ def normalize_aliases(raw: Any) -> AliasTables:
         tables: AliasTables = {}
         for src, mapping in raw.items():
             if not isinstance(src, str):
-                tables[src] = _int_keyed(mapping)
+                tables[src] = _copy_alias_table(mapping)
                 continue
             if not src:
                 raise ValueError("alias source keys must be non-empty")
-            tables[src] = _int_keyed(mapping)
+            tables[src] = _copy_alias_table(mapping)
         return tables
-    return {LEGACY_ALIAS_KEY: _int_keyed(raw)}
+    return {LEGACY_ALIAS_KEY: _copy_alias_table(raw)}
 
 
 def select_alias_table(
@@ -176,14 +194,28 @@ def select_alias_table(
     return {}
 
 
-def aliases_to_dict(aliases: AliasTables) -> Dict[Any, Dict[str, int]]:
+def aliases_to_dict(aliases: AliasTables) -> Any:
+    if not isinstance(aliases, dict):
+        return aliases
     items = list(aliases.items())
     if all(isinstance(src, str) for src, _ in items):
         items.sort()
-    return {
-        src: {str(k): int(v) for k, v in sorted(mapping.items())}
-        for src, mapping in items
-    }
+    serialized: Dict[Any, Any] = {}
+    for src, mapping in items:
+        if not isinstance(mapping, dict):
+            serialized[src] = mapping
+            continue
+        try:
+            entries = sorted(mapping.items())
+        except TypeError:
+            entries = list(mapping.items())
+        table: Dict[Any, Any] = {}
+        for key, value in entries:
+            table[str(key) if _integral_code(key) else key] = (
+                int(value) if _integral_code(value) else value
+            )
+        serialized[src] = table
+    return serialized
 
 
 def observation_content_hash(
