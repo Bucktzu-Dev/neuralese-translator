@@ -43,7 +43,15 @@ def _load_evidence(data: Dict[str, Any]) -> Any:
     value = data["evidence"]
     if not isinstance(value, dict):
         return value
-    return {str(k): v for k, v in value.items()}
+    return dict(value)
+
+
+def _serialize_evidence(evidence: Any, *, sort_keys: bool = False) -> Any:
+    if not isinstance(evidence, dict):
+        return evidence
+    if sort_keys:
+        return {k: evidence[k] for k in sorted(evidence)}
+    return dict(evidence)
 
 
 def _optional_object(data: Dict[str, Any], key: str, label: str) -> Dict[str, Any]:
@@ -384,7 +392,7 @@ class SymbolPack:
             "mdl_bits": self.mdl_bits,
             "timestamp": self.timestamp,
             "metadata": self.metadata,
-            "evidence": dict(self.evidence),
+            "evidence": _serialize_evidence(self.evidence),
             "include_private": self.include_private,
         }
 
@@ -451,7 +459,7 @@ class SymbolPack:
             "mdl_bits": _round_real(self.mdl_bits),
             "guards": None if self.guards is None else self.guards.to_dict(),
             "receipts": [r.to_dict() for r in self.receipts],
-            "evidence": {k: self.evidence[k] for k in sorted(self.evidence)},
+            "evidence": _serialize_evidence(self.evidence, sort_keys=True),
             "metadata": self.metadata,
             "include_private": self.include_private,
             "symbols": [
