@@ -325,7 +325,7 @@ class Symbol:
         payload = {
             "class_id": self.class_id,
             "code": self.code,
-            "proto_embedding": list(self.proto_embedding),
+            "proto_embedding": _copy_seq(self.proto_embedding),
             "observation_ids": list(self.observation_ids),
             "definition": self.definition,
             "example_hashes": list(self.example_hashes),
@@ -360,7 +360,7 @@ class Symbol:
         return cls(
             class_id=int(data["class_id"]),
             code=int(data["code"]),
-            proto_embedding=[float(x) for x in data.get("proto_embedding") or []],
+            proto_embedding=_copy_seq(_present_value(data, "proto_embedding", [])),
             observation_ids=_string_id_list(data, "observation_ids"),
             definition=definition,
             examples=examples,
@@ -453,7 +453,7 @@ class SymbolPack:
             parent_checksum=data.get("parent_checksum"),
             receipts=[Receipt.from_dict(r) for r in data.get("receipts") or []],
             guards=guards,
-            mdl_bits=float(data.get("mdl_bits") or 0.0),
+            mdl_bits=_present_value(data, "mdl_bits", 0.0),
             timestamp=float(data.get("timestamp") or 0.0),
             metadata=metadata,
             evidence=_load_evidence(data),

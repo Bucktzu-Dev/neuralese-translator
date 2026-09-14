@@ -65,17 +65,34 @@ def certify(
         failures.append("duplicate code identities")
 
     if isinstance(pack.aliases, dict):
-        if has_alias_cycle(pack.aliases):
+        if not all(isinstance(mapping, dict) for mapping in pack.aliases.values()):
             addressable = False
-            failures.append("alias map contains a cycle")
-        for source, mapping in pack.aliases.items():
-            for old, new in mapping.items():
-                resolved = follow_aliases(int(old), mapping)
-                if resolved not in pack.codebook and pack.symbol_by_code(resolved) is None:
+            failures.append("alias table is not an object")
+        else:
+            try:
+                cyclic = has_alias_cycle(pack.aliases)
+            except (TypeError, ValueError):
+                addressable = False
+                failures.append("aliases is not an object")
+            else:
+                if cyclic:
                     addressable = False
-                    failures.append(
-                        f"alias {source}:{old}->{new} does not resolve to a current symbol"
-                    )
+                    failures.append("alias map contains a cycle")
+                for source, mapping in pack.aliases.items():
+                    for old, new in mapping.items():
+                        try:
+                            resolved = follow_aliases(int(old), mapping)
+                        except (TypeError, ValueError):
+                            addressable = False
+                            failures.append(
+                                f"alias {source}:{old}->{new} does not resolve to a current symbol"
+                            )
+                            continue
+                        if resolved not in pack.codebook and pack.symbol_by_code(resolved) is None:
+                            addressable = False
+                            failures.append(
+                                f"alias {source}:{old}->{new} does not resolve to a current symbol"
+                            )
     else:
         addressable = False
         failures.append("aliases is not an object")
@@ -253,7 +270,7 @@ def certify(
             "n_live": len(live),
             "n_quarantined": sum(1 for s in pack.symbols if s.quarantined),
             "n_aliases": (
-                sum(len(m) for m in pack.aliases.values())
+                sum(len(m) for m in pack.aliases.values() if isinstance(m, dict))
                 if isinstance(pack.aliases, dict)
                 else 0
             ),
@@ -341,9 +358,11 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
     if not isinstance(pack.aliases, dict):
         failures.append("aliases is not an object")
     else:
-        for source in pack.aliases:
+        for source, mapping in pack.aliases.items():
             if not isinstance(source, str) or not source.strip():
                 failures.append("alias source key is not a non-empty string")
+            if not isinstance(mapping, dict):
+                failures.append("alias table is not an object")
     if pack.parent_checksum is not None and (
         not isinstance(pack.parent_checksum, str) or not SHA256_HEX.match(pack.parent_checksum)
     ):

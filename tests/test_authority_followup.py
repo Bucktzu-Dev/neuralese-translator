@@ -183,3 +183,50 @@ def test_constructed_private_none_examples_seal_returns_failed_certificate():
     assert any("example_hashes is not an array" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
+
+
+def test_loaded_string_mdl_bits_fails_schema():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["mdl_bits"] = str(data["mdl_bits"])
+    loaded = pack.from_dict(data)
+    assert loaded.mdl_bits == "12.0"
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("mdl_bits is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_loaded_string_proto_embedding_fails_schema():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["proto_embedding"] = [
+        str(x) for x in data["symbols"][0]["proto_embedding"]
+    ]
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].proto_embedding[0] == "1.0"
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("proto_embedding[0] is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+    data["symbols"][0]["proto_embedding"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].proto_embedding is None
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("proto_embedding is not an array" in f for f in cert.failures)
+
+
+def test_none_alias_table_fails_closed():
+    pack = make_pack()
+    pack.aliases = {"src": None}
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("alias table is not an object" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
