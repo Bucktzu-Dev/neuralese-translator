@@ -68,11 +68,11 @@ def _codebook_to_dict(codebook: Any) -> Any:
         entries = sorted(codebook.items())
     except TypeError:
         entries = list(codebook.items())
-    serialized: Dict[Any, Any] = {}
+    serialized: Dict[str, int] = {}
     for key, value in entries:
-        serialized[str(key) if _integral_code(key) else key] = (
-            int(value) if _integral_code(value) else value
-        )
+        if not _integral_code(key) or not _integral_code(value):
+            raise TypeError("codebook entries must be integer-to-integer")
+        serialized[str(key)] = int(value)
     return serialized
 
 
@@ -276,10 +276,10 @@ def aliases_to_dict(aliases: AliasTables) -> Any:
     if not isinstance(aliases, dict):
         return aliases
     items = list(aliases.items())
-    if all(isinstance(src, str) for src, _ in items):
-        items.sort()
-    serialized: Dict[Any, Any] = {}
+    serialized: Dict[str, Any] = {}
     for src, mapping in items:
+        if not isinstance(src, str) or not src:
+            raise TypeError("alias source keys must be non-empty strings")
         if not isinstance(mapping, dict):
             serialized[src] = mapping
             continue
@@ -287,13 +287,13 @@ def aliases_to_dict(aliases: AliasTables) -> Any:
             entries = sorted(mapping.items())
         except TypeError:
             entries = list(mapping.items())
-        table: Dict[Any, Any] = {}
+        table: Dict[str, int] = {}
         for key, value in entries:
-            table[str(key) if _integral_code(key) else key] = (
-                int(value) if _integral_code(value) else value
-            )
+            if not _integral_code(key) or not _integral_code(value):
+                raise TypeError("alias entries must be integer-to-integer")
+            table[str(key)] = int(value)
         serialized[src] = table
-    return serialized
+    return {src: serialized[src] for src, _ in sorted(serialized.items())}
 
 
 def observation_content_hash(
