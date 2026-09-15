@@ -837,3 +837,17 @@ def test_learn_rejects_blank_observation_ids():
             [Observation(observation_id="   ", text="hello there friend")],
             config=LearnConfig(n_symbols=1, min_cluster_size=1, seed=0),
         )
+
+
+def test_loaded_numeric_pack_id_is_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["pack_id"] = 123
+    loaded = pack.from_dict(data)
+    assert loaded.pack_id == 123
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("pack_id is not a string" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
