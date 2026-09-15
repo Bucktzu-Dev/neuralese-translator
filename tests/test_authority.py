@@ -644,7 +644,13 @@ def test_falsey_aliases_fail_from_dict():
     assert loaded.aliases == {}
     data["aliases"] = None
     loaded = pack.from_dict(data)
-    assert loaded.aliases == {}
+    assert loaded.aliases is None
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("aliases is not an object" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="aliases is not an object"):
+        loaded.to_dict()
 
 
 def test_string_include_private_does_not_serialize_examples():
