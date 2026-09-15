@@ -995,3 +995,13 @@ def test_boolean_embedding_elements_are_rejected_before_float():
         Observation.from_dict({"observation_id": "o1", "embedding": [False, 1.0]})
     obs = Observation(observation_id="o1", embedding=[1.0, 0.0])
     assert obs.embedding == [1.0, 0.0]
+
+def test_constructed_nonfinite_embedding_is_rejected():
+    with pytest.raises(ValueError, match="finite"):
+        Observation(observation_id="o1", embedding=[float("nan")])
+    with pytest.raises(ValueError, match="finite"):
+        Observation(observation_id="o1", embedding=[float("inf")])
+    with pytest.raises(ValueError, match="finite"):
+        Observation.from_dict({"observation_id": "o1", "embedding": [float("-inf")]})
+    obs = Observation(observation_id="o1", embedding=[1.0, 0.0])
+    assert obs.embedding == [1.0, 0.0]
