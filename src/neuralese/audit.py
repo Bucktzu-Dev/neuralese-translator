@@ -143,15 +143,20 @@ def certify(
     expected = pack.checksum or ""
     checksum_ok = False
     if schema_ok:
-        expected = pack.compute_checksum()
-        checksum_ok = bool(pack.checksum) and expected == pack.checksum
-        if not pack.checksum:
-            failures.append("pack is unsealed (empty checksum)")
-        elif not isinstance(pack.checksum, str) or not SHA256_HEX.match(pack.checksum):
+        try:
+            expected = pack.compute_checksum()
+        except (TypeError, ValueError, OverflowError):
             checksum_ok = False
-            failures.append("checksum is not full SHA-256")
-        elif expected != pack.checksum:
-            failures.append("checksum mismatch: pack mutated after sealing")
+            failures.append("checksum payload is not JSON-serializable")
+        else:
+            checksum_ok = bool(pack.checksum) and expected == pack.checksum
+            if not pack.checksum:
+                failures.append("pack is unsealed (empty checksum)")
+            elif not isinstance(pack.checksum, str) or not SHA256_HEX.match(pack.checksum):
+                checksum_ok = False
+                failures.append("checksum is not full SHA-256")
+            elif expected != pack.checksum:
+                failures.append("checksum mismatch: pack mutated after sealing")
 
     if not _real_number(pack.reconstruction_error):
         residual_ok = False
@@ -189,6 +194,7 @@ def certify(
     if map_errors:
         evidence_valid = False
         unfoldable = False
+        failures.extend(map_errors)
     live_ids: Set[str] = set()
     provided = None
     if observations is not None:
