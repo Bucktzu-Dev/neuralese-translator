@@ -67,18 +67,32 @@ def _alias_source_key_ok(src: Any) -> bool:
     )
 
 
+def _copy_mapped_keys(
+    mapping: Dict[Any, Any], *, coerce: bool, label: str
+) -> Dict[Any, Any]:
+    if not coerce:
+        return dict(mapping)
+    copied: Dict[Any, Any] = {}
+    for key, value in mapping.items():
+        mapped = _alias_key(key)
+        if mapped in copied:
+            raise ValueError(f"{label} contains duplicate keys")
+        copied[mapped] = value
+    return copied
+
+
 def _copy_alias_table(
     mapping: Dict[Any, Any], *, coerce_json_keys: bool = False
 ) -> Dict[Any, Any]:
-    if coerce_json_keys:
-        return {_alias_key(key): value for key, value in mapping.items()}
-    return dict(mapping)
+    return _copy_mapped_keys(
+        mapping, coerce=coerce_json_keys, label="alias table"
+    )
 
 
 def _copy_codebook(raw: Any) -> Any:
     if not isinstance(raw, dict):
         return raw
-    return {_alias_key(key): value for key, value in raw.items()}
+    return _copy_mapped_keys(raw, coerce=True, label="codebook")
 
 
 def _codebook_to_dict(codebook: Any) -> Any:
@@ -761,12 +775,17 @@ class SymbolPack:
         self,
         code: int,
         source_pack_checksum: Optional[str] = None,
+        *,
+        terminals: Optional[Dict[int, int]] = None,
     ) -> Tuple[int, bool]:
         from neuralese.aliases import follow_aliases
 
         code = int(code)
         if isinstance(self.codebook, dict) and code in self.codebook:
             return code, False
+        if terminals is not None:
+            resolved = terminals.get(code, code)
+            return resolved, resolved != code
         table = self.alias_table(source_pack_checksum)
         resolved = follow_aliases(code, table)
         return resolved, resolved != code
