@@ -61,13 +61,23 @@ def learn_pack(
         raise ValueError("learn_pack requires at least one observation")
     seen_ids: set[str] = set()
     duplicates: List[str] = []
+    blanks: List[str] = []
     for obs in observations:
         oid = str(obs.observation_id)
+        if not oid.strip():
+            if oid not in blanks:
+                blanks.append(oid)
+            continue
         if oid in seen_ids:
             if oid not in duplicates:
                 duplicates.append(oid)
         else:
             seen_ids.add(oid)
+    if blanks:
+        raise ValueError(
+            "blank observation_id values are not a fold path: "
+            + ", ".join(repr(x) for x in blanks)
+        )
     if duplicates:
         raise ValueError(
             "duplicate observation_id values are not a fold path: "
