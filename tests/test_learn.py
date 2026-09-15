@@ -514,3 +514,28 @@ def test_public_llm_echo_of_late_interior_span_is_discarded():
     assert "red fox" not in definition
     assert gloss["examples"] == []
 
+
+def test_public_punctuated_token_span_is_discarded():
+    from neuralese.gloss import learn_definition
+
+    obs = [
+        Observation(observation_id="s1", text="red fox"),
+        Observation(observation_id="s2", text="hello there friend"),
+    ]
+
+    class Echo:
+        def __init__(self):
+            self.called = False
+
+        def generate(self, prompt, max_tokens=80):
+            self.called = True
+            return "Symbol for red, fox."
+
+    echo = Echo()
+    gloss = learn_definition(obs, llm_client=echo, include_private=False)
+    assert echo.called
+    definition = (gloss["definition"] or "").lower()
+    assert not re.search(r"red\W+fox", definition)
+    assert gloss["examples"] == []
+    heuristic = learn_definition(obs, include_private=False)
+    assert not re.search(r"red\W+fox", (heuristic["definition"] or "").lower())
