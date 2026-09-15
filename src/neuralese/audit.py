@@ -6,7 +6,7 @@ import time
 from typing import List, Optional, Sequence, Set
 
 from neuralese.adapters import ensure_embedding
-from neuralese.aliases import follow_aliases, has_alias_cycle
+from neuralese.aliases import has_alias_cycle, resolve_alias_table
 from neuralese.contracts import (
     CERT_POLICIES,
     DECISIONS,
@@ -123,22 +123,29 @@ def certify(
                 if cyclic:
                     addressable = False
                     failures.append("alias map contains a cycle")
-                codebook = pack.codebook if isinstance(pack.codebook, dict) else {}
-                for source, mapping in pack.aliases.items():
-                    for old, new in mapping.items():
+                else:
+                    codebook = pack.codebook if isinstance(pack.codebook, dict) else {}
+                    for source, mapping in pack.aliases.items():
                         try:
-                            resolved = follow_aliases(int(old), mapping)
+                            terminals = resolve_alias_table(mapping)
                         except (TypeError, ValueError, OverflowError):
                             addressable = False
-                            failures.append(
-                                f"alias {source}:{old}->{new} does not resolve to a current symbol"
-                            )
-                            continue
-                        if resolved not in codebook and pack.symbol_by_code(resolved) is None:
-                            addressable = False
-                            failures.append(
-                                f"alias {source}:{old}->{new} does not resolve to a current symbol"
-                            )
+                            failures.append("aliases is not an object")
+                            break
+                        for old, new in mapping.items():
+                            try:
+                                resolved = terminals[int(old)]
+                            except (TypeError, ValueError, OverflowError, KeyError):
+                                addressable = False
+                                failures.append(
+                                    f"alias {source}:{old}->{new} does not resolve to a current symbol"
+                                )
+                                continue
+                            if resolved not in codebook and pack.symbol_by_code(resolved) is None:
+                                addressable = False
+                                failures.append(
+                                    f"alias {source}:{old}->{new} does not resolve to a current symbol"
+                                )
     else:
         addressable = False
         failures.append("aliases is not an object")
@@ -148,7 +155,7 @@ def certify(
     if schema_ok:
         try:
             expected = pack.compute_checksum()
-        except (TypeError, ValueError, OverflowError):
+        except (TypeError, ValueError, OverflowError, RecursionError):
             checksum_ok = False
             failures.append("checksum payload is not JSON-serializable")
         else:
