@@ -428,6 +428,8 @@ def test_loaded_null_example_hashes_are_not_normalized_to_empty():
     assert any("example_hashes is not an array" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(loaded, [0])
+    dumped = loaded.to_dict()
+    assert dumped["symbols"][0]["example_hashes"] is None
 
 
 def test_loaded_falsey_receipts_are_not_normalized_to_empty():
@@ -804,3 +806,34 @@ def test_alias_collision_rejects_cycles_with_valid_targets():
     remap = _match_aliases(previous, swapped, threshold=0.5)
     assert remap == {0: 1, 1: 0}
     assert _alias_collision({previous.checksum: remap}, codebook) is True
+
+
+def test_loaded_numeric_checksum_is_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    numeric = int("1" + "0" * 63)
+    data["checksum"] = numeric
+    loaded = pack.from_dict(data)
+    assert loaded.checksum == numeric
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("checksum is not full SHA-256" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_learn_rejects_blank_observation_ids():
+    from neuralese.alphabet import LearnConfig, learn_pack
+    from neuralese.contracts import Observation
+
+    with pytest.raises(ValueError, match="blank observation_id"):
+        learn_pack(
+            [Observation(observation_id="", text="hello there friend")],
+            config=LearnConfig(n_symbols=1, min_cluster_size=1, seed=0),
+        )
+    with pytest.raises(ValueError, match="blank observation_id"):
+        learn_pack(
+            [Observation(observation_id="   ", text="hello there friend")],
+            config=LearnConfig(n_symbols=1, min_cluster_size=1, seed=0),
+        )
