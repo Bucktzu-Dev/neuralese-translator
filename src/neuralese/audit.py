@@ -19,6 +19,8 @@ from neuralese.contracts import (
     Receipt,
     Symbol,
     SymbolPack,
+    _json_object_key_errors,
+    _round_real,
     example_hash,
     iter_live_symbols,
 )
@@ -165,18 +167,23 @@ def certify(
     elif not _real_number(pack.reconstruction_error):
         residual_ok = False
     else:
-        residual_ok = (
-            _finite(pack.reconstruction_error)
-            and pack.reconstruction_error >= 0.0
-            and pack.reconstruction_error <= tau_residual
-        )
-        if pack.reconstruction_error < 0:
+        try:
+            residual = _round_real(pack.reconstruction_error)
+        except (TypeError, ValueError, OverflowError):
             residual_ok = False
-            failures.append(f"reconstruction_error {pack.reconstruction_error} is negative")
-        elif not residual_ok and _finite(pack.reconstruction_error):
-            failures.append(
-                f"reconstruction_error {pack.reconstruction_error:.6f} exceeds tau_residual {tau_residual}"
+        else:
+            residual_ok = (
+                _finite(residual)
+                and residual >= 0.0
+                and residual <= tau_residual
             )
+            if residual < 0:
+                residual_ok = False
+                failures.append(f"reconstruction_error {pack.reconstruction_error} is negative")
+            elif not residual_ok and _finite(residual):
+                failures.append(
+                    f"reconstruction_error {residual:.6f} exceeds tau_residual {tau_residual}"
+                )
 
     gloss_bound = checksum_ok
     for symbol in iter_live_symbols(pack):
@@ -443,6 +450,8 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         failures.append("include_private is not a boolean")
     if not isinstance(pack.metadata, dict):
         failures.append("metadata is not an object")
+    else:
+        failures.extend(_json_object_key_errors(pack.metadata, "metadata"))
     if pack.guards is not None:
         if not isinstance(pack.guards, GuardSnapshot):
             failures.append("guards is not a GuardSnapshot")
@@ -487,6 +496,12 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
                 receipt.metadata, (str, bytes)
             ):
                 failures.append(f"receipts[{index}].metadata is not an object")
+            else:
+                failures.extend(
+                    _json_object_key_errors(
+                        receipt.metadata, f"receipts[{index}].metadata"
+                    )
+                )
     failures.extend(_evidence_map_errors(pack.evidence))
     if not isinstance(pack.codebook, dict):
         failures.append("codebook is not an object")
@@ -553,6 +568,12 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
             failures.append(f"class {symbol.class_id} definition is not a string")
         if not isinstance(symbol.metadata, dict) or isinstance(symbol.metadata, (str, bytes)):
             failures.append(f"class {symbol.class_id} metadata is not an object")
+        else:
+            failures.extend(
+                _json_object_key_errors(
+                    symbol.metadata, f"class {symbol.class_id} metadata"
+                )
+            )
         proto = symbol.proto_embedding
         if isinstance(proto, (str, bytes)) or not isinstance(proto, (list, tuple)):
             failures.append(f"class {symbol.class_id} proto_embedding is not an array")
