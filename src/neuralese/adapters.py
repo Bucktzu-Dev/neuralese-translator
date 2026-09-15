@@ -58,6 +58,8 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
                 )
             if "observation_id" not in data:
                 data["observation_id"] = f"obs-{line_no}"
+            elif not isinstance(data["observation_id"], str):
+                raise ValueError(f"{path}:{line_no} invalid observation record")
             text = data.get("text")
             if text is not None and not isinstance(text, str):
                 raise ValueError(f"{path}:{line_no} invalid observation record")
