@@ -851,3 +851,65 @@ def test_loaded_numeric_pack_id_is_not_coerced():
     assert any("pack_id is not a string" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(loaded, [0])
+
+
+
+def test_empty_definition_fails_even_when_unglossed_allowed():
+    from neuralese.contracts import Symbol
+
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0, 0.0, 0.0],
+                observation_ids=["obs-hello"],
+                definition=None,
+                confidence=0.8,
+            )
+        ]
+    )
+    cert = certify(pack, require_gloss=False)
+    assert not cert.gloss_bound
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("bound English" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0], require_gloss=False)
+    pack.symbols[0].definition = ""
+    pack.seal()
+    cert = certify(pack, require_gloss=False)
+    assert not cert.passed
+    pack.symbols[0].definition = "   "
+    pack.seal()
+    cert = certify(pack, require_gloss=False)
+    assert not cert.passed
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0], require_gloss=False)
+
+
+def test_loaded_non_string_parent_pack_id_fails_schema_after_reseal():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["parent_pack_id"] = 123
+    loaded = pack.from_dict(data)
+    assert loaded.parent_pack_id == 123
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("parent_pack_id is not a string" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+    data["parent_pack_id"] = ["parent"]
+    loaded = pack.from_dict(data)
+    assert loaded.parent_pack_id == ["parent"]
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("parent_pack_id is not a string" in f for f in cert.failures)
+    data["parent_pack_id"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.parent_pack_id is None
+    loaded.seal()
+    assert certify(loaded).passed
