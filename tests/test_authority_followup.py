@@ -1005,3 +1005,30 @@ def test_constructed_nonfinite_embedding_is_rejected():
         Observation.from_dict({"observation_id": "o1", "embedding": [float("-inf")]})
     obs = Observation(observation_id="o1", embedding=[1.0, 0.0])
     assert obs.embedding == [1.0, 0.0]
+
+def test_non_observation_supplied_rows_fail_evidence_not_attribute_error():
+    pack = make_pack()
+    cert = certify(pack, observations=[None])
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("not an Observation" in f for f in cert.failures)
+    cert = certify(pack, observations=[{}])
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("not an Observation" in f for f in cert.failures)
+
+
+def test_symbol_list_metadata_is_not_laundered_by_to_dict():
+    pack = make_pack()
+    pack.symbols[0].metadata = []
+    dumped = pack.to_dict()
+    assert dumped["symbols"][0]["metadata"] == []
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("metadata is not an object" in f for f in cert.failures)
+    pack.seal()
+    dumped = pack.to_dict()
+    assert dumped["symbols"][0]["metadata"] == []
+    with pytest.raises(TypeError, match="metadata must be an object or null"):
+        pack.from_dict(dumped)
