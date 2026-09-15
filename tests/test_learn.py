@@ -540,3 +540,13 @@ def test_public_punctuated_token_span_is_discarded():
     heuristic = learn_definition(obs, include_private=False)
     assert not re.search(r"red\W+fox", (heuristic["definition"] or "").lower())
 
+
+def test_learn_parent_prototype_dimension_mismatch_is_clean_value_error():
+    obs = load_observations_jsonl(TOY)
+    first = learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
+    for symbol in first.symbols:
+        symbol.proto_embedding = [0.1, 0.2, 0.3]
+    first.seal()
+    assert certify(first, policy="integrity").passed
+    with pytest.raises(ValueError, match="dimensionality"):
+        learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
