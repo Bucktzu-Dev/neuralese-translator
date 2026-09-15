@@ -259,6 +259,67 @@ def test_public_llm_echo_of_observation_prefix_is_discarded():
     assert "quark" in gloss["keywords"]
 
 
+def test_public_llm_echo_of_short_secret_token_prefix_is_discarded():
+    from neuralese.gloss import learn_definition
+
+    obs = [
+        Observation(observation_id="s1", text="TOPSECRET1234 quark"),
+        Observation(observation_id="s2", text="hello there friend"),
+    ]
+
+    class Echo:
+        def __init__(self):
+            self.called = False
+
+        def generate(self, prompt, max_tokens=80):
+            self.called = True
+            assert "quark" in prompt
+            return "keep TOPSECR classified"
+
+    echo = Echo()
+    gloss = learn_definition(obs, llm_client=echo, include_private=False)
+    assert echo.called
+    definition = (gloss["definition"] or "").lower()
+    assert "topsecr" not in definition
+    assert "topsecret1234" not in definition
+    assert gloss["examples"] == []
+    assert "quark" in gloss["keywords"]
+
+
+def test_public_llm_echo_of_interior_token_span_is_discarded():
+    from neuralese.gloss import learn_definition
+
+    obs = [
+        Observation(observation_id="s1", text="alpha red fox omega quark"),
+        Observation(observation_id="s2", text="hello there friend"),
+    ]
+
+    class Echo:
+        def __init__(self):
+            self.called = False
+
+        def generate(self, prompt, max_tokens=80):
+            self.called = True
+            return "This means red fox"
+
+    echo = Echo()
+    gloss = learn_definition(obs, llm_client=echo, include_private=False)
+    assert echo.called
+    definition = (gloss["definition"] or "").lower()
+    assert "red fox" not in definition
+    assert gloss["examples"] == []
+
+
+def test_raw_observation_forms_do_not_materialize_all_spans():
+    from neuralese.gloss import _raw_observation_forms
+
+    tokens = [f"tok{i}" for i in range(40)]
+    text = " ".join(tokens)
+    forms = _raw_observation_forms([text])
+    assert text in forms
+    assert len(forms) < 10
+
+
 def test_public_llm_echo_of_short_multitoken_prefix_is_discarded():
     from neuralese.gloss import learn_definition
 
@@ -400,4 +461,3 @@ def test_learn_parent_string_proto_is_clean_value_error():
     first.seal()
     with pytest.raises(ValueError, match="does not match"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
-
