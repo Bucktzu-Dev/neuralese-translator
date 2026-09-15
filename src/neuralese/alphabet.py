@@ -61,10 +61,10 @@ def learn_pack(
         raise ValueError("learn_pack requires at least one observation")
     seen_ids: set[str] = set()
     duplicates: List[str] = []
-    blanks: List[str] = []
+    blanks: List[object] = []
     for obs in observations:
-        oid = str(obs.observation_id)
-        if not oid.strip():
+        oid = obs.observation_id
+        if not isinstance(oid, str) or not oid.strip():
             if oid not in blanks:
                 blanks.append(oid)
             continue
