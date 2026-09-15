@@ -63,7 +63,8 @@ def translate_stream(
         else:
             if alias_terminals is None:
                 alias_terminals = resolve_alias_table(
-                    pack.alias_table(source_pack_checksum)
+                    pack.alias_table(source_pack_checksum),
+                    current_codes=pack.current_codes(),
                 )
             resolved, aliased = pack.resolve_code(
                 code,
