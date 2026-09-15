@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Sequence
 
+from neuralese.aliases import resolve_alias_table
 from neuralese.audit import certify
 from neuralese.contracts import (
     TRANSLATION_POLICIES,
@@ -52,9 +53,23 @@ def translate_stream(
             raise UncertifiedPackError(certificate)
 
     glosses: List[Gloss] = []
+    alias_terminals = None
     for raw in codes:
         code = int(raw)
-        resolved, aliased = pack.resolve_code(code, source_pack_checksum=source_pack_checksum)
+        if isinstance(pack.codebook, dict) and code in pack.codebook:
+            resolved, aliased = pack.resolve_code(
+                code, source_pack_checksum=source_pack_checksum
+            )
+        else:
+            if alias_terminals is None:
+                alias_terminals = resolve_alias_table(
+                    pack.alias_table(source_pack_checksum)
+                )
+            resolved, aliased = pack.resolve_code(
+                code,
+                source_pack_checksum=source_pack_checksum,
+                terminals=alias_terminals,
+            )
         symbol = pack.symbol_by_code(resolved)
         if symbol is None:
             glosses.append(
