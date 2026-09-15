@@ -100,6 +100,40 @@ def test_cli_integrity_rejected_even_with_allow_uncertified(tmp_path, capsys):
     assert "does not authorize translation" in err
 
 
+def test_cli_allow_uncertified_malformed_confidence_is_clean_failure(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    stream = tmp_path / "stream.json"
+    rc = main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["symbols"][0]["confidence"] = "0.5"
+    pack_path.write_text(json.dumps(data, indent=2) + "\n")
+    stream.write_text("[0]\n")
+    rc = main(
+        [
+            "translate",
+            str(pack_path),
+            str(stream),
+            "--allow-uncertified",
+        ]
+    )
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Traceback" not in captured.err
+    assert captured.err.strip()
+
+
 def test_cli_translate_failed_certificate_goes_to_stderr(tmp_path, capsys):
     pack_path = tmp_path / "pack.json"
     main(
@@ -401,3 +435,41 @@ def test_cli_translate_allow_unglossed(tmp_path, capsys):
     glosses = json.loads(capsys.readouterr().out)
     assert glosses[0]["english"].startswith("[unglossed:")
     assert glosses[0]["confidence"] == 0.0
+
+
+def test_cli_translate_tau_residual_is_operator_gate(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    stream = tmp_path / "stream.json"
+    rc = main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["reconstruction_error"] = 0.6
+    data["metadata"]["tau_residual"] = 0.9
+    if data.get("guards"):
+        data["guards"]["reconstruction_error"] = 0.6
+    from neuralese.contracts import SymbolPack
+
+    pack = SymbolPack.from_dict(data)
+    pack.seal()
+    pack_path.write_text(json.dumps(pack.to_dict(), indent=2) + "\n")
+    stream.write_text("[0]\n")
+    rc = main(["translate", str(pack_path), str(stream)])
+    assert rc == 1
+    failed = capsys.readouterr()
+    assert failed.out == ""
+    cert = json.loads(failed.err)
+    assert cert["passed"] is False
+    rc = main(["translate", str(pack_path), str(stream), "--tau-residual", "0.9"])
+    assert rc == 0
+    glosses = json.loads(capsys.readouterr().out)
+    assert glosses[0]["state"] in {"ok", "unknown", "aliased"}
