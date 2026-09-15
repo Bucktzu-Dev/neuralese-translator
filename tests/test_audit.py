@@ -84,7 +84,7 @@ def test_certify_detects_checksum_tamper():
 
 
 def test_certify_fails_alias_cycle():
-    pack = make_pack(aliases={0: 1, 1: 0})
+    pack = make_pack(aliases={7: 8, 8: 7})
     cert = certify(pack)
     assert not cert.addressable
     assert any("cycle" in f for f in cert.failures)
