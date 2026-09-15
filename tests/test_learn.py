@@ -80,6 +80,19 @@ def test_load_observations_rejects_non_string_text(tmp_path):
         load_observations_jsonl(path)
 
 
+def test_load_observations_rejects_non_string_observation_id(tmp_path):
+    path = tmp_path / "bad.jsonl"
+    path.write_text('{"observation_id":null,"text":"hello there friend"}\n')
+    with pytest.raises(ValueError, match="invalid observation record"):
+        load_observations_jsonl(path)
+    path.write_text('{"observation_id":1,"text":"hello there friend"}\n')
+    with pytest.raises(ValueError, match="invalid observation record"):
+        load_observations_jsonl(path)
+    path.write_text('{"observation_id":true,"text":"hello there friend"}\n')
+    with pytest.raises(ValueError, match="invalid observation record"):
+        load_observations_jsonl(path)
+
+
 def test_load_observations_rejects_string_embedding(tmp_path):
     path = tmp_path / "bad.jsonl"
     path.write_text('{"observation_id":"x","embedding":"1"}\n')
@@ -107,6 +120,13 @@ def test_learn_rejects_blank_observation_ids():
             [Observation(observation_id="   ", text="hello there friend")],
             config=LearnConfig(n_symbols=1, min_cluster_size=1, seed=0),
         )
+    with pytest.raises(ValueError, match="blank observation_id"):
+        learn_pack(
+            [Observation(observation_id=None, text="hello there friend")],
+            config=LearnConfig(n_symbols=1, min_cluster_size=1, seed=0),
+        )
+    loaded = Observation.from_dict({"observation_id": None, "text": "hello there friend"})
+    assert loaded.observation_id is None
 
 
 def test_public_pack_definition_does_not_copy_raw_observation_text():
@@ -216,19 +236,27 @@ def test_public_llm_echo_of_observation_prefix_is_discarded():
     from neuralese.gloss import learn_definition
 
     obs = [
-        Observation(observation_id="s1", text="LAUNCHCODE99 is classified"),
+        Observation(observation_id="s1", text="LAUNCHCODE99 is classified quark"),
         Observation(observation_id="s2", text="hello there friend"),
     ]
 
     class Echo:
+        def __init__(self):
+            self.called = False
+
         def generate(self, prompt, max_tokens=80):
+            self.called = True
+            assert "quark" in prompt
             return "keep launchco hidden"
 
-    gloss = learn_definition(obs, llm_client=Echo(), include_private=False)
+    echo = Echo()
+    gloss = learn_definition(obs, llm_client=echo, include_private=False)
+    assert echo.called
     definition = (gloss["definition"] or "").lower()
     assert "launchco" not in definition
     assert "launchcode99" not in definition
     assert gloss["examples"] == []
+    assert "quark" in gloss["keywords"]
 
 
 def test_public_llm_echo_with_collapsed_whitespace_is_discarded():
@@ -348,4 +376,3 @@ def test_learn_parent_string_proto_is_clean_value_error():
     first.seal()
     with pytest.raises(ValueError, match="does not match"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
-
