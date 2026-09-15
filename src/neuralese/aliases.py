@@ -1,7 +1,7 @@
 """Lossless integer remaps when a codebook evolves."""
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Sequence, Set, Union
 
 from neuralese.contracts import (
     LEGACY_ALIAS_KEY,
@@ -13,22 +13,36 @@ from neuralese.contracts import (
 _CYCLE = "alias map contains a cycle"
 
 
-def resolve_alias_table(aliases: Dict[int, int]) -> Dict[int, int]:
+def resolve_alias_table(
+    aliases: Dict[int, int],
+    *,
+    current_codes: Optional[Set[int]] = None,
+) -> Dict[int, int]:
     """Map every alias start to its terminal code in linear time.
 
     Each start walking the remainder of its chain independently is quadratic
     on a valid acyclic table. Certification and translation consume untrusted
     packs, so a long chain would otherwise become a denial of service.
     Shared suffixes are reused; a cycle raises ValueError.
+    When `current_codes` is provided (pack codebook / live symbol codes), a
+    walk stops at the first current code so `{7: 0, 0: 1}` cannot steal live
+    `0` and `{7: 0, 0: 7}` is not a historical cycle. Standalone resolution
+    with `current_codes=None` still follows every table key.
     """
+    live = current_codes
     terminals: Dict[int, int] = {}
     for start in aliases:
         current = int(start)
         if current in terminals:
             continue
+        if live is not None and current in live:
+            terminals[current] = current
+            continue
         path: List[int] = []
         seen: Dict[int, int] = {}
         while current in aliases:
+            if live is not None and current in live:
+                break
             if current in terminals:
                 break
             if current in seen:
@@ -48,6 +62,7 @@ def follow_aliases(
     *,
     max_hops: Optional[int] = None,
     terminals: Optional[Dict[int, int]] = None,
+    current_codes: Optional[Set[int]] = None,
 ) -> int:
     # A finite table's longest acyclic chain is len(aliases). The previous
     # per-start walk floored max_hops at len(aliases)+1 so a caller cap could
@@ -57,7 +72,7 @@ def follow_aliases(
     if max_hops is not None:
         int(max_hops)
     if terminals is None:
-        terminals = resolve_alias_table(aliases)
+        terminals = resolve_alias_table(aliases, current_codes=current_codes)
     return terminals.get(int(code), int(code))
 
 
@@ -81,11 +96,15 @@ def rewrite_stream(
     return [terminals.get(int(token), int(token)) for token in tokens]
 
 
-def has_alias_cycle(aliases: Union[Dict[int, int], AliasTables]) -> bool:
+def has_alias_cycle(
+    aliases: Union[Dict[int, int], AliasTables],
+    *,
+    current_codes: Optional[Set[int]] = None,
+) -> bool:
     tables = normalize_aliases(aliases)
     for mapping in tables.values():
         try:
-            resolve_alias_table(mapping)
+            resolve_alias_table(mapping, current_codes=current_codes)
         except ValueError as exc:
             if str(exc) == _CYCLE:
                 return True
