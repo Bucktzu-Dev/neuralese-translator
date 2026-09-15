@@ -28,9 +28,11 @@ def translate_stream(
 
     By default translation is refused unless `certify(pack, policy=policy)` passes.
     Pass `require_gloss=False` to opt into translating packs that record
-    `[unglossed]`. That still requires evidence and admission when
-    `require_certified` is true. `integrity` may inspect a seal; it does not
-    authorize emitting English, including when `require_certified` is false.
+    `[unglossed]`. Empty or missing definitions still fail certification;
+    the opt-in relaxes only that explicit sentinel. That still requires
+    evidence and admission when `require_certified` is true. `integrity`
+    may inspect a seal; it does not authorize emitting English, including
+    when `require_certified` is false.
     Residual admission uses the caller `tau_residual` (default 0.55), never a
     threshold persisted in pack metadata.
     """
