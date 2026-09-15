@@ -621,11 +621,11 @@ def test_nonfinite_pack_timestamp_fails_schema():
     cert = certify(pack)
     assert not cert.integrity_valid
     assert not cert.passed
-    assert any("timestamp is not a number" in f for f in cert.failures)
+    assert any("timestamp is not finite" in f for f in cert.failures)
     pack.timestamp = float("inf")
     cert = certify(pack)
     assert not cert.passed
-    assert any("timestamp is not a number" in f for f in cert.failures)
+    assert any("timestamp is not finite" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
 
