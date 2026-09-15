@@ -103,6 +103,17 @@ def test_rewrite_stream_follows_chain_longer_than_64():
     assert len(table) > 64
 
 
+def test_rewrite_stream_rejects_alias_cycles():
+    import pytest
+
+    from neuralese.aliases import follow_aliases
+
+    with pytest.raises(ValueError, match="cycle"):
+        rewrite_stream([0], {0: 1, 1: 0})
+    with pytest.raises(ValueError, match="cycle"):
+        follow_aliases(0, {0: 0})
+
+
 def test_rewrite_stream_versioned_requires_source():
     import pytest
 
