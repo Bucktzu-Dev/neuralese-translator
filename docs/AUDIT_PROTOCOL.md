@@ -89,3 +89,5 @@ Learning rejection and certification now agree. A pack with `decision=accept`, `
 2. Translation does not outrun certification.
 3. Quarantine is a labeled hold, not a pass.
 4. Negative residuals, duplicate identities, and unsealed mutations fail integrity.
+
+JSON loaders convert `RecursionError` from deeply nested `json.loads` into `ValueError`, so a malformed observation file, stream, or pack is a clean CLI failure instead of a traceback. `AuditCertificate` copies only JSON-safe identifiers and finite reals (`None` for a NumPy array / NaN / inf residual or MDL), so `json.dumps(certificate.to_dict())` can emit a failed certificate. Finalize-receipt and private-example comparisons require strings before `==`, so a NumPy array step or digest cannot abort `certify()`.
