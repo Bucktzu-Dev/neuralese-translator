@@ -400,3 +400,4 @@ def test_learn_parent_string_proto_is_clean_value_error():
     first.seal()
     with pytest.raises(ValueError, match="does not match"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
+
