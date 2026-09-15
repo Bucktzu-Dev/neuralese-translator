@@ -138,6 +138,10 @@ def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
         alnum = re.findall(r"[a-z0-9]+", snippet)
         if len(alnum) == 1:
             blocked.add(alnum[0])
+        tokens = words if words else alnum
+        for width in range(2, len(tokens) + 1):
+            for i in range(len(tokens) - width + 1):
+                blocked.add(" ".join(tokens[i : i + width]))
     return blocked
 
 
