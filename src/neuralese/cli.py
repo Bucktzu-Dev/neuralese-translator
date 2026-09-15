@@ -152,7 +152,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, OverflowError) as exc:
             print(str(exc), file=sys.stderr)
             return 1
         print(json.dumps([g.to_dict() for g in glosses], indent=2))
