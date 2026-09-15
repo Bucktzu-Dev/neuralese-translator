@@ -513,3 +513,4 @@ def test_public_llm_echo_of_late_interior_span_is_discarded():
     definition = (gloss["definition"] or "").lower()
     assert "red fox" not in definition
     assert gloss["examples"] == []
+
