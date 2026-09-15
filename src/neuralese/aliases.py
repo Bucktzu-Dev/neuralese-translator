@@ -19,9 +19,12 @@ def follow_aliases(
 ) -> int:
     # A finite table's longest acyclic chain is len(aliases). Bound one past
     # that so a full cycle can re-visit a seen code instead of stopping on the
-    # last hop and returning a cycle member as if it were resolved. A fixed
-    # 64-hop cap would truncate a valid longer chain to an intermediate code.
-    bound = len(aliases) + 1 if max_hops is None else max_hops
+    # last hop and returning a cycle member as if it were resolved. A caller
+    # max_hops below that floor cannot hide a cycle; a larger cap still
+    # follows a valid longer chain. A fixed 64-hop cap would truncate a valid
+    # longer chain to an intermediate code.
+    table_bound = len(aliases) + 1
+    bound = table_bound if max_hops is None else max(int(max_hops), table_bound)
     seen: set[int] = set()
     current = int(code)
     hops = 0
