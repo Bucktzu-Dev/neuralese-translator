@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -12,7 +13,7 @@ DECODER_VERSION = "0.1.1"
 CERT_POLICIES = ("default", "strict", "integrity")
 TRANSLATION_POLICIES = ("default", "strict")
 DECISIONS = ("accept", "accept_provisional", "reject")
-SHA256_HEX = re.compile(r"^[0-9a-f]{64}\Z")
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}\\Z")
 LEGACY_ALIAS_KEY = "legacy"
 AliasTables = Dict[str, Dict[int, int]]
 
@@ -195,7 +196,13 @@ def _embedding_values(values: Any) -> List[float]:
     for x in items:
         if isinstance(x, bool) or not isinstance(x, (int, float)):
             raise TypeError("embedding must contain numbers")
-        out.append(float(x))
+        try:
+            value = float(x)
+        except OverflowError as exc:
+            raise ValueError("embedding must contain finite numbers") from exc
+        if not math.isfinite(value):
+            raise ValueError("embedding must contain finite numbers")
+        out.append(value)
     return out
 
 
