@@ -12,7 +12,7 @@ DECODER_VERSION = "0.1.1"
 CERT_POLICIES = ("default", "strict", "integrity")
 TRANSLATION_POLICIES = ("default", "strict")
 DECISIONS = ("accept", "accept_provisional", "reject")
-SHA256_HEX = re.compile(r"^[0-9a-f]{64}\\Z")
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}\Z")
 LEGACY_ALIAS_KEY = "legacy"
 AliasTables = Dict[str, Dict[int, int]]
 
