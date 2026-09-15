@@ -321,3 +321,4 @@ def test_loaded_float_and_bool_identities_are_not_coerced():
     assert any("code is not an integer" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(loaded, [0])
+
