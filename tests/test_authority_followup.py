@@ -1480,3 +1480,13 @@ def test_non_mapping_aliases_cannot_be_serialized():
     assert not cert.passed
     with pytest.raises(TypeError, match="aliases is not an object"):
         pack.to_dict()
+
+def test_cyclic_supplied_observation_metadata_fails_evidence_not_recursion():
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    obs = Observation(observation_id=obs_id, embedding=[1.0], text="hello there")
+    obs.metadata["self"] = obs.metadata
+    cert = certify(pack, observations=[obs])
+    assert cert.evidence_valid is False
+    assert cert.passed is False
+    assert any("evidence content is not verifiable" in f for f in cert.failures)
