@@ -124,8 +124,20 @@ def _public_keywords(keywords: Sequence[str], texts: Sequence[str]) -> List[str]
     return safe
 
 
+def _observation_tokens(text: str) -> List[str]:
+    snippet = _normalized_text(text)
+    words = _TOKEN.findall(snippet)
+    if words:
+        return words
+    return re.findall(r"[a-z0-9]+", snippet)
+
+
 def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
-    """Full observations and single-token payloads that would reproduce raw text."""
+    """Full observations and single-token payloads that would reproduce raw text.
+
+    Multi-token spans are checked against the definition in
+    `_contains_raw_observation` without materializing an O(n²) set.
+    """
     blocked: Set[str] = set()
     for text in texts:
         snippet = _normalized_text(text)
@@ -138,11 +150,53 @@ def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
         alnum = re.findall(r"[a-z0-9]+", snippet)
         if len(alnum) == 1:
             blocked.add(alnum[0])
-        tokens = words if words else alnum
-        for width in range(2, len(tokens) + 1):
-            for i in range(len(tokens) - width + 1):
-                blocked.add(" ".join(tokens[i : i + width]))
     return blocked
+
+
+_WINDOW = 8
+_SHORT_PREFIX_MIN = 3
+_SHORT_PREFIX_MAX = 7
+_MAX_SPAN_TOKENS = 64
+_MAX_SPAN_WIDTH = 8
+
+
+def _has_token_prefix_span(blob: str, prefix: str) -> bool:
+    if not prefix:
+        return False
+    return re.search(rf"(?<![0-9a-z]){re.escape(prefix)}", blob) is not None
+
+
+def _token_span_in_blob(snippet: str, blob: str) -> bool:
+    tokens = _observation_tokens(snippet)
+    n = min(len(tokens), _MAX_SPAN_TOKENS)
+    if n < 2:
+        return False
+    acc = tokens[0]
+    for k in range(1, n):
+        acc = f"{acc} {tokens[k]}"
+        if acc in blob:
+            return True
+    max_width = min(_MAX_SPAN_WIDTH, n)
+    for width in range(2, max_width + 1):
+        for i in range(1, n - width + 1):
+            span = " ".join(tokens[i : i + width])
+            if span in blob:
+                return True
+    return False
+
+
+def _short_secret_prefix_in_blob(snippet: str, blob: str) -> bool:
+    for token in _observation_tokens(snippet):
+        if len(token) <= _WINDOW:
+            continue
+        upper = min(_SHORT_PREFIX_MAX, len(token) - 1)
+        for plen in range(_SHORT_PREFIX_MIN, upper + 1):
+            prefix = token[:plen]
+            if prefix in STOP:
+                continue
+            if _has_token_prefix_span(blob, prefix):
+                return True
+    return False
 
 
 def _contains_raw_observation(
@@ -160,14 +214,22 @@ def _contains_raw_observation(
             continue
         if re.search(rf"(?<![a-z0-9]){re.escape(form)}(?![a-z0-9])", blob):
             return True
+    for text in texts:
+        snippet = _normalized_text(text)
+        if not snippet:
+            continue
+        if _token_span_in_blob(snippet, blob):
+            return True
+        if _short_secret_prefix_in_blob(snippet, blob):
+            return True
     if not windows:
         return False
     for text in texts:
         snippet = _normalized_text(text)
-        if len(snippet) < 8:
+        if len(snippet) < _WINDOW:
             continue
-        for i in range(len(snippet) - 7):
-            if snippet[i : i + 8] in blob:
+        for i in range(len(snippet) - _WINDOW + 1):
+            if snippet[i : i + _WINDOW] in blob:
                 return True
     return False
 
