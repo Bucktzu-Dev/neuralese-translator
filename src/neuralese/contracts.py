@@ -509,7 +509,7 @@ class SymbolPack:
             aliases_raw = data["aliases"]
         include_private = data["include_private"] if "include_private" in data else False
         return cls(
-            pack_id=str(data["pack_id"]),
+            pack_id=data["pack_id"],
             symbols=[
                 Symbol.from_dict(s, include_private=include_private is True)
                 for s in symbols_raw
