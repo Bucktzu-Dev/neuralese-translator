@@ -745,7 +745,11 @@ class SymbolPack:
         return stripped if stripped else None
 
     def symbol_by_class(self, class_id: int) -> Optional[Symbol]:
+        if not _integral_code(class_id):
+            return None
         for symbol in _iter_symbol_objects(self.symbols):
+            if not _integral_code(symbol.class_id):
+                continue
             if symbol.class_id == class_id:
                 return symbol
         return None
@@ -759,10 +763,28 @@ class SymbolPack:
             found = self.symbol_by_class(class_id)
             if found is not None:
                 return found
+        if not _integral_code(code):
+            try:
+                code = int(code)
+            except (TypeError, ValueError, OverflowError):
+                return None
         for symbol in _iter_symbol_objects(self.symbols):
+            if not _integral_code(symbol.code):
+                continue
             if symbol.code == code:
                 return symbol
         return None
+
+    def current_codes(self) -> Set[int]:
+        codes: Set[int] = set()
+        if isinstance(self.codebook, dict):
+            for key in self.codebook:
+                if _integral_code(key):
+                    codes.add(key)
+        for symbol in _iter_symbol_objects(self.symbols):
+            if _integral_code(symbol.code):
+                codes.add(symbol.code)
+        return codes
 
     def alias_table(self, source_pack_checksum: Optional[str] = None) -> Dict[int, int]:
         return select_alias_table(
@@ -787,7 +809,9 @@ class SymbolPack:
             resolved = terminals.get(code, code)
             return resolved, resolved != code
         table = self.alias_table(source_pack_checksum)
-        resolved = follow_aliases(code, table)
+        resolved = follow_aliases(
+            code, table, current_codes=self.current_codes()
+        )
         return resolved, resolved != code
 
 
@@ -891,5 +915,5 @@ def _iter_symbol_objects(symbols: Any) -> Iterable["Symbol"]:
 
 def iter_live_symbols(pack: SymbolPack) -> Iterable[Symbol]:
     for symbol in _iter_symbol_objects(pack.symbols):
-        if not symbol.quarantined:
+        if symbol.quarantined is False:
             yield symbol
