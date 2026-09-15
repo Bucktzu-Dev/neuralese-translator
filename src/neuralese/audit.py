@@ -288,7 +288,7 @@ def certify(
                 else:
                     try:
                         reconstructed = Observation.from_dict(obs.to_dict())
-                    except (TypeError, ValueError, OverflowError):
+                    except (TypeError, ValueError, OverflowError, RecursionError):
                         evidence_valid = False
                         failures.append(
                             f"observation {obs_id!r} evidence content is not verifiable"
@@ -302,7 +302,7 @@ def certify(
                             f"observation {obs_id!r} has neither embedding nor text"
                         )
                         continue
-                    except (TypeError, OverflowError):
+                    except (TypeError, OverflowError, RecursionError):
                         evidence_valid = False
                         failures.append(
                             f"observation {obs_id!r} evidence content is not verifiable"
@@ -310,7 +310,7 @@ def certify(
                         continue
                     try:
                         matched = normalized.content_hash() == digest
-                    except (TypeError, ValueError, OverflowError):
+                    except (TypeError, ValueError, OverflowError, RecursionError):
                         evidence_valid = False
                         failures.append(
                             f"observation {obs_id!r} evidence content is not verifiable"
