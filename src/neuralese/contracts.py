@@ -122,10 +122,35 @@ def _copy_seq(value: Any) -> Any:
 
 def _copy_mapping(value: Any) -> Any:
     if isinstance(value, dict):
-        return {key: _copy_mapping(item) for key, item in value.items()}
+        copied: Dict[Any, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError("metadata keys must be strings")
+            copied[key] = _copy_mapping(item)
+        return copied
     if isinstance(value, (list, tuple)):
         return [_copy_mapping(item) for item in value]
     return value
+
+
+def _require_json_object_keys(value: Any, *, label: str = "metadata") -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(f"{label} keys must be strings")
+            _require_json_object_keys(item, label=label)
+        return
+    if isinstance(value, (list, tuple)) and not isinstance(value, (str, bytes)):
+        for item in value:
+            _require_json_object_keys(item, label=label)
+
+
+def _json_object_key_errors(value: Any, label: str) -> List[str]:
+    try:
+        _require_json_object_keys(value, label=label)
+    except TypeError as exc:
+        return [str(exc)]
+    return []
 
 
 def _checksum_vec(values: Any) -> Any:
@@ -265,6 +290,9 @@ def normalize_aliases(raw: Any, *, coerce_json_keys: bool = False) -> AliasTable
                 mapping, coerce_json_keys=coerce_json_keys
             )
         return tables
+    for src, mapping in raw.items():
+        if _alias_source_key_ok(src) and not isinstance(mapping, dict):
+            raise ValueError("alias source keys must map to an alias table")
     return {
         LEGACY_ALIAS_KEY: _copy_alias_table(raw, coerce_json_keys=coerce_json_keys)
     }
@@ -306,8 +334,7 @@ def aliases_to_dict(aliases: AliasTables) -> Any:
         if not _alias_source_key_ok(src):
             raise TypeError("alias source keys must be legacy or SHA-256")
         if not isinstance(mapping, dict):
-            serialized[src] = mapping
-            continue
+            raise TypeError("alias table is not an object")
         try:
             entries = sorted(mapping.items())
         except TypeError:
@@ -397,6 +424,7 @@ class Receipt:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
+        _require_json_object_keys(self.metadata)
         return asdict(self)
 
     @classmethod
@@ -606,6 +634,7 @@ class SymbolPack:
         return self
 
     def compute_checksum(self) -> str:
+        _require_json_object_keys(self.metadata)
         payload = {
             "pack_id": self.pack_id,
             "decoder_version": self.decoder_version,
