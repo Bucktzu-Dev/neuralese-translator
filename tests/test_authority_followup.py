@@ -1032,3 +1032,18 @@ def test_symbol_list_metadata_is_not_laundered_by_to_dict():
     assert dumped["symbols"][0]["metadata"] == []
     with pytest.raises(TypeError, match="metadata must be an object or null"):
         pack.from_dict(dumped)
+
+
+def test_pack_to_dict_detaches_metadata():
+    pack = make_pack()
+    original = dict(pack.metadata)
+    dumped = pack.to_dict()
+    assert dumped["metadata"] is not pack.metadata
+    dumped["metadata"]["x"] = 99
+    assert pack.metadata == original
+    assert certify(pack).passed
+    pack.metadata = []
+    dumped = pack.to_dict()
+    assert dumped["metadata"] == []
+    with pytest.raises(TypeError, match="metadata must be an object or null"):
+        pack.from_dict(dumped)
