@@ -539,3 +539,4 @@ def test_public_punctuated_token_span_is_discarded():
     assert gloss["examples"] == []
     heuristic = learn_definition(obs, include_private=False)
     assert not re.search(r"red\W+fox", (heuristic["definition"] or "").lower())
+
