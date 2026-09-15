@@ -551,3 +551,22 @@ def test_learn_parent_prototype_dimension_mismatch_is_clean_value_error():
     with pytest.raises(ValueError, match="dimensionality"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
 
+
+def test_learn_parent_recursive_private_examples_is_clean_value_error():
+    import sys
+
+    obs = load_observations_jsonl(TOY)
+    first = learn_pack(
+        obs, config=LearnConfig(n_symbols=3, seed=0, include_private=True)
+    )
+    nested: object = "secret"
+    for _ in range(max(sys.getrecursionlimit(), 200)):
+        nested = [nested]
+    first.symbols[0].examples = nested
+    with pytest.raises(ValueError, match="does not match"):
+        learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
+    cyclic = []
+    cyclic.append(cyclic)
+    first.symbols[0].examples = cyclic
+    with pytest.raises(ValueError, match="does not match"):
+        learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
