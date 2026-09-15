@@ -394,6 +394,8 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
 
 def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[str]]:
     failures: List[str] = []
+    if not isinstance(pack.pack_id, str):
+        failures.append("pack_id is not a string")
     if pack.decoder_version != DECODER_VERSION:
         failures.append(
             f"decoder_version {pack.decoder_version!r} is not this decoder "
