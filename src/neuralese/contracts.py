@@ -362,7 +362,7 @@ def select_alias_table(
 
 def aliases_to_dict(aliases: AliasTables) -> Any:
     if not isinstance(aliases, dict):
-        return aliases
+        raise TypeError("aliases is not an object")
     items = list(aliases.items())
     serialized: Dict[str, Any] = {}
     for src, mapping in items:
