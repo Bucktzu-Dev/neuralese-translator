@@ -172,18 +172,17 @@ def certify(
         except (TypeError, ValueError, OverflowError):
             residual_ok = False
         else:
-            residual_ok = (
-                _finite(residual)
-                and residual >= 0.0
-                and residual <= tau_residual
-            )
-            if residual < 0:
+            if pack.reconstruction_error < 0:
                 residual_ok = False
-                failures.append(f"reconstruction_error {pack.reconstruction_error} is negative")
-            elif not residual_ok and _finite(residual):
                 failures.append(
-                    f"reconstruction_error {residual:.6f} exceeds tau_residual {tau_residual}"
+                    f"reconstruction_error {pack.reconstruction_error} is negative"
                 )
+            else:
+                residual_ok = _finite(residual) and residual <= tau_residual
+                if not residual_ok and _finite(residual):
+                    failures.append(
+                        f"reconstruction_error {residual:.6f} exceeds tau_residual {tau_residual}"
+                    )
 
     gloss_bound = checksum_ok
     for symbol in iter_live_symbols(pack):
@@ -424,6 +423,13 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
         if ok is not True:
             failures.append("finalize receipt is not ok")
             return False
+        recorded = finalize[-1].metadata
+        if isinstance(recorded, dict) and "decision" in recorded:
+            if recorded.get("decision") != decision:
+                failures.append(
+                    "finalize receipt decision does not match pack.decision"
+                )
+                return False
     if pack.guards is not None:
         if not isinstance(pack.guards, GuardSnapshot):
             failures.append("guards is not a GuardSnapshot")
