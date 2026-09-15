@@ -621,11 +621,11 @@ def test_nonfinite_pack_timestamp_fails_schema():
     cert = certify(pack)
     assert not cert.integrity_valid
     assert not cert.passed
-    assert any("timestamp is not finite" in f for f in cert.failures)
+    assert any("timestamp is not a number" in f for f in cert.failures)
     pack.timestamp = float("inf")
     cert = certify(pack)
     assert not cert.passed
-    assert any("timestamp is not finite" in f for f in cert.failures)
+    assert any("timestamp is not a number" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
 
@@ -1335,3 +1335,77 @@ def test_missing_guards_and_finalize_fail_admission():
     assert not integrity.admission_valid
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
+
+def test_cyclic_pack_metadata_fails_schema_not_recursion():
+    pack = make_pack()
+    pack.metadata["self"] = pack.metadata
+    cert = certify(pack)
+    assert cert.passed is False
+    assert cert.integrity_valid is False
+    assert any("contains a cycle" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="contains a cycle"):
+        pack.to_dict()
+    with pytest.raises(TypeError, match="contains a cycle"):
+        pack.seal()
+    with pytest.raises(TypeError, match="contains a cycle"):
+        pack.compute_checksum()
+
+
+def test_cyclic_symbol_and_receipt_metadata_fails_schema_not_recursion():
+    pack = make_pack()
+    pack.symbols[0].metadata["self"] = pack.symbols[0].metadata
+    cert = certify(pack)
+    assert cert.passed is False
+    assert cert.integrity_valid is False
+    assert any("contains a cycle" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="contains a cycle"):
+        pack.to_dict()
+
+    pack = make_pack(
+        guards=None,
+        receipts=[Receipt(step="finalize", ok=True, timestamp=1.0)],
+    )
+    pack.receipts[0].metadata["self"] = pack.receipts[0].metadata
+    cert = certify(pack)
+    assert cert.passed is False
+    assert any("contains a cycle" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="contains a cycle"):
+        pack.receipts[0].to_dict()
+    with pytest.raises(TypeError, match="contains a cycle"):
+        pack.to_dict()
+
+
+def test_nested_list_cycle_in_metadata_fails_schema_not_recursion():
+    pack = make_pack()
+    nested: list = []
+    nested.append(nested)
+    pack.metadata["items"] = nested
+    cert = certify(pack)
+    assert cert.passed is False
+    assert cert.integrity_valid is False
+    assert any("contains a cycle" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="contains a cycle"):
+        pack.to_dict()
+
+    a: dict = {}
+    b = {"a": a}
+    a["b"] = b
+    indirect = make_pack()
+    indirect.metadata["root"] = a
+    cert = certify(indirect)
+    assert cert.passed is False
+    assert any("contains a cycle" in f for f in cert.failures)
+
+
+def test_shared_nested_metadata_objects_are_not_treated_as_cycles():
+    pack = make_pack()
+    shared = {"tau_residual": 0.55}
+    pack.metadata["left"] = shared
+    pack.metadata["right"] = shared
+    pack.seal()
+    assert certify(pack).passed
+    dumped = pack.to_dict()
+    dumped["metadata"]["left"]["tau_residual"] = 99
+    assert pack.metadata["left"]["tau_residual"] == 0.55
+    assert dumped["metadata"]["right"]["tau_residual"] == 0.55
+    assert dumped["metadata"]["left"] is not dumped["metadata"]["right"]
