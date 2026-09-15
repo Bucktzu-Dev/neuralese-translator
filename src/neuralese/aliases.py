@@ -47,6 +47,7 @@ def follow_aliases(
     aliases: Dict[int, int],
     *,
     max_hops: Optional[int] = None,
+    terminals: Optional[Dict[int, int]] = None,
 ) -> int:
     # A finite table's longest acyclic chain is len(aliases). The previous
     # per-start walk floored max_hops at len(aliases)+1 so a caller cap could
@@ -55,7 +56,8 @@ def follow_aliases(
     # raise, and max_hops is only type-checked for API compatibility.
     if max_hops is not None:
         int(max_hops)
-    terminals = resolve_alias_table(aliases)
+    if terminals is None:
+        terminals = resolve_alias_table(aliases)
     return terminals.get(int(code), int(code))
 
 
