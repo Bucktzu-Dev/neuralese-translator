@@ -410,7 +410,9 @@ def test_int_and_str_observation_ids_are_duplicates():
         ],
     )
     assert not cert.evidence_valid
-    assert any("duplicate observation_id" in f for f in cert.failures)
+    assert not cert.passed
+    assert any("supplied observation_id 1 is not a string" in f for f in cert.failures)
+    assert not any("duplicate observation_id" in f for f in cert.failures)
 
 
 def test_inconsistent_pass_all_fails_integrity():
