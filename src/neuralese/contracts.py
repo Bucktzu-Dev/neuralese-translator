@@ -12,7 +12,7 @@ DECODER_VERSION = "0.1.1"
 CERT_POLICIES = ("default", "strict", "integrity")
 TRANSLATION_POLICIES = ("default", "strict")
 DECISIONS = ("accept", "accept_provisional", "reject")
-SHA256_HEX = re.compile(r"^[0-9a-f]{64}\Z")
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}\\Z")
 LEGACY_ALIAS_KEY = "legacy"
 AliasTables = Dict[str, Dict[int, int]]
 
@@ -336,10 +336,10 @@ class Receipt:
         return cls(
             step=str(data["step"]),
             ok=data["ok"],
-            timestamp=float(data["timestamp"]),
-            kappa=_opt_float(data.get("kappa")),
-            reconstruction_error=_opt_float(data.get("reconstruction_error")),
-            delta_mdl_bits=_opt_float(data.get("delta_mdl_bits")),
+            timestamp=data["timestamp"],
+            kappa=data.get("kappa"),
+            reconstruction_error=data.get("reconstruction_error"),
+            delta_mdl_bits=data.get("delta_mdl_bits"),
             metadata=_optional_object(data, "metadata", "metadata"),
         )
 
@@ -523,7 +523,7 @@ class SymbolPack:
             receipts=[Receipt.from_dict(r) for r in _receipts_list(data)],
             guards=guards,
             mdl_bits=_present_value(data, "mdl_bits", 0.0),
-            timestamp=float(data.get("timestamp") or 0.0),
+            timestamp=_present_value(data, "timestamp", 0.0),
             metadata=metadata,
             evidence=_load_evidence(data),
             decoder_version=_present_str(data, "decoder_version", DECODER_VERSION),
@@ -614,7 +614,7 @@ class SymbolPack:
         from neuralese.aliases import follow_aliases
 
         code = int(code)
-        if code in self.codebook:
+        if isinstance(self.codebook, dict) and code in self.codebook:
             return code, False
         table = self.alias_table(source_pack_checksum)
         resolved = follow_aliases(code, table)
@@ -705,12 +705,6 @@ class UncertifiedPackError(ValueError):
             "pack failed certification policy "
             f"{certificate.policy!r}: {'; '.join(certificate.failures) or 'not passed'}"
         )
-
-
-def _opt_float(value: Any) -> Optional[float]:
-    if value is None:
-        return None
-    return float(value)
 
 
 def _is_array(value: Any) -> bool:
