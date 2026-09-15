@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 import time
-from typing import List, Optional, Sequence, Set
+from typing import Dict, List, Optional, Sequence, Set
 
 from neuralese.adapters import ensure_embedding
 from neuralese.aliases import has_alias_cycle, resolve_alias_table
@@ -47,19 +47,49 @@ def certify(
     if not isinstance(pack.codebook, dict):
         addressable = False
         failures.append("codebook is not an object")
+
+    if not _is_array(pack.symbols):
+        addressable = False
+        symbols_ok: List[Symbol] = []
+        class_ids: List[object] = []
+        codes: List[object] = []
     else:
+        if any(not isinstance(symbol, Symbol) for symbol in pack.symbols):
+            addressable = False
+        symbols_ok = [s for s in pack.symbols if isinstance(s, Symbol)]
+        class_ids = [s.class_id for s in symbols_ok]
+        codes = [s.code for s in symbols_ok]
+    current_symbol_codes: Set[object] = set()
+    by_class: Dict[object, Symbol] = {}
+    try:
+        unique_class_ids = set(class_ids)
+        unique_codes = set(codes)
+    except TypeError:
+        addressable = False
+        failures.append("class_id or code identities are not hashable")
+    else:
+        current_symbol_codes = unique_codes
+        if len(class_ids) != len(unique_class_ids):
+            addressable = False
+            failures.append("duplicate class_id identities")
+        if len(codes) != len(unique_codes):
+            addressable = False
+            failures.append("duplicate code identities")
+        for symbol in symbols_ok:
+            if _integral_code(symbol.class_id) and symbol.class_id not in by_class:
+                by_class[symbol.class_id] = symbol
+
+    if isinstance(pack.codebook, dict):
         for code, class_id in pack.codebook.items():
             if not _integral_code(class_id):
                 addressable = False
                 failures.append(f"code {code} maps to non-integer class {class_id}")
                 continue
-            symbol = pack.symbol_by_class(class_id)
+            symbol = by_class.get(class_id)
             if symbol is None:
                 addressable = False
                 failures.append(f"code {code} maps to missing class {class_id}")
-        if not _is_array(pack.symbols):
-            addressable = False
-        else:
+        if _is_array(pack.symbols):
             for symbol in pack.symbols:
                 if not isinstance(symbol, Symbol):
                     addressable = False
@@ -80,36 +110,11 @@ def certify(
                     failures.append(
                         f"symbol class {symbol.class_id} code {symbol.code} missing from codebook"
                     )
-                elif mapped != symbol.class_id:
+                elif not _integral_code(symbol.class_id) or mapped != symbol.class_id:
                     addressable = False
                     failures.append(
                         f"code {symbol.code} codebook class {mapped} != symbol class {symbol.class_id}"
                     )
-
-    if not _is_array(pack.symbols):
-        addressable = False
-        class_ids: List[object] = []
-        codes: List[object] = []
-    else:
-        if any(not isinstance(symbol, Symbol) for symbol in pack.symbols):
-            addressable = False
-        class_ids = [s.class_id for s in pack.symbols if isinstance(s, Symbol)]
-        codes = [s.code for s in pack.symbols if isinstance(s, Symbol)]
-    current_symbol_codes: Set[object] = set()
-    try:
-        unique_class_ids = set(class_ids)
-        unique_codes = set(codes)
-    except TypeError:
-        addressable = False
-        failures.append("class_id or code identities are not hashable")
-    else:
-        current_symbol_codes = unique_codes
-        if len(class_ids) != len(unique_class_ids):
-            addressable = False
-            failures.append("duplicate class_id identities")
-        if len(codes) != len(unique_codes):
-            addressable = False
-            failures.append("duplicate code identities")
 
     if isinstance(pack.aliases, dict):
         if not all(isinstance(mapping, dict) for mapping in pack.aliases.values()):
@@ -117,7 +122,9 @@ def certify(
             failures.append("alias table is not an object")
         else:
             try:
-                cyclic = has_alias_cycle(pack.aliases)
+                cyclic = has_alias_cycle(
+                    pack.aliases, current_codes=current_symbol_codes
+                )
             except (TypeError, ValueError, OverflowError):
                 addressable = False
                 failures.append("aliases is not an object")
@@ -129,7 +136,9 @@ def certify(
                     codebook = pack.codebook if isinstance(pack.codebook, dict) else {}
                     for source, mapping in pack.aliases.items():
                         try:
-                            terminals = resolve_alias_table(mapping)
+                            terminals = resolve_alias_table(
+                                mapping, current_codes=current_symbol_codes
+                            )
                         except (TypeError, ValueError, OverflowError):
                             addressable = False
                             failures.append("aliases is not an object")
@@ -351,11 +360,12 @@ def certify(
             integrity_valid
             and evidence_valid
             and admission_valid
+            and isinstance(pack.decision, str)
             and pack.decision == "accept"
             and pack.guards is not None
             and _effective_pass_all(pack.guards)
         )
-        if pack.decision != "accept":
+        if not isinstance(pack.decision, str) or pack.decision != "accept":
             failures.append("strict policy requires decision=accept")
         if pack.guards is None or not _effective_pass_all(pack.guards):
             failures.append("strict policy requires guards.pass_all")
@@ -365,7 +375,7 @@ def certify(
     live = list(iter_live_symbols(pack))
     return AuditCertificate(
         pack_id=pack.pack_id,
-        pack_checksum=pack.checksum,
+        pack_checksum=pack.checksum if isinstance(pack.checksum, str) else "",
         expected_checksum=expected,
         passed=passed,
         integrity_valid=integrity_valid,
@@ -383,7 +393,11 @@ def certify(
             "n_symbols": len(pack.symbols) if _is_array(pack.symbols) else 0,
             "n_live": len(live),
             "n_quarantined": (
-                sum(1 for s in pack.symbols if isinstance(s, Symbol) and s.quarantined)
+                sum(
+                    1
+                    for s in pack.symbols
+                    if isinstance(s, Symbol) and s.quarantined is True
+                )
                 if _is_array(pack.symbols)
                 else 0
             ),
@@ -397,8 +411,10 @@ def certify(
             "tau_residual": tau_residual,
             "require_gloss": require_gloss,
             "mdl_bits": pack.mdl_bits,
-            "decision": pack.decision,
-            "decoder_version": pack.decoder_version,
+            "decision": pack.decision if isinstance(pack.decision, str) else None,
+            "decoder_version": (
+                pack.decoder_version if isinstance(pack.decoder_version, str) else None
+            ),
             "expected_decoder_version": DECODER_VERSION,
             "observations_checked": observations is not None,
         },
@@ -421,7 +437,11 @@ def _evidence_map_errors(evidence: object) -> List[str]:
 
 def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool:
     decision = pack.decision
-    if decision not in ("accept", "accept_provisional", "reject"):
+    if not isinstance(decision, str) or decision not in (
+        "accept",
+        "accept_provisional",
+        "reject",
+    ):
         failures.append(f"unknown decision {decision!r}")
         return False
     if decision == "reject":
@@ -467,12 +487,12 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         failures.append("pack_id is not a string")
     if pack.parent_pack_id is not None and not isinstance(pack.parent_pack_id, str):
         failures.append("parent_pack_id is not a string")
-    if pack.decoder_version != DECODER_VERSION:
+    if not isinstance(pack.decoder_version, str) or pack.decoder_version != DECODER_VERSION:
         failures.append(
             f"decoder_version {pack.decoder_version!r} is not this decoder "
             f"({DECODER_VERSION})"
         )
-    if pack.decision not in DECISIONS:
+    if not isinstance(pack.decision, str) or pack.decision not in DECISIONS:
         failures.append(f"unknown decision {pack.decision!r}")
     if not isinstance(pack.include_private, bool):
         failures.append("include_private is not a boolean")
