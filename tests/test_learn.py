@@ -603,3 +603,4 @@ def test_learn_pack_rejects_cyclic_observation_metadata():
     obs[0].metadata["self"] = obs[0].metadata
     with pytest.raises(ValueError, match="not learnable"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
+
