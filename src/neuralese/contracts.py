@@ -106,6 +106,12 @@ def _copy_seq(value: Any) -> Any:
     return value
 
 
+def _copy_mapping(value: Any) -> Any:
+    if isinstance(value, dict):
+        return dict(value)
+    return value
+
+
 def _checksum_vec(values: Any) -> Any:
     if isinstance(values, (str, bytes)) or not isinstance(values, (list, tuple)):
         return values
@@ -431,7 +437,7 @@ class Symbol:
             "confidence": self.confidence,
             "quarantined": self.quarantined,
             "survival": self.survival,
-            "metadata": dict(self.metadata),
+            "metadata": _copy_mapping(self.metadata),
         }
         if include_private is True:
             payload["examples"] = list(self.examples)
@@ -598,7 +604,7 @@ class SymbolPack:
                     "confidence": _round_real(s.confidence),
                     "quarantined": bool(s.quarantined),
                     "survival": _round_real(s.survival),
-                    "metadata": dict(s.metadata),
+                    "metadata": _copy_mapping(s.metadata),
                 }
                 for s in sorted(self.symbols, key=lambda x: x.class_id)
             ],
