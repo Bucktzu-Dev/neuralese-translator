@@ -727,3 +727,80 @@ def test_null_codebook_uncertified_translate_does_not_traceback():
     glosses = translate_stream(pack, [0], require_certified=False)
     assert glosses[0].state in {"ok", "unknown", "aliased"}
     assert pack.resolve_code(0)[0] == 0
+
+def test_loaded_non_string_receipt_step_is_not_coerced():
+    pack = make_pack(guards=None)
+    data = pack.to_dict()
+    data["guards"] = None
+    data["receipts"] = [{"step": None, "ok": True, "timestamp": 1.0}]
+    loaded = pack.from_dict(data)
+    assert loaded.receipts[0].step is None
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("receipts[0].step is not a string" in f for f in cert.failures)
+    data["receipts"] = [{"step": 1, "ok": True, "timestamp": 1.0}]
+    loaded = pack.from_dict(data)
+    assert loaded.receipts[0].step == 1
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("receipts[0].step is not a string" in f for f in cert.failures)
+    data["receipts"] = [{"step": True, "ok": True, "timestamp": 1.0}]
+    loaded = pack.from_dict(data)
+    assert loaded.receipts[0].step is True
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("receipts[0].step is not a string" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_alias_collision_rejects_cycles_with_valid_targets():
+    from neuralese.alphabet import _alias_collision, _match_aliases
+    from neuralese.contracts import Symbol
+
+    codebook = {0: 0, 1: 1}
+    assert _alias_collision({"src": {0: 1, 1: 0}}, codebook) is True
+    assert _alias_collision({"src": {0: 99}}, codebook) is True
+    assert _alias_collision({"src": {0: 1}}, codebook) is False
+    previous = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0, 0.0, 0.0],
+                observation_ids=["obs-a"],
+                definition="a",
+                confidence=0.8,
+            ),
+            Symbol(
+                class_id=1,
+                code=1,
+                proto_embedding=[0.0, 1.0, 0.0],
+                observation_ids=["obs-b"],
+                definition="b",
+                confidence=0.8,
+            ),
+        ]
+    )
+    swapped = [
+        Symbol(
+            class_id=0,
+            code=0,
+            proto_embedding=[0.0, 1.0, 0.0],
+            observation_ids=["obs-c"],
+            definition="c",
+            confidence=0.8,
+        ),
+        Symbol(
+            class_id=1,
+            code=1,
+            proto_embedding=[1.0, 0.0, 0.0],
+            observation_ids=["obs-d"],
+            definition="d",
+            confidence=0.8,
+        ),
+    ]
+    remap = _match_aliases(previous, swapped, threshold=0.5)
+    assert remap == {0: 1, 1: 0}
+    assert _alias_collision({previous.checksum: remap}, codebook) is True
