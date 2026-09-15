@@ -341,14 +341,18 @@ def test_overflowing_pack_timestamp_is_clean_cli_failure(tmp_path, capsys):
     data["timestamp"] = 10**1000
     path = tmp_path / "pack.json"
     path.write_text(json.dumps(data) + "\n")
-    with pytest.raises(ValueError, match="invalid pack"):
-        load_pack(path)
+    loaded = load_pack(path)
+    assert loaded.timestamp == 10**1000
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("timestamp is not finite" in f for f in cert.failures)
     stream = tmp_path / "stream.json"
     stream.write_text("[0]\n")
     rc = main(["translate", str(path), str(stream)])
     assert rc == 1
     err = capsys.readouterr().err
-    assert "invalid pack" in err
+    failed = json.loads(err)
+    assert failed["passed"] is False
 
 def test_loaded_float_and_bool_codebook_values_are_not_coerced():
     pack = make_pack()
@@ -656,3 +660,70 @@ def test_private_null_example_hashes_are_not_derived_from_examples():
     assert any("example_hashes is not an array" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(loaded, [0])
+
+def test_unserializable_metadata_fails_checksum_not_type_error():
+    pack = make_pack()
+    pack.metadata["x"] = object()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("not JSON-serializable" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_falsey_and_string_pack_timestamp_are_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["timestamp"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.timestamp is None
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("timestamp is not a number" in f for f in cert.failures)
+    data["timestamp"] = False
+    loaded = pack.from_dict(data)
+    assert loaded.timestamp is False
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("timestamp is not a number" in f for f in cert.failures)
+    data["timestamp"] = "1.0"
+    loaded = pack.from_dict(data)
+    assert loaded.timestamp == "1.0"
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("timestamp is not a number" in f for f in cert.failures)
+    del data["timestamp"]
+    omitted = pack.from_dict(data)
+    assert omitted.timestamp == 0.0
+
+
+def test_loaded_string_receipt_numerics_are_not_coerced():
+    pack = make_pack(guards=None)
+    data = pack.to_dict()
+    data["guards"] = None
+    data["receipts"] = [{"step": "finalize", "ok": True, "timestamp": "1.0"}]
+    loaded = pack.from_dict(data)
+    assert loaded.receipts[0].timestamp == "1.0"
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("receipts[0].timestamp is not a number" in f for f in cert.failures)
+    data["receipts"] = [
+        {"step": "finalize", "ok": True, "timestamp": 1.0, "kappa": "0.8"}
+    ]
+    loaded = pack.from_dict(data)
+    assert loaded.receipts[0].kappa == "0.8"
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("receipts[0].kappa is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_null_codebook_uncertified_translate_does_not_traceback():
+    pack = make_pack()
+    pack.codebook = None
+    glosses = translate_stream(pack, [0], require_certified=False)
+    assert glosses[0].state in {"ok", "unknown", "aliased"}
+    assert pack.resolve_code(0)[0] == 0
