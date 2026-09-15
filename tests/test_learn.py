@@ -96,6 +96,19 @@ def test_learn_rejects_duplicate_observation_ids():
         learn_pack(obs, config=LearnConfig(n_symbols=1, min_cluster_size=1, seed=0))
 
 
+def test_learn_rejects_blank_observation_ids():
+    with pytest.raises(ValueError, match="blank observation_id"):
+        learn_pack(
+            [Observation(observation_id="", text="hello there friend")],
+            config=LearnConfig(n_symbols=1, min_cluster_size=1, seed=0),
+        )
+    with pytest.raises(ValueError, match="blank observation_id"):
+        learn_pack(
+            [Observation(observation_id="   ", text="hello there friend")],
+            config=LearnConfig(n_symbols=1, min_cluster_size=1, seed=0),
+        )
+
+
 def test_public_pack_definition_does_not_copy_raw_observation_text():
     obs = [
         Observation(observation_id="s1", text="99887766 !!!"),
