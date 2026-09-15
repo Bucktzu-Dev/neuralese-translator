@@ -95,6 +95,7 @@ def certify(
             addressable = False
         class_ids = [s.class_id for s in pack.symbols if isinstance(s, Symbol)]
         codes = [s.code for s in pack.symbols if isinstance(s, Symbol)]
+    current_symbol_codes: Set[object] = set()
     try:
         unique_class_ids = set(class_ids)
         unique_codes = set(codes)
@@ -102,6 +103,7 @@ def certify(
         addressable = False
         failures.append("class_id or code identities are not hashable")
     else:
+        current_symbol_codes = unique_codes
         if len(class_ids) != len(unique_class_ids):
             addressable = False
             failures.append("duplicate class_id identities")
@@ -141,7 +143,10 @@ def certify(
                                     f"alias {source}:{old}->{new} does not resolve to a current symbol"
                                 )
                                 continue
-                            if resolved not in codebook and pack.symbol_by_code(resolved) is None:
+                            if (
+                                resolved not in codebook
+                                and resolved not in current_symbol_codes
+                            ):
                                 addressable = False
                                 failures.append(
                                     f"alias {source}:{old}->{new} does not resolve to a current symbol"
@@ -150,8 +155,11 @@ def certify(
         addressable = False
         failures.append("aliases is not an object")
 
-    expected = pack.checksum or ""
     checksum_ok = False
+    if isinstance(pack.checksum, str):
+        expected: object = pack.checksum
+    else:
+        expected = ""
     if schema_ok:
         try:
             expected = pack.compute_checksum()
@@ -159,14 +167,18 @@ def certify(
             checksum_ok = False
             failures.append("checksum payload is not JSON-serializable")
         else:
-            checksum_ok = bool(pack.checksum) and expected == pack.checksum
-            if not pack.checksum:
+            if not isinstance(pack.checksum, str):
+                checksum_ok = False
+                failures.append("checksum is not full SHA-256")
+            elif pack.checksum == "":
                 failures.append("pack is unsealed (empty checksum)")
-            elif not isinstance(pack.checksum, str) or not SHA256_HEX.match(pack.checksum):
+            elif not SHA256_HEX.match(pack.checksum):
                 checksum_ok = False
                 failures.append("checksum is not full SHA-256")
             elif expected != pack.checksum:
                 failures.append("checksum mismatch: pack mutated after sealing")
+            else:
+                checksum_ok = True
 
     if not _real_number(tau_residual) or not _finite(tau_residual) or tau_residual < 0:
         residual_ok = False
