@@ -621,11 +621,11 @@ def test_nonfinite_pack_timestamp_fails_schema():
     cert = certify(pack)
     assert not cert.integrity_valid
     assert not cert.passed
-    assert any("timestamp is not finite" in f for f in cert.failures)
+    assert any("timestamp is not a number" in f for f in cert.failures)
     pack.timestamp = float("inf")
     cert = certify(pack)
     assert not cert.passed
-    assert any("timestamp is not finite" in f for f in cert.failures)
+    assert any("timestamp is not a number" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
 
@@ -1490,3 +1490,38 @@ def test_cyclic_supplied_observation_metadata_fails_evidence_not_recursion():
     assert cert.evidence_valid is False
     assert cert.passed is False
     assert any("evidence content is not verifiable" in f for f in cert.failures)
+
+def test_explicit_null_aliases_are_not_normalized_to_empty():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["aliases"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.aliases is None
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("aliases is not an object" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="aliases is not an object"):
+        loaded.to_dict()
+    omitted = dict(pack.to_dict())
+    del omitted["aliases"]
+    assert pack.from_dict(omitted).aliases == {}
+
+
+def test_explicit_null_receipts_are_not_normalized_to_empty():
+    pack = make_pack()
+    original = pack.checksum
+    data = pack.to_dict()
+    data["receipts"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.receipts is None
+    assert loaded.compute_checksum() != original
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("receipts is not an array" in f for f in cert.failures)
+    dumped = loaded.to_dict()
+    assert dumped["receipts"] is None
+    omitted = dict(pack.to_dict())
+    del omitted["receipts"]
+    assert pack.from_dict(omitted).receipts == []
