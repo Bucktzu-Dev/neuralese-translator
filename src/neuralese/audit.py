@@ -203,6 +203,11 @@ def certify(
         provided = {}
         duplicate_ids: Set[str] = set()
         for obs in observations:
+            if not isinstance(obs, Observation):
+                evidence_valid = False
+                unfoldable = False
+                failures.append("supplied observation is not an Observation")
+                continue
             oid = obs.observation_id
             if not isinstance(oid, str):
                 evidence_valid = False
