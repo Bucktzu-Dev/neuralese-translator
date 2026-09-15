@@ -112,6 +112,8 @@ def test_rewrite_stream_rejects_alias_cycles():
         rewrite_stream([0], {0: 1, 1: 0})
     with pytest.raises(ValueError, match="cycle"):
         follow_aliases(0, {0: 0})
+    with pytest.raises(ValueError, match="cycle"):
+        follow_aliases(0, {0: 1, 1: 0}, max_hops=2)
 
 
 def test_rewrite_stream_versioned_requires_source():
