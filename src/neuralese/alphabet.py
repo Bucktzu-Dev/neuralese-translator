@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Sequence
 import numpy as np
 
 from neuralese.adapters import ensure_embedding, stack_embeddings
+from neuralese.aliases import has_alias_cycle
 from neuralese.audit import _schema_errors
 from neuralese.clustering import cluster_survival, kmeans
 from neuralese.contracts import (
@@ -299,6 +300,8 @@ def _match_aliases(
 
 
 def _alias_collision(aliases: Dict[str, Dict[int, int]], codebook: Dict[int, int]) -> bool:
+    if has_alias_cycle(aliases):
+        return True
     for mapping in aliases.values():
         if any(t not in codebook for t in mapping.values()):
             return True
