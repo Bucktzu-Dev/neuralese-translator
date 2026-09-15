@@ -11,6 +11,7 @@ from neuralese.contracts import (
     CERT_POLICIES,
     DECISIONS,
     DECODER_VERSION,
+    LEGACY_ALIAS_KEY,
     SHA256_HEX,
     AuditCertificate,
     GuardSnapshot,
@@ -500,6 +501,8 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
         for source, mapping in pack.aliases.items():
             if not isinstance(source, str) or not source.strip():
                 failures.append("alias source key is not a non-empty string")
+            elif source != LEGACY_ALIAS_KEY and not SHA256_HEX.match(source):
+                failures.append("alias source key is not a pack checksum")
             if not isinstance(mapping, dict):
                 failures.append("alias table is not an object")
                 continue
