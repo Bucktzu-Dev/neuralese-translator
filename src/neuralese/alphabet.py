@@ -83,7 +83,14 @@ def learn_pack(
             "duplicate observation_id values are not a fold path: "
             + ", ".join(repr(x) for x in duplicates)
         )
-    rows = [ensure_embedding(Observation.from_dict(o.to_dict())) for o in observations]
+    rows = []
+    for observation in observations:
+        try:
+            rows.append(
+                ensure_embedding(Observation.from_dict(observation.to_dict()))
+            )
+        except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+            raise ValueError("observation is not learnable") from exc
     X = stack_embeddings(rows)
 
     parent_checksum = None
