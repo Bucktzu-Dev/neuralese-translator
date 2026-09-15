@@ -162,7 +162,6 @@ def test_none_proto_embedding_fails_schema_not_checksum():
 def test_nan_mdl_bits_fails_schema():
     pack = make_pack()
     pack.mdl_bits = float("nan")
-    pack.seal()
     cert = certify(pack)
     assert not cert.integrity_valid
     assert not cert.passed
@@ -516,6 +515,7 @@ def test_nan_receipt_timestamp_fails_schema():
     pack = make_pack(
         guards=None,
         receipts=[Receipt(step="finalize", ok=True, timestamp=float("nan"))],
+        checksum="unsealed",
     )
     cert = certify(pack)
     assert not cert.integrity_valid
@@ -528,6 +528,7 @@ def test_nan_receipt_timestamp_fails_schema():
 def test_nonfinite_receipt_metrics_fail_schema():
     pack = make_pack(
         receipts=[Receipt(step="finalize", ok=True, timestamp=1.0, kappa=float("inf"))],
+        checksum="unsealed",
     )
     cert = certify(pack)
     assert not cert.integrity_valid
@@ -535,7 +536,6 @@ def test_nonfinite_receipt_metrics_fail_schema():
     assert any("receipts[0].kappa is not finite" in f for f in cert.failures)
     pack.receipts[0].kappa = None
     pack.receipts[0].reconstruction_error = float("nan")
-    pack.seal()
     cert = certify(pack)
     assert not cert.passed
     assert any("receipts[0].reconstruction_error is not finite" in f for f in cert.failures)
@@ -913,3 +913,20 @@ def test_loaded_non_string_parent_pack_id_fails_schema_after_reseal():
     assert loaded.parent_pack_id is None
     loaded.seal()
     assert certify(loaded).passed
+
+
+def test_nonfinite_metadata_fails_checksum_not_allow_nan():
+    pack = make_pack()
+    pack.metadata["x"] = float("nan")
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("not JSON-serializable" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    pack.metadata["x"] = float("inf")
+    cert = certify(pack)
+    assert not cert.passed
+    assert any("not JSON-serializable" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
