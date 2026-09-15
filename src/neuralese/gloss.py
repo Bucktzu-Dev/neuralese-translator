@@ -171,14 +171,20 @@ def _has_token_prefix_span(blob: str, prefix: str) -> bool:
 
 def _token_span_in_blob(snippet: str, blob: str) -> bool:
     tokens = _observation_tokens(snippet)
+    dest = _observation_tokens(blob)
     n = len(tokens)
     if n < 2:
         return False
     max_width = min(_MAX_SPAN_WIDTH, n)
-    for width in range(2, max_width + 1):
-        for i in range(0, n - width + 1):
-            span = " ".join(tokens[i : i + width])
-            if span in blob:
+    spans = {
+        tuple(tokens[i : i + width])
+        for width in range(2, max_width + 1)
+        for i in range(0, n - width + 1)
+    }
+    m = len(dest)
+    for width in range(2, min(_MAX_SPAN_WIDTH, m) + 1):
+        for j in range(0, m - width + 1):
+            if tuple(dest[j : j + width]) in spans:
                 return True
     return False
 
@@ -234,7 +240,9 @@ def _contains_raw_observation(
 
 def _heuristic_definition(keywords: List[str], examples: List[str]) -> str:
     if keywords:
-        head = ", ".join(keywords[:4])
+        # Public fallbacks pass examples=[] and must not join multiple
+        # observation tokens into a contiguous span (`red, fox`).
+        head = keywords[0] if not examples else ", ".join(keywords[:4])
         return f"Symbol for {head}."
     if examples:
         snippet = examples[0]
