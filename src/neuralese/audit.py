@@ -272,7 +272,15 @@ def certify(
                     )
                 else:
                     try:
-                        normalized = ensure_embedding(Observation.from_dict(obs.to_dict()))
+                        reconstructed = Observation.from_dict(obs.to_dict())
+                    except (TypeError, ValueError, OverflowError):
+                        evidence_valid = False
+                        failures.append(
+                            f"observation {obs_id!r} evidence content is not verifiable"
+                        )
+                        continue
+                    try:
+                        normalized = ensure_embedding(reconstructed)
                     except ValueError:
                         evidence_valid = False
                         failures.append(
