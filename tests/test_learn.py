@@ -415,6 +415,32 @@ def test_load_stream_rejects_unusable_codes(tmp_path):
         load_stream(path)
 
 
+def test_json_loaders_reject_recursive_payloads(tmp_path):
+    from unittest.mock import patch
+
+    from neuralese.adapters import load_observations_jsonl, load_pack, load_stream
+
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text("{}\n")
+    with patch("neuralese.adapters.json.loads", side_effect=RecursionError("nested")):
+        with pytest.raises(ValueError, match="invalid JSON"):
+            load_observations_jsonl(obs)
+    stream = tmp_path / "stream.json"
+    stream.write_text("[]\n")
+    with patch("neuralese.adapters.json.loads", side_effect=RecursionError("nested")):
+        with pytest.raises(ValueError, match="stream file"):
+            load_stream(stream)
+    pack = tmp_path / "pack.json"
+    pack.write_text("{}\n")
+    with patch("neuralese.adapters.json.loads", side_effect=RecursionError("nested")):
+        with pytest.raises(ValueError, match="invalid pack"):
+            load_pack(pack)
+    deep = tmp_path / "deep.json"
+    deep.write_text('{"a":' * 10000 + "1" + "}" * 10000)
+    with pytest.raises(ValueError, match="invalid pack"):
+        load_pack(deep)
+
+
 def test_learn_unsealed_parent_is_rejected():
     obs = load_observations_jsonl(TOY)
     first = learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
@@ -577,4 +603,3 @@ def test_learn_pack_rejects_cyclic_observation_metadata():
     obs[0].metadata["self"] = obs[0].metadata
     with pytest.raises(ValueError, match="not learnable"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
-
