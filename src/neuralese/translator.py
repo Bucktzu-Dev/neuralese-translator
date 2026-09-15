@@ -84,7 +84,11 @@ def translate_stream(
                     pack_checksum=pack.checksum,
                     class_id=symbol.class_id,
                     resolved_code=resolved,
-                    observation_ids=list(symbol.observation_ids),
+                    observation_ids=(
+                        list(symbol.observation_ids)
+                        if isinstance(symbol.observation_ids, (list, tuple))
+                        else []
+                    ),
                 )
             )
             continue
@@ -106,7 +110,11 @@ def translate_stream(
                 pack_checksum=pack.checksum,
                 class_id=symbol.class_id,
                 resolved_code=resolved,
-                observation_ids=list(symbol.observation_ids),
+                observation_ids=(
+                    list(symbol.observation_ids)
+                    if isinstance(symbol.observation_ids, (list, tuple))
+                    else []
+                ),
             )
         )
     return glosses
