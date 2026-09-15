@@ -374,9 +374,9 @@ def certify(
 
     live = list(iter_live_symbols(pack))
     return AuditCertificate(
-        pack_id=pack.pack_id,
+        pack_id=pack.pack_id if isinstance(pack.pack_id, str) else "",
         pack_checksum=pack.checksum if isinstance(pack.checksum, str) else "",
-        expected_checksum=expected,
+        expected_checksum=expected if isinstance(expected, str) else "",
         passed=passed,
         integrity_valid=integrity_valid,
         evidence_valid=evidence_valid,
@@ -407,10 +407,10 @@ def certify(
                 else 0
             ),
             "n_evidence": len(pack.evidence) if isinstance(pack.evidence, dict) else 0,
-            "reconstruction_error": pack.reconstruction_error,
-            "tau_residual": tau_residual,
+            "reconstruction_error": _json_safe_real(pack.reconstruction_error),
+            "tau_residual": _json_safe_real(tau_residual),
             "require_gloss": require_gloss,
-            "mdl_bits": pack.mdl_bits,
+            "mdl_bits": _json_safe_real(pack.mdl_bits),
             "decision": pack.decision if isinstance(pack.decision, str) else None,
             "decoder_version": (
                 pack.decoder_version if isinstance(pack.decoder_version, str) else None
@@ -450,7 +450,11 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
     if isinstance(pack.receipts, (str, bytes)) or not isinstance(pack.receipts, (list, tuple)):
         failures.append("receipts is not an array")
         return False
-    finalize = [r for r in pack.receipts if isinstance(r, Receipt) and r.step == "finalize"]
+    finalize = [
+        r
+        for r in pack.receipts
+        if isinstance(r, Receipt) and isinstance(r.step, str) and r.step == "finalize"
+    ]
     if not finalize and not isinstance(pack.guards, GuardSnapshot):
         failures.append("admission artifacts are missing")
         return False
@@ -464,7 +468,8 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
             return False
         recorded = finalize[-1].metadata
         if isinstance(recorded, dict) and "decision" in recorded:
-            if recorded.get("decision") != decision:
+            recorded_decision = recorded.get("decision")
+            if not isinstance(recorded_decision, str) or recorded_decision != decision:
                 failures.append(
                     "finalize receipt decision does not match pack.decision"
                 )
@@ -665,7 +670,11 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
             else:
                 for index, example in enumerate(examples):
                     digest = hashes[index]
-                    if not isinstance(example, str) or example_hash(example) != digest:
+                    if (
+                        not isinstance(example, str)
+                        or not isinstance(digest, str)
+                        or example_hash(example) != digest
+                    ):
                         failures.append(
                             f"class {symbol.class_id} example_hashes[{index}] does not match examples"
                         )
@@ -710,6 +719,12 @@ def _finite(value: object) -> bool:
         return math.isfinite(float(value))
     except (TypeError, ValueError, OverflowError):
         return False
+
+
+def _json_safe_real(value: object) -> object:
+    if _real_number(value) and _finite(value):
+        return float(value)
+    return None
 
 
 def _unique(items: List[str]) -> List[str]:
