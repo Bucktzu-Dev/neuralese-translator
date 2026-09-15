@@ -46,9 +46,9 @@ If step 3 is empty, the symbol is not certified. Quarantine it or refuse the pac
 English is sealed into the pack checksum with the class id.
 
 - A gloss without a pack checksum is commentary, not an audit.
-- Changing the sentence without resealing **must** fail `certify()` **and** `translate()`.
+- Changing the sentence without resealing **must** fail `certify()` **and** default `translate()`. `--allow-uncertified` / `require_certified=False` is an explicit debug override and is not an audit.
 - An optional LLM may draft the sentence. The certificate does not depend on the vendor.
-- Translation does not run unless a named certification policy passes.
+- Default translation does not run unless a named certification policy passes. `integrity` never authorizes English.
 
 Unglossed but unfoldable symbols are still better than hallucinated English. The translator emits `[unglossed: …]` rather than a plausible lie.
 
