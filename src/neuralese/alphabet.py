@@ -127,6 +127,10 @@ def learn_pack(
             raise ValueError(
                 "previous pack checksum does not match its semantic manifest"
             ) from exc
+        if old_protos.ndim != 2 or old_protos.shape[1] != X.shape[1]:
+            raise ValueError(
+                "previous pack prototypes do not match observation dimensionality"
+            )
     survivals = cluster_survival(
         old_protos if old_protos is not None else np.zeros((0, X.shape[1])),
         centroids,
