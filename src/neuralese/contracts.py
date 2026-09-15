@@ -51,8 +51,18 @@ def _alias_key(value: Any) -> Any:
     return value
 
 
-def _copy_alias_table(mapping: Dict[Any, Any]) -> Dict[Any, Any]:
-    return {_alias_key(key): value for key, value in mapping.items()}
+def _alias_source_key_ok(src: Any) -> bool:
+    return src == LEGACY_ALIAS_KEY or (
+        isinstance(src, str) and bool(SHA256_HEX.match(src))
+    )
+
+
+def _copy_alias_table(
+    mapping: Dict[Any, Any], *, coerce_json_keys: bool = False
+) -> Dict[Any, Any]:
+    if coerce_json_keys:
+        return {_alias_key(key): value for key, value in mapping.items()}
+    return dict(mapping)
 
 
 def _copy_codebook(raw: Any) -> Any:
@@ -227,7 +237,7 @@ def _load_decision(data: Dict[str, Any], metadata: Dict[str, Any]) -> str:
     return "accept"
 
 
-def normalize_aliases(raw: Any) -> AliasTables:
+def normalize_aliases(raw: Any, *, coerce_json_keys: bool = False) -> AliasTables:
     """Accept legacy {code: code} or versioned {source_checksum: {old: new}}."""
     if raw is None:
         return {}
@@ -243,13 +253,21 @@ def normalize_aliases(raw: Any) -> AliasTables:
         tables: AliasTables = {}
         for src, mapping in raw.items():
             if not isinstance(src, str):
-                tables[src] = _copy_alias_table(mapping)
+                tables[src] = _copy_alias_table(
+                    mapping, coerce_json_keys=coerce_json_keys
+                )
                 continue
             if not src:
                 raise ValueError("alias source keys must be non-empty")
-            tables[src] = _copy_alias_table(mapping)
+            if not _alias_source_key_ok(src):
+                raise ValueError("alias source keys must be legacy or SHA-256")
+            tables[src] = _copy_alias_table(
+                mapping, coerce_json_keys=coerce_json_keys
+            )
         return tables
-    return {LEGACY_ALIAS_KEY: _copy_alias_table(raw)}
+    return {
+        LEGACY_ALIAS_KEY: _copy_alias_table(raw, coerce_json_keys=coerce_json_keys)
+    }
 
 
 def select_alias_table(
@@ -260,7 +278,12 @@ def select_alias_table(
 ) -> Dict[int, int]:
     """Pick one alias table. The reserved legacy key is never an explicit source."""
     if source_pack_checksum is not None:
-        if not source_pack_checksum or source_pack_checksum == LEGACY_ALIAS_KEY:
+        if (
+            not isinstance(source_pack_checksum, str)
+            or not source_pack_checksum
+            or source_pack_checksum == LEGACY_ALIAS_KEY
+            or not SHA256_HEX.match(source_pack_checksum)
+        ):
             return {}
         if source_pack_checksum in aliases:
             return dict(aliases[source_pack_checksum])
@@ -280,6 +303,8 @@ def aliases_to_dict(aliases: AliasTables) -> Any:
     for src, mapping in items:
         if not isinstance(src, str) or not src:
             raise TypeError("alias source keys must be non-empty strings")
+        if not _alias_source_key_ok(src):
+            raise TypeError("alias source keys must be legacy or SHA-256")
         if not isinstance(mapping, dict):
             serialized[src] = mapping
             continue
@@ -560,7 +585,7 @@ class SymbolPack:
                 for s in symbols_raw
             ],
             codebook=_copy_codebook(data["codebook"] if "codebook" in data else {}),
-            aliases=normalize_aliases(aliases_raw),
+            aliases=normalize_aliases(aliases_raw, coerce_json_keys=True),
             reconstruction_error=_present_value(data, "reconstruction_error", 0.0),
             checksum=_present_value(data, "checksum", ""),
             parent_pack_id=data.get("parent_pack_id"),
