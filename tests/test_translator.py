@@ -160,3 +160,8 @@ def test_rewrite_stream_rejects_falsey_non_mapping_aliases():
         with pytest.raises(ValueError, match="aliases must be a mapping"):
             rewrite_stream([7], aliases)
     assert rewrite_stream([7], {}) == [7]
+
+
+def test_rewrite_stream_reuses_shared_alias_suffixes():
+    table = {0: 2, 1: 2, 2: 4}
+    assert rewrite_stream([0, 1, 2, 9], table) == [4, 4, 4, 9]
