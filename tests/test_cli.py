@@ -134,6 +134,41 @@ def test_cli_allow_uncertified_malformed_confidence_is_clean_failure(tmp_path, c
     assert captured.err.strip()
 
 
+def test_cli_allow_uncertified_overflowing_alias_is_clean_failure(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    stream = tmp_path / "stream.json"
+    rc = main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["aliases"] = {"legacy": {"7": 1e309}}
+    payload = json.dumps(data).replace("Infinity", "1e309")
+    pack_path.write_text(payload + "\n")
+    stream.write_text("[7]\n")
+    rc = main(
+        [
+            "translate",
+            str(pack_path),
+            str(stream),
+            "--allow-uncertified",
+        ]
+    )
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Traceback" not in captured.err
+    assert captured.err.strip()
+
+
 def test_cli_translate_failed_certificate_goes_to_stderr(tmp_path, capsys):
     pack_path = tmp_path / "pack.json"
     main(
