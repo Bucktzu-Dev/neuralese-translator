@@ -28,6 +28,7 @@ STOP = {
 
 UNGLOSSED = "[unglossed]"
 _TOKEN = re.compile(r"[a-zA-Z][a-zA-Z0-9']+")
+_PAYLOAD_TOKEN = re.compile(r"[^\W_]+(?:'[^\W_]+)*", re.UNICODE)
 
 
 def learn_definition(
@@ -126,7 +127,7 @@ def _public_keywords(keywords: Sequence[str], texts: Sequence[str]) -> List[str]
 
 def _observation_tokens(text: str) -> List[str]:
     snippet = _normalized_text(text)
-    words = _TOKEN.findall(snippet)
+    words = _PAYLOAD_TOKEN.findall(snippet)
     if words:
         return words
     return re.findall(r"[a-z0-9]+", snippet)
@@ -135,8 +136,11 @@ def _observation_tokens(text: str) -> List[str]:
 def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
     """Full observations and single-token payloads that would reproduce raw text.
 
-    Multi-token spans are checked against the definition in
-    `_contains_raw_observation` without materializing an O(n²) set.
+    Keyword extraction still uses `_TOKEN`. Payload tokens that `_TOKEN`
+    rejects (1-char, numeric, non-ASCII) are blocked as forms so they cannot
+    land in a public definition. Multi-token spans are checked against the
+    definition in `_contains_raw_observation` without materializing an O(n²)
+    set.
     """
     blocked: Set[str] = set()
     for text in texts:
@@ -144,19 +148,18 @@ def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
         if not snippet:
             continue
         blocked.add(snippet)
-        words = _TOKEN.findall(snippet)
+        words = _observation_tokens(snippet)
         if len(words) == 1:
             blocked.add(words[0])
-        alnum = re.findall(r"[a-z0-9]+", snippet)
-        if len(alnum) == 1:
-            blocked.add(alnum[0])
+        for word in words:
+            if not _TOKEN.fullmatch(word):
+                blocked.add(word)
     return blocked
 
 
 _WINDOW = 8
 _SHORT_PREFIX_MIN = 3
 _SHORT_PREFIX_MAX = 7
-_MAX_SPAN_TOKENS = 64
 _MAX_SPAN_WIDTH = 8
 
 
@@ -168,17 +171,12 @@ def _has_token_prefix_span(blob: str, prefix: str) -> bool:
 
 def _token_span_in_blob(snippet: str, blob: str) -> bool:
     tokens = _observation_tokens(snippet)
-    n = min(len(tokens), _MAX_SPAN_TOKENS)
+    n = len(tokens)
     if n < 2:
         return False
-    acc = tokens[0]
-    for k in range(1, n):
-        acc = f"{acc} {tokens[k]}"
-        if acc in blob:
-            return True
     max_width = min(_MAX_SPAN_WIDTH, n)
     for width in range(2, max_width + 1):
-        for i in range(1, n - width + 1):
+        for i in range(0, n - width + 1):
             span = " ".join(tokens[i : i + width])
             if span in blob:
                 return True
