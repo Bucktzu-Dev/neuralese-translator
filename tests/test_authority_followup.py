@@ -930,3 +930,33 @@ def test_nonfinite_metadata_fails_checksum_not_allow_nan():
     assert any("not JSON-serializable" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
+
+
+def test_supplied_non_string_observation_id_fails_evidence():
+    pack = make_pack()
+    cert = certify(
+        pack,
+        observations=[
+            Observation(observation_id=1, text="hello there"),
+            Observation(observation_id="1", text="different content entirely"),
+        ],
+    )
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("supplied observation_id 1 is not a string" in f for f in cert.failures)
+    assert not any("duplicate observation_id" in f for f in cert.failures)
+
+
+def test_nonfinite_supplied_embedding_fails_evidence_not_value_error():
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    obs = Observation(observation_id=obs_id, embedding=[1.0], text="hello there")
+    obs.embedding = [float("nan")]
+    cert = certify(pack, observations=[obs])
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("evidence content is not verifiable" in f for f in cert.failures)
+    obs.embedding = [float("inf")]
+    cert = certify(pack, observations=[obs])
+    assert not cert.passed
+    assert any("evidence content is not verifiable" in f for f in cert.failures)
