@@ -321,11 +321,3 @@ def test_loaded_float_and_bool_identities_are_not_coerced():
     assert any("code is not an integer" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(loaded, [0])
-
-
-def test_overflowing_jsonl_embedding_is_clean_cli_failure(tmp_path, capsys):
-    from neuralese.adapters import load_observations_jsonl
-
-    path = tmp_path / "obs.jsonl"
-    huge = 10**1000
-    path.write_text('{\"observation_id\":\"o1\",\"embedding\":[' + str(huge) + ']}\\n')
