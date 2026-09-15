@@ -413,6 +413,9 @@ def _admission_valid(pack: SymbolPack, policy: str, failures: List[str]) -> bool
         failures.append("receipts is not an array")
         return False
     finalize = [r for r in pack.receipts if isinstance(r, Receipt) and r.step == "finalize"]
+    if not finalize and not isinstance(pack.guards, GuardSnapshot):
+        failures.append("admission artifacts are missing")
+        return False
     if finalize:
         ok = finalize[-1].ok
         if not isinstance(ok, bool):
