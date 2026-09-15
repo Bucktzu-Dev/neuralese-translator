@@ -1525,3 +1525,48 @@ def test_explicit_null_receipts_are_not_normalized_to_empty():
     omitted = dict(pack.to_dict())
     del omitted["receipts"]
     assert pack.from_dict(omitted).receipts == []
+
+
+def test_alias_resolution_is_linear_and_reuses_shared_suffixes():
+    from neuralese.aliases import resolve_alias_table
+
+    class CountingMap(dict):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.lookups = 0
+
+        def __getitem__(self, key):
+            self.lookups += 1
+            return super().__getitem__(key)
+
+    n = 80
+    chain = CountingMap({i: i + 1 for i in range(n)})
+    terminals = resolve_alias_table(chain)
+    assert terminals[0] == n
+    assert terminals[n - 1] == n
+    assert chain.lookups <= 2 * n
+
+    shared = CountingMap({0: 2, 1: 2, 2: 4})
+    resolved = resolve_alias_table(shared)
+    assert resolved == {0: 4, 1: 4, 2: 4}
+    assert shared.lookups <= 6
+
+    aliases = {i: i + 1 for i in range(1, n)}
+    aliases[n] = 0
+    pack = make_pack(aliases={"legacy": aliases})
+    cert = certify(pack)
+    assert cert.addressable, cert.failures
+    live = CountingMap(aliases)
+    pack.aliases = {"legacy": live}
+    cert = certify(pack)
+    assert cert.addressable, cert.failures
+    assert live.lookups <= 2 * n
+
+
+def test_alias_cycle_still_fails_addressability():
+    pack = make_pack(aliases={"legacy": {0: 1, 1: 0}}, checksum="unsealed")
+    pack.seal()
+    cert = certify(pack)
+    assert cert.addressable is False
+    assert cert.passed is False
+    assert any("alias map contains a cycle" in f for f in cert.failures)
