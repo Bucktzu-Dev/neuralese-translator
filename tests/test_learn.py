@@ -570,3 +570,4 @@ def test_learn_parent_recursive_private_examples_is_clean_value_error():
     first.symbols[0].examples = cyclic
     with pytest.raises(ValueError, match="does not match"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
+
