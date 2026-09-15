@@ -960,3 +960,38 @@ def test_nonfinite_supplied_embedding_fails_evidence_not_value_error():
     cert = certify(pack, observations=[obs])
     assert not cert.passed
     assert any("evidence content is not verifiable" in f for f in cert.failures)
+
+
+def test_loaded_null_observation_ids_are_not_normalized_to_empty():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["observation_ids"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].observation_ids is None
+    dumped = loaded.to_dict()
+    assert dumped["symbols"][0]["observation_ids"] is None
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("observation_ids is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+    data["symbols"][0]["quarantined"] = True
+    loaded = pack.from_dict(data)
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("observation_ids is not an array" in f for f in cert.failures)
+    del data["symbols"][0]["observation_ids"]
+    omitted = pack.from_dict(data)
+    assert omitted.symbols[0].observation_ids == []
+
+
+def test_boolean_embedding_elements_are_rejected_before_float():
+    with pytest.raises(TypeError, match="embedding must contain numbers"):
+        Observation(observation_id="o1", embedding=[True])
+    with pytest.raises(TypeError, match="embedding must contain numbers"):
+        Observation.from_dict({"observation_id": "o1", "embedding": [False, 1.0]})
+    obs = Observation(observation_id="o1", embedding=[1.0, 0.0])
+    assert obs.embedding == [1.0, 0.0]
