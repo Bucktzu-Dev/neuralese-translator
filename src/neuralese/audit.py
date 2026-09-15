@@ -203,7 +203,14 @@ def certify(
         provided = {}
         duplicate_ids: Set[str] = set()
         for obs in observations:
-            oid = str(obs.observation_id)
+            oid = obs.observation_id
+            if not isinstance(oid, str):
+                evidence_valid = False
+                unfoldable = False
+                failures.append(
+                    f"supplied observation_id {oid!r} is not a string"
+                )
+                continue
             if oid in provided:
                 duplicate_ids.add(oid)
             provided[oid] = obs
@@ -278,7 +285,15 @@ def certify(
                             f"observation {obs_id!r} evidence content is not verifiable"
                         )
                         continue
-                    if normalized.content_hash() != digest:
+                    try:
+                        matched = normalized.content_hash() == digest
+                    except (TypeError, ValueError, OverflowError):
+                        evidence_valid = False
+                        failures.append(
+                            f"observation {obs_id!r} evidence content is not verifiable"
+                        )
+                        continue
+                    if not matched:
                         evidence_valid = False
                         failures.append(
                             f"observation {obs_id!r} evidence hash does not match content"
