@@ -18,7 +18,13 @@ AliasTables = Dict[str, Dict[int, int]]
 
 
 def canonical_dumps(obj: Any) -> str:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return json.dumps(
+        obj,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    )
 
 
 def sha256_hex(obj: Any) -> str:
@@ -259,7 +265,7 @@ def observation_content_hash(
     values = [] if embedding is None else embedding
     return sha256_hex(
         {
-            "observation_id": str(observation_id),
+            "observation_id": observation_id,
             "embedding": round_vec(values),
             "text": text,
         }
@@ -279,7 +285,6 @@ class Observation:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        self.observation_id = str(self.observation_id)
         if self.text is not None and not isinstance(self.text, str):
             raise TypeError("text must be a string or null")
         if self.embedding is None:
@@ -311,7 +316,7 @@ class Observation:
         if text is not None and not isinstance(text, str):
             raise TypeError("text must be a string or null")
         return cls(
-            observation_id=str(data["observation_id"]),
+            observation_id=data["observation_id"],
             embedding=[float(x) for x in raw_embedding],
             text=text,
             metadata=dict(data.get("metadata") or {}),
