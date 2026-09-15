@@ -571,3 +571,10 @@ def test_learn_parent_recursive_private_examples_is_clean_value_error():
     with pytest.raises(ValueError, match="does not match"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0), previous=first)
 
+
+def test_learn_pack_rejects_cyclic_observation_metadata():
+    obs = load_observations_jsonl(TOY)
+    obs[0].metadata["self"] = obs[0].metadata
+    with pytest.raises(ValueError, match="not learnable"):
+        learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
+
