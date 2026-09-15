@@ -1409,3 +1409,74 @@ def test_shared_nested_metadata_objects_are_not_treated_as_cycles():
     assert pack.metadata["left"]["tau_residual"] == 0.55
     assert dumped["metadata"]["right"]["tau_residual"] == 0.55
     assert dumped["metadata"]["left"] is not dumped["metadata"]["right"]
+
+def test_tiny_negative_residual_fails_residual_ok_not_rounding():
+    pack = make_pack(reconstruction_error=-1e-9)
+    cert = certify(pack)
+    assert cert.residual_ok is False
+    assert cert.integrity_valid is False
+    assert cert.passed is False
+    assert any("negative" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_finalize_metadata_decision_must_match_pack_decision():
+    pack = make_pack(
+        decision="accept",
+        receipts=[
+            Receipt(
+                step="finalize",
+                ok=True,
+                timestamp=1.0,
+                metadata={"decision": "reject"},
+            )
+        ],
+    )
+    cert = certify(pack)
+    assert cert.admission_valid is False
+    assert cert.passed is False
+    assert any(
+        "finalize receipt decision does not match pack.decision" in f
+        for f in cert.failures
+    )
+    integrity = certify(pack, policy="integrity")
+    assert integrity.passed
+    assert not integrity.admission_valid
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    aligned = make_pack(
+        decision="accept",
+        receipts=[
+            Receipt(
+                step="finalize",
+                ok=True,
+                timestamp=1.0,
+                metadata={"decision": "accept"},
+            )
+        ],
+    )
+    assert certify(aligned).passed
+    missing = make_pack(
+        receipts=[Receipt(step="finalize", ok=True, timestamp=1.0)],
+    )
+    assert certify(missing).passed
+
+
+def test_non_mapping_aliases_cannot_be_serialized():
+    pack = make_pack()
+    pack.aliases = None
+    cert = certify(pack)
+    assert cert.integrity_valid is False
+    assert cert.passed is False
+    assert any("aliases is not an object" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="aliases is not an object"):
+        pack.to_dict()
+    with pytest.raises(TypeError, match="aliases is not an object"):
+        pack.seal()
+    pack = make_pack()
+    pack.aliases = []
+    cert = certify(pack)
+    assert not cert.passed
+    with pytest.raises(TypeError, match="aliases is not an object"):
+        pack.to_dict()
