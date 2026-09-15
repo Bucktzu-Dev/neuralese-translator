@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import numbers
 import re
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -95,6 +96,9 @@ def _load_evidence(data: Dict[str, Any]) -> Any:
 def _serialize_evidence(evidence: Any, *, sort_keys: bool = False) -> Any:
     if not isinstance(evidence, dict):
         return evidence
+    for key in evidence:
+        if not isinstance(key, str):
+            raise TypeError("evidence keys must be strings")
     if sort_keys:
         return {k: evidence[k] for k in sorted(evidence)}
     return dict(evidence)
@@ -108,7 +112,9 @@ def _copy_seq(value: Any) -> Any:
 
 def _copy_mapping(value: Any) -> Any:
     if isinstance(value, dict):
-        return dict(value)
+        return {key: _copy_mapping(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_copy_mapping(item) for item in value]
     return value
 
 
@@ -200,7 +206,7 @@ def _embedding_values(values: Any) -> List[float]:
         raise TypeError("embedding must be an array or null") from exc
     out: List[float] = []
     for x in items:
-        if isinstance(x, bool) or not isinstance(x, (int, float)):
+        if isinstance(x, bool) or not isinstance(x, numbers.Real):
             raise TypeError("embedding must contain numbers")
         try:
             value = float(x)
