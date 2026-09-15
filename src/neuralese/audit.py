@@ -175,16 +175,18 @@ def certify(
             )
 
     gloss_bound = checksum_ok
-    if require_gloss:
-        for symbol in iter_live_symbols(pack):
-            if symbol.definition is not None and not isinstance(symbol.definition, str):
-                gloss_bound = False
-                failures.append(f"class {symbol.class_id} definition is not a string")
-                continue
-            definition = (symbol.definition or "").strip()
-            if not definition or definition == UNGLOSSED:
-                gloss_bound = False
-                failures.append(f"class {symbol.class_id} has no bound English gloss")
+    for symbol in iter_live_symbols(pack):
+        if symbol.definition is not None and not isinstance(symbol.definition, str):
+            gloss_bound = False
+            failures.append(f"class {symbol.class_id} definition is not a string")
+            continue
+        definition = (symbol.definition or "").strip()
+        if not definition:
+            gloss_bound = False
+            failures.append(f"class {symbol.class_id} has no bound English gloss")
+        elif require_gloss and definition == UNGLOSSED:
+            gloss_bound = False
+            failures.append(f"class {symbol.class_id} has no bound English gloss")
 
     integrity_valid = schema_ok and addressable and checksum_ok and residual_ok and gloss_bound
 
@@ -396,6 +398,8 @@ def _schema_errors(pack: SymbolPack, tau_residual: float) -> tuple[bool, List[st
     failures: List[str] = []
     if not isinstance(pack.pack_id, str):
         failures.append("pack_id is not a string")
+    if pack.parent_pack_id is not None and not isinstance(pack.parent_pack_id, str):
+        failures.append("parent_pack_id is not a string")
     if pack.decoder_version != DECODER_VERSION:
         failures.append(
             f"decoder_version {pack.decoder_version!r} is not this decoder "
