@@ -6,6 +6,7 @@ import json
 import math
 import numbers
 import re
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -49,6 +50,15 @@ def _alias_key(value: Any) -> Any:
         if body.isdigit() and body:
             return int(value)
     return value
+
+
+def _numeric_alias_key(value: Any) -> bool:
+    if _integral_code(value):
+        return True
+    if not isinstance(value, str):
+        return False
+    body = value[1:] if value.startswith("-") else value
+    return bool(body.isdigit() and body)
 
 
 def _alias_source_key_ok(src: Any) -> bool:
@@ -235,6 +245,8 @@ def _embedding_values(values: Any) -> List[float]:
         return []
     if isinstance(values, (str, bytes)):
         raise TypeError("embedding must be an array or null")
+    if isinstance(values, Mapping) or isinstance(values, (set, frozenset)):
+        raise TypeError("embedding must be an array or null")
     try:
         items = list(values)
     except TypeError as exc:
@@ -293,6 +305,8 @@ def normalize_aliases(raw: Any, *, coerce_json_keys: bool = False) -> AliasTable
     for src, mapping in raw.items():
         if _alias_source_key_ok(src) and not isinstance(mapping, dict):
             raise ValueError("alias source keys must map to an alias table")
+        if isinstance(src, str) and not _numeric_alias_key(src):
+            raise ValueError("alias source keys must be legacy or SHA-256")
     return {
         LEGACY_ALIAS_KEY: _copy_alias_table(raw, coerce_json_keys=coerce_json_keys)
     }
@@ -499,14 +513,14 @@ class Symbol:
             "metadata": _copy_mapping(self.metadata),
         }
         if include_private is True:
-            payload["examples"] = list(self.examples)
+            payload["examples"] = _copy_seq(self.examples)
         return payload
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any], *, include_private: bool = False) -> "Symbol":
         if not isinstance(data, dict):
             raise TypeError("symbol record must be an object")
-        examples = _string_id_list(data, "examples")
+        examples = _string_id_list(data, "examples", preserve_null=True)
         if include_private is not True:
             examples = []
         if "example_hashes" not in data:
