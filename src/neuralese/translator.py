@@ -34,7 +34,7 @@ def translate_stream(
     Residual admission uses the caller `tau_residual` (default 0.55), never a
     threshold persisted in pack metadata.
     """
-    if policy not in TRANSLATION_POLICIES:
+    if policy == "integrity" or policy not in TRANSLATION_POLICIES:
         raise ValueError(
             f"policy {policy!r} does not authorize translation; "
             f"use one of {TRANSLATION_POLICIES}"
