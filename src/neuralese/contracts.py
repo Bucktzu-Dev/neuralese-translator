@@ -222,12 +222,12 @@ def _string_id_list(
     return ids
 
 
-def _receipts_list(data: Dict[str, Any]) -> List[Any]:
+def _receipts_list(data: Dict[str, Any]) -> Any:
     if "receipts" not in data:
         return []
     raw = data["receipts"]
     if raw is None:
-        return []
+        return None
     if isinstance(raw, (str, bytes)) or not isinstance(raw, (list, tuple)):
         raise TypeError("receipts must be an array")
     return list(raw)
@@ -597,6 +597,8 @@ class SymbolPack:
     include_private: bool = False
 
     def __post_init__(self) -> None:
+        if self.aliases is None:
+            return
         self.aliases = normalize_aliases(self.aliases)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -611,7 +613,9 @@ class SymbolPack:
             "checksum": self.checksum,
             "parent_pack_id": self.parent_pack_id,
             "parent_checksum": self.parent_checksum,
-            "receipts": [r.to_dict() for r in self.receipts],
+            "receipts": None
+            if self.receipts is None
+            else [r.to_dict() for r in self.receipts],
             "guards": None if self.guards is None else self.guards.to_dict(),
             "mdl_bits": self.mdl_bits,
             "timestamp": self.timestamp,
@@ -638,11 +642,16 @@ class SymbolPack:
             if not isinstance(guards_raw, dict):
                 raise TypeError("guards must be an object or null")
             guards = GuardSnapshot.from_dict(guards_raw)
-        if "aliases" not in data or data["aliases"] is None:
+        if "aliases" not in data:
             aliases_raw: Any = {}
         else:
             aliases_raw = data["aliases"]
         include_private = data["include_private"] if "include_private" in data else False
+        raw_receipts = _receipts_list(data)
+        if raw_receipts is None:
+            receipts: Any = None
+        else:
+            receipts = [Receipt.from_dict(r) for r in raw_receipts]
         return cls(
             pack_id=data["pack_id"],
             symbols=[
@@ -650,12 +659,16 @@ class SymbolPack:
                 for s in symbols_raw
             ],
             codebook=_copy_codebook(data["codebook"] if "codebook" in data else {}),
-            aliases=normalize_aliases(aliases_raw, coerce_json_keys=True),
+            aliases=(
+                None
+                if aliases_raw is None
+                else normalize_aliases(aliases_raw, coerce_json_keys=True)
+            ),
             reconstruction_error=_present_value(data, "reconstruction_error", 0.0),
             checksum=_present_value(data, "checksum", ""),
             parent_pack_id=data.get("parent_pack_id"),
             parent_checksum=data.get("parent_checksum"),
-            receipts=[Receipt.from_dict(r) for r in _receipts_list(data)],
+            receipts=receipts,
             guards=guards,
             mdl_bits=_present_value(data, "mdl_bits", 0.0),
             timestamp=_present_value(data, "timestamp", 0.0),
@@ -683,7 +696,9 @@ class SymbolPack:
             "reconstruction_error": _round_real(self.reconstruction_error),
             "mdl_bits": _round_real(self.mdl_bits),
             "guards": None if self.guards is None else self.guards.to_dict(),
-            "receipts": [r.to_dict() for r in self.receipts],
+            "receipts": None
+            if self.receipts is None
+            else [r.to_dict() for r in self.receipts],
             "evidence": _serialize_evidence(self.evidence, sort_keys=True),
             "metadata": self.metadata,
             "include_private": self.include_private,
