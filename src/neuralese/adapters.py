@@ -50,7 +50,7 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
                 continue
             try:
                 data = json.loads(raw)
-            except json.JSONDecodeError as exc:
+            except (json.JSONDecodeError, RecursionError) as exc:
                 raise ValueError(f"{path}:{line_no} invalid JSON") from exc
             if not isinstance(data, dict):
                 raise ValueError(
@@ -90,7 +90,12 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
 
 
 def load_stream(path: PathLike) -> List[int]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(
+            "stream file must be a JSON list or an object with a codes array"
+        ) from exc
     if isinstance(payload, dict) and "codes" in payload:
         codes = payload["codes"]
     elif isinstance(payload, list):
@@ -124,12 +129,20 @@ def save_pack(pack: SymbolPack, path: PathLike) -> None:
 
 
 def load_pack(path: PathLike) -> SymbolPack:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"invalid pack in {path}")
     try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"invalid pack in {path}")
         return SymbolPack.from_dict(data)
-    except (TypeError, ValueError, KeyError, AttributeError, OverflowError) as exc:
+    except (
+        TypeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        OverflowError,
+        RecursionError,
+        json.JSONDecodeError,
+    ) as exc:
         raise ValueError(f"invalid pack in {path}") from exc
 
 
