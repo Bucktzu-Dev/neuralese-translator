@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import List, Optional
@@ -12,6 +13,20 @@ from neuralese.alphabet import LearnConfig, learn_pack
 from neuralese.audit import certify
 from neuralese.contracts import CERT_POLICIES, UncertifiedPackError
 from neuralese.translator import translate_stream
+
+
+def _tau_residual_arg(raw: str) -> float:
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "tau-residual must be a finite non-negative real"
+        ) from exc
+    if not math.isfinite(value) or value < 0:
+        raise argparse.ArgumentTypeError(
+            "tau-residual must be a finite non-negative real"
+        )
+    return value
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -27,7 +42,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     learn_p.add_argument("--n-symbols", type=int, default=8)
     learn_p.add_argument("--parent", type=Path, default=None, help="previous SymbolPack for aliases/ΔMDL")
     learn_p.add_argument("--min-cluster-size", type=int, default=2)
-    learn_p.add_argument("--tau-residual", type=float, default=0.55)
+    learn_p.add_argument("--tau-residual", type=_tau_residual_arg, default=0.55)
     learn_p.add_argument("--seed", type=int, default=0)
     learn_p.add_argument(
         "--include-private",
@@ -56,14 +71,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     tr_p.add_argument(
         "--tau-residual",
-        type=float,
+        type=_tau_residual_arg,
         default=0.55,
         help="operator residual gate for certification; not read from pack metadata",
     )
 
     audit_p = sub.add_parser("audit", help="print an AuditCertificate for a pack")
     audit_p.add_argument("pack", type=Path)
-    audit_p.add_argument("--tau-residual", type=float, default=0.55)
+    audit_p.add_argument("--tau-residual", type=_tau_residual_arg, default=0.55)
     audit_p.add_argument("--allow-unglossed", action="store_true")
     audit_p.add_argument(
         "--policy",
@@ -80,7 +95,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     cert_p = sub.add_parser("certify", help="certify a pack; optionally fail closed")
     cert_p.add_argument("pack", type=Path)
     cert_p.add_argument("--fail-on-undecodable", action="store_true")
-    cert_p.add_argument("--tau-residual", type=float, default=0.55)
+    cert_p.add_argument("--tau-residual", type=_tau_residual_arg, default=0.55)
     cert_p.add_argument("--allow-unglossed", action="store_true")
     cert_p.add_argument(
         "--policy",
