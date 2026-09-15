@@ -1047,3 +1047,74 @@ def test_pack_to_dict_detaches_metadata():
     assert dumped["metadata"] == []
     with pytest.raises(TypeError, match="metadata must be an object or null"):
         pack.from_dict(dumped)
+
+
+
+def test_nested_metadata_is_detached_by_to_dict():
+    pack = make_pack()
+    pack.metadata["config"] = {"tau_residual": 0.55}
+    pack.seal()
+    dumped = pack.to_dict()
+    dumped["metadata"]["config"]["tau_residual"] = 99
+    assert pack.metadata["config"]["tau_residual"] == 0.55
+    assert certify(pack).passed
+
+
+def test_infinite_tau_residual_fails_residual_ok():
+    pack = make_pack()
+    cert = certify(pack, tau_residual=float("inf"))
+    assert not cert.residual_ok
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("tau_residual is not a finite non-negative real" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0], tau_residual=float("inf"))
+    cert = certify(pack, tau_residual=float("nan"))
+    assert not cert.residual_ok
+    assert not cert.passed
+    cert = certify(pack, tau_residual=-0.1)
+    assert not cert.residual_ok
+    assert not cert.passed
+    assert certify(pack, tau_residual=0.55).passed
+
+
+def test_cli_tau_residual_inf_is_rejected(tmp_path, capsys):
+    pack = make_pack()
+    pack.seal()
+    pack_path = tmp_path / "pack.json"
+    stream = tmp_path / "stream.json"
+    pack_path.write_text(json.dumps(pack.to_dict()) + "\n")
+    stream.write_text("[0]\n")
+    with pytest.raises(SystemExit) as err:
+        main(["translate", str(pack_path), str(stream), "--tau-residual", "inf"])
+    assert err.value.code == 2
+    err_text = capsys.readouterr().err
+    assert "finite non-negative real" in err_text
+
+
+def test_non_string_evidence_key_cannot_be_json_laundered(tmp_path):
+    from neuralese.adapters import save_pack
+
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    digest = pack.evidence[obs_id]
+    pack.evidence = {1: digest}
+    cert = certify(pack)
+    assert not cert.evidence_valid
+    assert not cert.passed
+    assert any("not a non-blank string" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="evidence keys must be strings"):
+        pack.to_dict()
+    with pytest.raises(TypeError, match="evidence keys must be strings"):
+        save_pack(pack, tmp_path / "pack.json")
+
+
+def test_numpy_scalar_embedding_elements_are_accepted():
+    import numpy as np
+
+    obs = Observation(
+        observation_id="obs-2",
+        embedding=[np.int64(1), np.float32(0.25)],
+        text="hello",
+    )
+    assert obs.embedding == [1.0, 0.25]
