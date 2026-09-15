@@ -17,15 +17,17 @@ def follow_aliases(
     *,
     max_hops: Optional[int] = None,
 ) -> int:
-    # A finite table's longest acyclic chain is len(aliases). A fixed 64-hop
-    # cap would truncate a valid longer chain to an intermediate code.
-    bound = len(aliases) if max_hops is None else max_hops
+    # A finite table's longest acyclic chain is len(aliases). Bound one past
+    # that so a full cycle can re-visit a seen code instead of stopping on the
+    # last hop and returning a cycle member as if it were resolved. A fixed
+    # 64-hop cap would truncate a valid longer chain to an intermediate code.
+    bound = len(aliases) + 1 if max_hops is None else max_hops
     seen: set[int] = set()
     current = int(code)
     hops = 0
     while current in aliases and hops < bound:
         if current in seen:
-            return current
+            raise ValueError("alias map contains a cycle")
         seen.add(current)
         current = int(aliases[current])
         hops += 1
