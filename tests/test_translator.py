@@ -165,3 +165,21 @@ def test_rewrite_stream_rejects_falsey_non_mapping_aliases():
 def test_rewrite_stream_reuses_shared_alias_suffixes():
     table = {0: 2, 1: 2, 2: 4}
     assert rewrite_stream([0, 1, 2, 9], table) == [4, 4, 4, 9]
+
+
+def test_translate_stream_resolves_alias_table_once():
+    from unittest.mock import patch
+
+    from neuralese.aliases import resolve_alias_table
+
+    # Live codebook codes are 0 and 1; start the historical chain at 7.
+    table = {i: i + 1 for i in range(7, 41)}
+    table[40] = 0
+    pack = make_pack(aliases=table)
+    with patch(
+        "neuralese.translator.resolve_alias_table", wraps=resolve_alias_table
+    ) as spy:
+        glosses = translate_stream(pack, [7] * 25, require_certified=False)
+    assert spy.call_count == 1
+    assert all(g.resolved_code == 0 for g in glosses)
+    assert all(g.state == "aliased" for g in glosses)
