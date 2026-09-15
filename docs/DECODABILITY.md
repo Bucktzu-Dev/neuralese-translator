@@ -77,7 +77,7 @@ When you mint or accept a pack:
 
 1. Every codebook entry points at a symbol object.
 2. Every non-quarantined symbol has ≥1 observation id.
-3. Every non-quarantined symbol has a bound English string. An explicit `[unglossed]` marker may be recorded in the pack (not invented at read time), but it does not satisfy `gloss_bound` unless `--allow-unglossed`. `translate --allow-unglossed` forwards that opt-in through the certification gate and still requires evidence and admission.
+3. Every non-quarantined symbol has a bound English string. An explicit `[unglossed]` marker may be recorded in the pack (not invented at read time), but it does not satisfy `gloss_bound` unless `--allow-unglossed`. Empty or missing definitions are not bound English even with `--allow-unglossed`; that opt-in applies only to the explicit sentinel. `translate --allow-unglossed` forwards that opt-in through the certification gate and still requires evidence and admission.
 4. Checksum covers codebook, aliases, observation ids, definitions, residual.
 5. `certify(pack)` returns `passed=true` before you ship the pack to another team.
 
