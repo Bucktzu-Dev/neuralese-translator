@@ -30,24 +30,25 @@ Deletion is not an inverse. If a class dies, either quarantine it or issue a new
 
 ### 2. Unfoldable
 
-Every admitted (non-quarantined) symbol lists `observation_ids` that produced it.
+Every admitted (non-quarantined) symbol lists `observation_ids` that produced it, **and** those ids must resolve in the sealed evidence manifest (`id → SHA-256` of observation id, embedding, and text). A nonempty string that points nowhere is not a fold path.
 
 This is the reservoir. An auditor must be able to:
 
 1. Take a code.
 2. Look up its class.
-3. Retrieve the observations (text and/or embeddings) used at mint time.
+3. Retrieve the observations (text and/or embeddings) used at mint time, or verify their content hashes (`certify(..., observations=...)`).
 4. Recompute the prototype and residual.
 
-If step 3 is empty, the symbol is not certified. Quarantine it or refuse the pack.
+If step 3 is empty, the symbol is not certified. Quarantine it or refuse the pack. A sealed digest without the original observations is self-consistency only.
 
 ### 3. Gloss is a receipt
 
 English is sealed into the pack checksum with the class id.
 
 - A gloss without a pack checksum is commentary, not an audit.
-- Changing the sentence without resealing **must** fail `certify()`.
+- Changing the sentence without resealing **must** fail `certify()` **and** default `translate()`. `--allow-uncertified` / `require_certified=False` is an explicit debug override and is not an audit.
 - An optional LLM may draft the sentence. The certificate does not depend on the vendor.
+- Default translation does not run unless a named certification policy passes. `integrity` never authorizes English.
 
 Unglossed but unfoldable symbols are still better than hallucinated English. The translator emits `[unglossed: …]` rather than a plausible lie.
 
@@ -76,7 +77,7 @@ When you mint or accept a pack:
 
 1. Every codebook entry points at a symbol object.
 2. Every non-quarantined symbol has ≥1 observation id.
-3. Every non-quarantined symbol has a bound English string **or** an explicit unglossed marker recorded in the pack (not invented at read time).
+3. Every non-quarantined symbol has a bound English string. An explicit `[unglossed]` marker may be recorded in the pack (not invented at read time), but it does not satisfy `gloss_bound` unless `--allow-unglossed`. Empty or missing definitions are not bound English even with `--allow-unglossed`; that opt-in applies only to the explicit sentinel. `translate --allow-unglossed` forwards that opt-in through the certification gate and still requires evidence and admission.
 4. Checksum covers codebook, aliases, observation ids, definitions, residual.
 5. `certify(pack)` returns `passed=true` before you ship the pack to another team.
 

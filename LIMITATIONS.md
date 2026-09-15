@@ -1,12 +1,18 @@
-# Limitations (v0.1)
+# Limitations (v0.1.1)
 
 This is a working public extract, not a complete mechanistic-interpretability suite.
 
-- **Heuristic glosses.** English is keyword/example based unless you inject an LLM client. A fluent sentence is not extra evidence.
+Authority-gap repair in 0.1.1: translation is gated on certification; the seal is full SHA-256 over the semantic manifest; evidence ids must resolve; reject learning is a draft.
+
+Still not claimed:
+
+- **Heuristic glosses.** English is keyword/example based unless you inject an LLM client. A fluent sentence is not extra evidence. One `definition` per class, not plural SSD hypotheses.
 - **No logit lens / SAE zoo.** The alphabet is clustering + SVD on observation embeddings (or hashed n-grams from text).
 - **No model-hub adapter yet.** You bring JSONL observations or a sealed pack. Hidden-state dumps from HuggingFace are not a built-in loader.
-- **First-pack ΔMDL is zero.** Compression accounting vs a parent pack is implemented; the first pack records `delta_mdl_bits = 0`.
+- **Checksum is self-consistency, not a publisher signature.** Full SHA-256 binds the manifest. It does not prove who sealed it. Evidence ids that merely have a well-formed digest are also self-consistency; recompute them with `--observations` against the original JSONL if you need content verification.
+- **Public packs hash examples; they do not keep a full private reservoir.** Those hashes are unsalted SHA-256 of canonical JSON `{"example": <text>}`, not of the UTF-8 bytes alone, and they include leading/trailing whitespace from the original nonblank observation. That is a self-consistency commitment, not confidentiality. Guessable strings can be recovered by hashing candidates through `example_hash`. Keyed or per-pack commitments are out of scope for v0.1.1. `--include-private` serializes raw text. Without it, heuristic fallback must not copy observation text into `definition`, keywords that reproduce an observation (the full string or a single-token payload) are dropped, and an optional LLM is prompted from the remaining keywords only. Echoed raw text of any length is discarded after collapsing whitespace, so a gloss cannot keep `alpha beta` when the observation was `alpha   beta`; payload tokens the keyword tokenizer drops (1-character, numeric, non-ASCII) and contiguous token spans at every starting position (bounded width 2–8) are filtered the same way, including when punctuation splits the span (`Symbol for red, fox.`). If nothing safe remains the pack records `[unglossed]` at confidence 0. That sentinel is not bound English: default certification fails `gloss_bound` unless `--allow-unglossed`. Embedding-only private packs use the same `[unglossed]`/0.0 gap instead of an empty definition with leftover confidence. Isolated shared keywords may still appear; adjacent token spans that reconstruct an observation do not. `include_private` must be a JSON boolean: `"false"` is not coerced to private and does not serialize `examples` on save. Loading a public pack also drops in-memory `examples`; they are not merely omitted from `to_dict()`. Do not use `--include-private` on real subjective-symbol data until v0.2 public/private auditor views exist.
+- **First-pack ΔMDL is zero.** Compression accounting vs a parent pack is implemented; the first pack records `delta_mdl_bits = 0`. A parent pack must already be sealed with a checksum that matches its current semantic manifest; an empty checksum or a forged 64-hex claim is not recorded as lineage and is not used as an alias source key.
 - **Cluster ids are not stable labels.** Code `0` is whatever k-means assigned, not a universal “hello” token across runs unless you keep the sealed pack.
 - **Not Eris.** Subject-aware dynamics are included as an optional module. The mothership SLAR pipeline, event bus, and identity system are not in this repo.
 
-If a claim is not certified by `neuralese certify`, it is not part of the audit contract.
+If a claim is not certified by `neuralese certify`, it is not part of the audit contract. If `translate` emits English under `default` or `strict`, the pack passed that policy. `--allow-unglossed` still requires evidence and admission. `--allow-uncertified` is an explicit debug override and is not an audit. Translation residual uses the operator `--tau-residual` (default 0.55), not a threshold stored in the pack.

@@ -15,11 +15,12 @@ from neuralese.contracts import (
     Receipt,
     Symbol,
     SymbolPack,
+    UncertifiedPackError,
 )
 from neuralese.dynamics import SubjectiveSymbolDynamics
 from neuralese.translator import translate_stream
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "__version__",
@@ -38,4 +39,5 @@ __all__ = [
     "load_stream",
     "save_pack",
     "SubjectiveSymbolDynamics",
+    "UncertifiedPackError",
 ]

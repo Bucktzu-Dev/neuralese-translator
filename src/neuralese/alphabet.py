@@ -10,11 +10,22 @@ from typing import Dict, List, Optional, Sequence
 import numpy as np
 
 from neuralese.adapters import ensure_embedding, stack_embeddings
+from neuralese.aliases import has_alias_cycle
+from neuralese.audit import _schema_errors
 from neuralese.clustering import cluster_survival, kmeans
-from neuralese.contracts import GuardSnapshot, Observation, Receipt, Symbol, SymbolPack
+from neuralese.contracts import (
+    DECODER_VERSION,
+    SHA256_HEX,
+    GuardSnapshot,
+    Observation,
+    Receipt,
+    Symbol,
+    SymbolPack,
+    example_hash,
+)
 from neuralese.energy import cosine_similarity
 from neuralese.factorization import reconstruction_error, svd_factors
-from neuralese.gloss import learn_definition
+from neuralese.gloss import UNGLOSSED, learn_definition
 from neuralese.receipts import create_receipt
 
 
@@ -28,6 +39,7 @@ class LearnConfig:
     svd_rank: Optional[int] = None
     seed: int = 0
     match_threshold: float = 0.55
+    include_private: bool = False
 
 
 def mdl_bits(n_symbols: int, residual: float, dim: int, n_obs: int, gloss_chars: int) -> float:
@@ -47,8 +59,62 @@ def learn_pack(
     cfg = config or LearnConfig()
     if not observations:
         raise ValueError("learn_pack requires at least one observation")
-    rows = [ensure_embedding(Observation.from_dict(o.to_dict())) for o in observations]
+    seen_ids: set[str] = set()
+    duplicates: List[str] = []
+    blanks: List[object] = []
+    for obs in observations:
+        oid = obs.observation_id
+        if not isinstance(oid, str) or not oid.strip():
+            if oid not in blanks:
+                blanks.append(oid)
+            continue
+        if oid in seen_ids:
+            if oid not in duplicates:
+                duplicates.append(oid)
+        else:
+            seen_ids.add(oid)
+    if blanks:
+        raise ValueError(
+            "blank observation_id values are not a fold path: "
+            + ", ".join(repr(x) for x in blanks)
+        )
+    if duplicates:
+        raise ValueError(
+            "duplicate observation_id values are not a fold path: "
+            + ", ".join(repr(x) for x in duplicates)
+        )
+    rows = []
+    for observation in observations:
+        try:
+            rows.append(
+                ensure_embedding(Observation.from_dict(observation.to_dict()))
+            )
+        except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+            raise ValueError("observation is not learnable") from exc
     X = stack_embeddings(rows)
+
+    parent_checksum = None
+    if previous is not None:
+        parent_checksum = previous.checksum
+        if not isinstance(parent_checksum, str) or not SHA256_HEX.match(parent_checksum):
+            raise ValueError(
+                "previous pack is unsealed; parent_checksum must be full SHA-256"
+            )
+        try:
+            actual = previous.compute_checksum()
+        except (TypeError, ValueError, AttributeError, OverflowError, RecursionError):
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            ) from None
+        if actual != parent_checksum:
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            )
+        schema_ok, _schema_failures = _schema_errors(previous, 0.55)
+        if not schema_ok:
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            )
 
     rank = cfg.svd_rank or min(max(cfg.n_symbols, 1), X.shape[0], X.shape[1])
     _, _, svd_residual = svd_factors(X, rank)
@@ -60,7 +126,18 @@ def learn_pack(
 
     old_protos = None
     if previous and previous.symbols:
-        old_protos = np.asarray([s.proto_embedding for s in previous.symbols], dtype=np.float64)
+        try:
+            old_protos = np.asarray(
+                [s.proto_embedding for s in previous.symbols], dtype=np.float64
+            )
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise ValueError(
+                "previous pack checksum does not match its semantic manifest"
+            ) from exc
+        if old_protos.ndim != 2 or old_protos.shape[1] != X.shape[1]:
+            raise ValueError(
+                "previous pack prototypes do not match observation dimensionality"
+            )
     survivals = cluster_survival(
         old_protos if old_protos is not None else np.zeros((0, X.shape[1])),
         centroids,
@@ -81,19 +158,31 @@ def learn_pack(
         survival = float(survivals[class_id]) if class_id < len(survivals) else 1.0
         if previous is None:
             survival = 1.0
-        gloss = learn_definition(member_obs, llm_client=llm_client)
+        gloss = learn_definition(
+            member_obs,
+            llm_client=llm_client,
+            include_private=cfg.include_private,
+        )
         quarantined = member_idx.size < cfg.min_cluster_size or kappa < cfg.tau_kappa
         definition = gloss["definition"] or None
-        if quarantined and not definition:
+        if not (definition or "").strip():
+            definition = UNGLOSSED
+        if quarantined and (not definition or definition.strip() == UNGLOSSED):
             definition = f"[quarantined class {class_id}]"
+        unglossed = (definition or "").strip() == UNGLOSSED
+        examples = list(gloss["examples"])
+        hash_source = examples or [
+            o.text for o in member_obs if o.text and o.text.strip()
+        ][:8]
         symbol = Symbol(
             class_id=class_id,
             code=class_id,
             proto_embedding=proto,
             observation_ids=[o.observation_id for o in member_obs],
             definition=definition if definition else None,
-            examples=list(gloss["examples"]),
-            confidence=float(gloss["confidence"] if not quarantined else 0.0),
+            examples=examples if cfg.include_private else [],
+            example_hashes=[example_hash(x) for x in hash_source],
+            confidence=float(0.0 if quarantined or unglossed else gloss["confidence"]),
             quarantined=bool(quarantined),
             survival=survival,
             metadata={"kappa": kappa, "size": int(member_idx.size)},
@@ -108,9 +197,13 @@ def learn_pack(
     cluster_residual = reconstruction_error(X, X_hat)
     residual = max(float(cluster_residual), float(svd_residual) * 0.25)
 
-    aliases: Dict[int, int] = {}
+    evidence = {row.observation_id: row.content_hash() for row in rows}
+
+    aliases: Dict[str, Dict[int, int]] = {}
     if previous is not None:
-        aliases = _match_aliases(previous, symbols, threshold=cfg.match_threshold)
+        remap = _match_aliases(previous, symbols, threshold=cfg.match_threshold)
+        if remap:
+            aliases[parent_checksum] = remap
 
     gloss_chars = sum(len(s.definition or "") for s in symbols)
     bits = mdl_bits(len(symbols), residual, X.shape[1], X.shape[0], gloss_chars)
@@ -178,13 +271,19 @@ def learn_pack(
         aliases=aliases,
         reconstruction_error=residual,
         parent_pack_id=None if previous is None else previous.pack_id,
+        parent_checksum=parent_checksum,
         receipts=receipts,
         guards=guards,
         mdl_bits=bits,
         timestamp=time.time(),
+        evidence=evidence,
+        decoder_version=DECODER_VERSION,
+        decision=decision,
+        include_private=cfg.include_private,
         metadata={
             "n_observations": len(rows),
             "decision": decision,
+            "status": "draft" if decision == "reject" else "admitted",
             "config": {
                 "n_symbols": cfg.n_symbols,
                 "tau_kappa": cfg.tau_kappa,
@@ -221,6 +320,10 @@ def _match_aliases(
     return aliases
 
 
-def _alias_collision(aliases: Dict[int, int], codebook: Dict[int, int]) -> bool:
-    targets = list(aliases.values())
-    return any(t not in codebook for t in targets)
+def _alias_collision(aliases: Dict[str, Dict[int, int]], codebook: Dict[int, int]) -> bool:
+    if has_alias_cycle(aliases):
+        return True
+    for mapping in aliases.values():
+        if any(t not in codebook for t in mapping.values()):
+            return True
+    return False

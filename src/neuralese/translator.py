@@ -1,18 +1,76 @@
 """Translate a neuralese code stream into English glosses."""
 from __future__ import annotations
 
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
-from neuralese.contracts import Gloss, SymbolPack
+from neuralese.aliases import resolve_alias_table
+from neuralese.audit import certify
+from neuralese.contracts import (
+    TRANSLATION_POLICIES,
+    Gloss,
+    SymbolPack,
+    UncertifiedPackError,
+)
 from neuralese.energy import confidence_cap
+from neuralese.gloss import UNGLOSSED
 
 
-def translate_stream(pack: SymbolPack, codes: Sequence[int]) -> List[Gloss]:
-    """Map each code to a gloss. Never invent English for a missing symbol."""
+def translate_stream(
+    pack: SymbolPack,
+    codes: Sequence[int],
+    *,
+    policy: str = "default",
+    require_certified: bool = True,
+    require_gloss: bool = True,
+    source_pack_checksum: Optional[str] = None,
+    tau_residual: float = 0.55,
+) -> List[Gloss]:
+    """Map each code to a gloss. Never invent English for a missing symbol.
+
+    By default translation is refused unless `certify(pack, policy=policy)` passes.
+    Pass `require_gloss=False` to opt into translating packs that record
+    `[unglossed]`. Empty or missing definitions still fail certification;
+    the opt-in relaxes only that explicit sentinel. That still requires
+    evidence and admission when `require_certified` is true. `integrity`
+    may inspect a seal; it does not authorize emitting English, including
+    when `require_certified` is false.
+    Residual admission uses the caller `tau_residual` (default 0.55), never a
+    threshold persisted in pack metadata.
+    """
+    if policy == "integrity" or policy not in TRANSLATION_POLICIES:
+        raise ValueError(
+            f"policy {policy!r} does not authorize translation; "
+            f"use one of {TRANSLATION_POLICIES}"
+        )
+    if require_certified:
+        certificate = certify(
+            pack,
+            policy=policy,
+            require_gloss=require_gloss,
+            tau_residual=tau_residual,
+        )
+        if not certificate.passed:
+            raise UncertifiedPackError(certificate)
+
     glosses: List[Gloss] = []
+    alias_terminals = None
     for raw in codes:
         code = int(raw)
-        resolved, aliased = pack.resolve_code(code)
+        if isinstance(pack.codebook, dict) and code in pack.codebook:
+            resolved, aliased = pack.resolve_code(
+                code, source_pack_checksum=source_pack_checksum
+            )
+        else:
+            if alias_terminals is None:
+                alias_terminals = resolve_alias_table(
+                    pack.alias_table(source_pack_checksum),
+                    current_codes=pack.current_codes(),
+                )
+            resolved, aliased = pack.resolve_code(
+                code,
+                source_pack_checksum=source_pack_checksum,
+                terminals=alias_terminals,
+            )
         symbol = pack.symbol_by_code(resolved)
         if symbol is None:
             glosses.append(
@@ -42,13 +100,17 @@ def translate_stream(pack: SymbolPack, codes: Sequence[int]) -> List[Gloss]:
                     pack_checksum=pack.checksum,
                     class_id=symbol.class_id,
                     resolved_code=resolved,
-                    observation_ids=list(symbol.observation_ids),
+                    observation_ids=(
+                        list(symbol.observation_ids)
+                        if isinstance(symbol.observation_ids, (list, tuple))
+                        else []
+                    ),
                 )
             )
             continue
 
         definition = (symbol.definition or "").strip()
-        if not definition:
+        if not definition or definition == UNGLOSSED:
             english = f"[unglossed: symbol {resolved} has no bound English]"
             conf = 0.0
         else:
@@ -64,7 +126,11 @@ def translate_stream(pack: SymbolPack, codes: Sequence[int]) -> List[Gloss]:
                 pack_checksum=pack.checksum,
                 class_id=symbol.class_id,
                 resolved_code=resolved,
-                observation_ids=list(symbol.observation_ids),
+                observation_ids=(
+                    list(symbol.observation_ids)
+                    if isinstance(symbol.observation_ids, (list, tuple))
+                    else []
+                ),
             )
         )
     return glosses

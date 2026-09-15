@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from neuralese.cli import main
 
 TOY_DIR = Path(__file__).resolve().parents[1] / "examples" / "toy_stream"
@@ -34,6 +36,165 @@ def test_cli_learn_translate_certify(tmp_path, capsys):
     cert = json.loads(capsys.readouterr().out)
     assert cert["passed"] is True
 
+    rc = main(
+        [
+            "certify",
+            str(pack_path),
+            "--fail-on-undecodable",
+            "--observations",
+            str(TOY_DIR / "observations.jsonl"),
+        ]
+    )
+    assert rc == 0
+    cert = json.loads(capsys.readouterr().out)
+    assert cert["passed"] is True
+    assert cert["details"]["observations_checked"] is True
+
+
+def test_cli_translate_rejects_integrity_policy(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    rc = main(
+        ["translate", str(pack_path), str(TOY_DIR / "stream.json"), "--policy", "integrity"]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "does not authorize translation" in err
+
+
+def test_cli_integrity_rejected_even_with_allow_uncertified(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    rc = main(
+        [
+            "translate",
+            str(pack_path),
+            str(TOY_DIR / "stream.json"),
+            "--policy",
+            "integrity",
+            "--allow-uncertified",
+        ]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "does not authorize translation" in err
+
+
+def test_cli_allow_uncertified_malformed_confidence_is_clean_failure(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    stream = tmp_path / "stream.json"
+    rc = main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["symbols"][0]["confidence"] = "0.5"
+    pack_path.write_text(json.dumps(data, indent=2) + "\n")
+    stream.write_text("[0]\n")
+    rc = main(
+        [
+            "translate",
+            str(pack_path),
+            str(stream),
+            "--allow-uncertified",
+        ]
+    )
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Traceback" not in captured.err
+    assert captured.err.strip()
+
+
+def test_cli_allow_uncertified_overflowing_alias_is_clean_failure(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    stream = tmp_path / "stream.json"
+    rc = main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["aliases"] = {"legacy": {"7": 1e309}}
+    payload = json.dumps(data).replace("Infinity", "1e309")
+    pack_path.write_text(payload + "\n")
+    stream.write_text("[7]\n")
+    rc = main(
+        [
+            "translate",
+            str(pack_path),
+            str(stream),
+            "--allow-uncertified",
+        ]
+    )
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Traceback" not in captured.err
+    assert captured.err.strip()
+
+
+def test_cli_translate_failed_certificate_goes_to_stderr(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["symbols"][0]["observation_ids"] = []
+    data["symbols"][0]["quarantined"] = False
+    pack_path.write_text(json.dumps(data))
+    rc = main(["translate", str(pack_path), str(TOY_DIR / "stream.json")])
+    assert rc == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    cert = json.loads(captured.err)
+    assert cert["passed"] is False
+    assert isinstance(cert, dict)
+    assert "integrity_valid" in cert
+
 
 def test_cli_certify_fails_on_undecodable(tmp_path, capsys):
     pack_path = tmp_path / "pack.json"
@@ -56,3 +217,294 @@ def test_cli_certify_fails_on_undecodable(tmp_path, capsys):
     assert rc == 1
     cert = json.loads(capsys.readouterr().out)
     assert cert["passed"] is False
+
+
+def test_cli_audit_unknown_policy_is_clean_error(capsys):
+    with pytest.raises(SystemExit) as err:
+        main(["audit", "pack.json", "--policy", "typo"])
+    assert err.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_cli_certify_unknown_policy_is_clean_error(capsys):
+    with pytest.raises(SystemExit) as err:
+        main(["certify", "pack.json", "--policy", "typo"])
+    assert err.value.code == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_cli_certify_malformed_observations_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    bad = tmp_path / "bad.jsonl"
+    bad.write_text("not-json\n")
+    rc = main(["certify", str(pack_path), "--observations", str(bad)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid JSON" in err
+    assert "Traceback" not in err
+
+
+def test_cli_audit_empty_observations_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("")
+    rc = main(["audit", str(pack_path), "--observations", str(empty)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "no observations" in err
+    assert "Traceback" not in err
+
+
+def test_cli_learn_non_object_jsonl_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text("[]\n")
+    rc = main(["learn", str(obs), "-o", str(tmp_path / "pack.json"), "--n-symbols", "1"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "must be a JSON object" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "pack.json").exists()
+
+
+def test_cli_certify_null_jsonl_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    bad = tmp_path / "null.jsonl"
+    bad.write_text("null\n")
+    rc = main(["certify", str(pack_path), "--observations", str(bad)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "must be a JSON object" in err
+    assert "Traceback" not in err
+
+
+def test_cli_learn_non_list_embedding_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text('{"observation_id":"x","embedding":1}\n')
+    rc = main(["learn", str(obs), "-o", str(tmp_path / "pack.json"), "--n-symbols", "1"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid observation record" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "pack.json").exists()
+
+
+def test_cli_learn_non_string_text_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text('{"observation_id":"x","text":1}\n')
+    rc = main(["learn", str(obs), "-o", str(tmp_path / "pack.json"), "--n-symbols", "1"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid observation record" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "pack.json").exists()
+
+
+def test_cli_learn_string_embedding_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text('{"observation_id":"x","embedding":"1"}\n')
+    rc = main(["learn", str(obs), "-o", str(tmp_path / "pack.json"), "--n-symbols", "1"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid observation record" in err
+    assert "Traceback" not in err
+    assert not (tmp_path / "pack.json").exists()
+
+
+def test_cli_certify_non_string_definition_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["symbols"][0]["definition"] = 1
+    pack_path.write_text(json.dumps(data))
+    rc = main(["certify", str(pack_path)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid pack" in err
+    assert "Traceback" not in err
+
+
+def test_cli_certify_array_pack_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    pack_path.write_text("[]\n")
+    rc = main(["certify", str(pack_path)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid pack" in err
+    assert "Traceback" not in err
+
+
+def test_cli_translate_null_stream_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    stream = tmp_path / "stream.json"
+    stream.write_text("[null]\n")
+    rc = main(["translate", str(pack_path), str(stream)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "stream codes" in err
+    assert "Traceback" not in err
+
+
+def test_cli_translate_float_stream_is_clean_error(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    capsys.readouterr()
+    stream = tmp_path / "stream.json"
+    stream.write_text("[1.9]\n")
+    rc = main(["translate", str(pack_path), str(stream)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "stream codes" in err
+    assert "Traceback" not in err
+
+
+def test_cli_learn_duplicate_ids_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text(
+        '{"observation_id":"x","text":"hello there friend"}\n'
+        '{"observation_id":"x","text":"hello there pal"}\n'
+    )
+    rc = main(["learn", str(obs), "-o", str(tmp_path / "pack.json"), "--n-symbols", "1"])
+    assert rc == 1
+    assert "duplicate observation_id" in capsys.readouterr().err
+    assert not (tmp_path / "pack.json").exists()
+
+
+def test_cli_translate_allow_unglossed(tmp_path, capsys):
+    obs = tmp_path / "obs.jsonl"
+    obs.write_text(
+        '{"observation_id":"e1","embedding":[1.0,0.0,0.0]}\n'
+        '{"observation_id":"e2","embedding":[0.95,0.05,0.0]}\n'
+        '{"observation_id":"e3","embedding":[0.9,0.1,0.0]}\n'
+    )
+    pack_path = tmp_path / "pack.json"
+    rc = main(
+        [
+            "learn",
+            str(obs),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "1",
+            "--include-private",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    live = [s for s in data["symbols"] if not s.get("quarantined")]
+    assert live
+    assert live[0]["definition"] == "[unglossed]"
+    stream = tmp_path / "stream.json"
+    stream.write_text(json.dumps({"codes": [live[0]["code"]]}))
+    rc = main(["translate", str(pack_path), str(stream)])
+    assert rc == 1
+    failed = capsys.readouterr()
+    assert failed.out == ""
+    cert = json.loads(failed.err)
+    assert cert["passed"] is False
+    rc = main(["translate", str(pack_path), str(stream), "--allow-unglossed"])
+    assert rc == 0
+    glosses = json.loads(capsys.readouterr().out)
+    assert glosses[0]["english"].startswith("[unglossed:")
+    assert glosses[0]["confidence"] == 0.0
+
+
+def test_cli_translate_tau_residual_is_operator_gate(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    stream = tmp_path / "stream.json"
+    rc = main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    data = json.loads(pack_path.read_text())
+    data["reconstruction_error"] = 0.6
+    data["metadata"]["tau_residual"] = 0.9
+    if data.get("guards"):
+        data["guards"]["reconstruction_error"] = 0.6
+    from neuralese.contracts import SymbolPack
+
+    pack = SymbolPack.from_dict(data)
+    pack.seal()
+    pack_path.write_text(json.dumps(pack.to_dict(), indent=2) + "\n")
+    stream.write_text("[0]\n")
+    rc = main(["translate", str(pack_path), str(stream)])
+    assert rc == 1
+    failed = capsys.readouterr()
+    assert failed.out == ""
+    cert = json.loads(failed.err)
+    assert cert["passed"] is False
+    rc = main(["translate", str(pack_path), str(stream), "--tau-residual", "0.9"])
+    assert rc == 0
+    glosses = json.loads(capsys.readouterr().out)
+    assert glosses[0]["state"] in {"ok", "unknown", "aliased"}

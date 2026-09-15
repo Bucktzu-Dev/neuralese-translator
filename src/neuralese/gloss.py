@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Sequence, Set
 
 from neuralese.contracts import Observation
 
@@ -26,39 +26,77 @@ STOP = {
     "with",
 }
 
+UNGLOSSED = "[unglossed]"
+_TOKEN = re.compile(r"[a-zA-Z][a-zA-Z0-9']+")
+_PAYLOAD_TOKEN = re.compile(r"[^\W_]+(?:'[^\W_]+)*", re.UNICODE)
+
 
 def learn_definition(
     observations: Sequence[Observation],
     *,
     llm_client: Any = None,
+    include_private: bool = False,
 ) -> Dict[str, Any]:
-    texts = [obs.text.strip() for obs in observations if obs.text and obs.text.strip()]
+    original_texts: List[str] = []
+    texts: List[str] = []
+    for obs in observations:
+        if not isinstance(obs.text, str):
+            continue
+        stripped = obs.text.strip()
+        if not stripped:
+            continue
+        original_texts.append(obs.text)
+        texts.append(stripped)
     tokens: List[str] = []
     for text in texts:
-        tokens.extend(re.findall(r"[a-zA-Z][a-zA-Z0-9']+", text.lower()))
+        tokens.extend(_TOKEN.findall(text.lower()))
     counted = Counter(t for t in tokens if t not in STOP)
     keywords = [w for w, _ in counted.most_common(8)]
-    examples = texts[:8]
+    examples = original_texts[:8] if include_private else []
+    if not include_private:
+        keywords = _public_keywords(keywords, texts)
 
-    if llm_client is not None and texts:
-        prompt = (
-            "Write one short English sentence defining the shared meaning of these examples. "
-            "Do not add facts that are not in the examples.\n"
-            + "\n".join(f"- {t}" for t in examples[:12])
-        )
+    if llm_client is not None and (texts if include_private else keywords):
+        if include_private:
+            prompt = (
+                "Write one short English sentence defining the shared meaning of these examples. "
+                "Do not add facts that are not in the examples.\n"
+                + "\n".join(f"- {t}" for t in texts[:12])
+            )
+        else:
+            prompt = (
+                "Write one short English sentence defining a symbol whose keywords are: "
+                + ", ".join(keywords)
+                + ". Do not quote private examples or add facts that are not in the keywords."
+            )
         try:
             definition = str(llm_client.generate(prompt, max_tokens=80)).strip()
         except TypeError:
             definition = str(llm_client.generate(prompt)).strip()
         except Exception:
             definition = _heuristic_definition(keywords, examples)
+        if not include_private and _contains_raw_observation(definition, texts):
+            definition = _heuristic_definition(keywords, [])
     else:
         definition = _heuristic_definition(keywords, examples)
+
+    if not include_private:
+        if not (definition or "").strip() or _contains_raw_observation(definition, texts):
+            definition = _heuristic_definition(keywords, [])
+            # Keyword glosses may share short tokens with observations; 8-char
+            # windows apply to LLM echoes, not to the heuristic template.
+            if not (definition or "").strip() or _contains_raw_observation(
+                definition, texts, windows=False
+            ):
+                definition = UNGLOSSED
+
+    if not (definition or "").strip():
+        definition = UNGLOSSED
 
     observation_count = len(observations)
     text_count = len(texts)
     confidence = 0.0
-    if observation_count:
+    if observation_count and (definition or "").strip() != UNGLOSSED:
         confidence = min(1.0, 0.25 + 0.15 * text_count + 0.05 * len(keywords))
     return {
         "definition": definition,
@@ -69,9 +107,142 @@ def learn_definition(
     }
 
 
+def _normalized_text(text: str) -> str:
+    return " ".join((text or "").strip().lower().split())
+
+
+def _public_keywords(keywords: Sequence[str], texts: Sequence[str]) -> List[str]:
+    blocked = _raw_observation_forms(texts)
+    lowered = [_normalized_text(t) for t in texts if t and t.strip()]
+    safe: List[str] = []
+    for word in keywords:
+        token = word.lower()
+        if token in blocked:
+            continue
+        if len(token) >= 8 and any(token in text for text in lowered):
+            continue
+        safe.append(word)
+    return safe
+
+
+def _observation_tokens(text: str) -> List[str]:
+    snippet = _normalized_text(text)
+    words = _PAYLOAD_TOKEN.findall(snippet)
+    if words:
+        return words
+    return re.findall(r"[a-z0-9]+", snippet)
+
+
+def _raw_observation_forms(texts: Sequence[str]) -> Set[str]:
+    """Full observations and single-token payloads that would reproduce raw text.
+
+    Keyword extraction still uses `_TOKEN`. Payload tokens that `_TOKEN`
+    rejects (1-char, numeric, non-ASCII) are blocked as forms so they cannot
+    land in a public definition. Multi-token spans are checked against the
+    definition in `_contains_raw_observation` without materializing an O(n²)
+    set.
+    """
+    blocked: Set[str] = set()
+    for text in texts:
+        snippet = _normalized_text(text)
+        if not snippet:
+            continue
+        blocked.add(snippet)
+        words = _observation_tokens(snippet)
+        if len(words) == 1:
+            blocked.add(words[0])
+        for word in words:
+            if not _TOKEN.fullmatch(word):
+                blocked.add(word)
+    return blocked
+
+
+_WINDOW = 8
+_SHORT_PREFIX_MIN = 3
+_SHORT_PREFIX_MAX = 7
+_MAX_SPAN_WIDTH = 8
+
+
+def _has_token_prefix_span(blob: str, prefix: str) -> bool:
+    if not prefix:
+        return False
+    return re.search(rf"(?<![0-9a-z]){re.escape(prefix)}", blob) is not None
+
+
+def _token_span_in_blob(snippet: str, blob: str) -> bool:
+    tokens = _observation_tokens(snippet)
+    dest = _observation_tokens(blob)
+    n = len(tokens)
+    if n < 2:
+        return False
+    max_width = min(_MAX_SPAN_WIDTH, n)
+    spans = {
+        tuple(tokens[i : i + width])
+        for width in range(2, max_width + 1)
+        for i in range(0, n - width + 1)
+    }
+    m = len(dest)
+    for width in range(2, min(_MAX_SPAN_WIDTH, m) + 1):
+        for j in range(0, m - width + 1):
+            if tuple(dest[j : j + width]) in spans:
+                return True
+    return False
+
+
+def _short_secret_prefix_in_blob(snippet: str, blob: str) -> bool:
+    for token in _observation_tokens(snippet):
+        if len(token) <= _WINDOW:
+            continue
+        upper = min(_SHORT_PREFIX_MAX, len(token) - 1)
+        for plen in range(_SHORT_PREFIX_MIN, upper + 1):
+            prefix = token[:plen]
+            if prefix in STOP:
+                continue
+            if _has_token_prefix_span(blob, prefix):
+                return True
+    return False
+
+
+def _contains_raw_observation(
+    definition: str, texts: Sequence[str], *, windows: bool = True
+) -> bool:
+    blob = _normalized_text(definition or "")
+    if not blob:
+        return False
+    for form in _raw_observation_forms(texts):
+        if not form:
+            continue
+        if len(form) >= 3:
+            if form in blob:
+                return True
+            continue
+        if re.search(rf"(?<![a-z0-9]){re.escape(form)}(?![a-z0-9])", blob):
+            return True
+    for text in texts:
+        snippet = _normalized_text(text)
+        if not snippet:
+            continue
+        if _token_span_in_blob(snippet, blob):
+            return True
+        if _short_secret_prefix_in_blob(snippet, blob):
+            return True
+    if not windows:
+        return False
+    for text in texts:
+        snippet = _normalized_text(text)
+        if len(snippet) < _WINDOW:
+            continue
+        for i in range(len(snippet) - _WINDOW + 1):
+            if snippet[i : i + _WINDOW] in blob:
+                return True
+    return False
+
+
 def _heuristic_definition(keywords: List[str], examples: List[str]) -> str:
     if keywords:
-        head = ", ".join(keywords[:4])
+        # Public fallbacks pass examples=[] and must not join multiple
+        # observation tokens into a contiguous span (`red, fox`).
+        head = keywords[0] if not examples else ", ".join(keywords[:4])
         return f"Symbol for {head}."
     if examples:
         snippet = examples[0]

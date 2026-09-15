@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Iterable, List, Sequence, Union
 
@@ -49,25 +50,75 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
                 continue
             try:
                 data = json.loads(raw)
-            except json.JSONDecodeError as exc:
+            except (json.JSONDecodeError, RecursionError) as exc:
                 raise ValueError(f"{path}:{line_no} invalid JSON") from exc
+            if not isinstance(data, dict):
+                raise ValueError(
+                    f"{path}:{line_no} observation record must be a JSON object"
+                )
             if "observation_id" not in data:
                 data["observation_id"] = f"obs-{line_no}"
-            rows.append(Observation.from_dict(data))
+            elif not isinstance(data["observation_id"], str):
+                raise ValueError(f"{path}:{line_no} invalid observation record")
+            text = data.get("text")
+            if text is not None and not isinstance(text, str):
+                raise ValueError(f"{path}:{line_no} invalid observation record")
+            embedding = data.get("embedding")
+            if embedding is not None:
+                if not isinstance(embedding, list):
+                    raise ValueError(f"{path}:{line_no} invalid observation record")
+                for item in embedding:
+                    if isinstance(item, bool) or not isinstance(item, (int, float)):
+                        raise ValueError(f"{path}:{line_no} invalid observation record")
+                    try:
+                        number = float(item)
+                    except OverflowError as exc:
+                        raise ValueError(
+                            f"{path}:{line_no} invalid observation record"
+                        ) from exc
+                    if not math.isfinite(number):
+                        raise ValueError(f"{path}:{line_no} invalid observation record")
+            try:
+                rows.append(Observation.from_dict(data))
+            except (TypeError, ValueError, KeyError, OverflowError) as exc:
+                raise ValueError(
+                    f"{path}:{line_no} invalid observation record"
+                ) from exc
     if not rows:
         raise ValueError(f"no observations in {path}")
     return rows
 
 
 def load_stream(path: PathLike) -> List[int]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(
+            "stream file must be a JSON list or an object with a codes array"
+        ) from exc
     if isinstance(payload, dict) and "codes" in payload:
         codes = payload["codes"]
     elif isinstance(payload, list):
         codes = payload
     else:
-        raise ValueError("stream file must be a JSON list or {\"codes\": [...]}")
-    return [int(c) for c in codes]
+        raise ValueError("stream file must be a JSON list or an object with a codes array")
+    if not isinstance(codes, (list, tuple)):
+        raise ValueError("stream codes must be an array")
+    try:
+        return [_as_stream_code(c) for c in codes]
+    except (TypeError, ValueError) as exc:
+        raise ValueError("stream codes must be integers") from exc
+
+
+def _as_stream_code(value: object) -> int:
+    # bool is a subclass of int; JSON true/false must not become 1/0.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("stream codes must be integers")
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError("stream codes must be integers")
+        return int(value)
+    return int(value)
 
 
 def save_pack(pack: SymbolPack, path: PathLike) -> None:
@@ -78,8 +129,21 @@ def save_pack(pack: SymbolPack, path: PathLike) -> None:
 
 
 def load_pack(path: PathLike) -> SymbolPack:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return SymbolPack.from_dict(data)
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise ValueError(f"invalid pack in {path}")
+        return SymbolPack.from_dict(data)
+    except (
+        TypeError,
+        ValueError,
+        KeyError,
+        AttributeError,
+        OverflowError,
+        RecursionError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise ValueError(f"invalid pack in {path}") from exc
 
 
 def stack_embeddings(observations: Sequence[Observation]) -> np.ndarray:

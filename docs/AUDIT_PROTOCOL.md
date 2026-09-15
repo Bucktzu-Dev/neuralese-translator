@@ -1,129 +1,93 @@
 # Audit protocol
 
-`neuralese certify` is the public fail-closed gate. A pack that does not pass is not a lexicon. It is a draft.
+`neuralese certify` is the public fail-closed gate. A pack that does not pass is a **draft**, not a lexicon. Translation refuses to emit English unless a named policy passes.
 
 ## Certificate
 
-`AuditCertificate` fields:
+v0.1.1 splits three authorities. `passed` is a conjunction under the named policy, never a majority vote.
 
-| field | type | meaning |
-|---|---|---|
-| `pack_id` | str | pack identity |
-| `pack_checksum` | str | sealed checksum claimed by the pack |
-| `expected_checksum` | str | checksum recomputed by the auditor |
-| `passed` | bool | all gates true |
-| `addressable` | bool | codebook + aliases resolve |
-| `unfoldable` | bool | every live symbol has observation ids |
-| `gloss_bound` | bool | English sealed; checksum matches |
-| `residual_ok` | bool | reconstruction error ≤ τ |
-| `fail_closed` | bool | always true for this protocol version |
-| `failures` | list[str] | human-readable gate failures |
-| `timestamp` | float | unix time of certification |
-| `details` | object | counts, thresholds, residual |
+| field | meaning |
+|---|---|
+| `integrity_valid` | schema + addressable aliases + full SHA-256 seal + residual + gloss binding |
+| `evidence_valid` | live ids are non-blank, present in the sealed evidence map; every evidence entry is `id → SHA-256`; if `--observations` is supplied, live digests are recomputed from content |
+| `admission_valid` | learning `decision` is not `reject`; a GuardSnapshot or finalize receipt is present and agrees with admission |
+| `passed` | policy conjunction of the above |
+| `policy` | `default` \| `strict` \| `integrity` |
+
+Kept detail flags: `addressable`, `unfoldable`, `gloss_bound`, `residual_ok`.
 
 CLI:
 
 ```bash
 neuralese audit pack.json
 neuralese certify pack.json --fail-on-undecodable
+neuralese certify pack.json --observations observations.jsonl --fail-on-undecodable
+neuralese translate pack.json stream.json          # fails if certify fails; certificate JSON on stderr
+neuralese translate pack.json stream.json --allow-unglossed     # still requires evidence and admission
+neuralese translate pack.json stream.json --allow-uncertified   # debug only
 ```
 
-`audit` prints the certificate and exits 0 if the file was readable.
-`certify --fail-on-undecodable` exits 1 when `passed` is false.
+`learn` writes the pack always. Exit `2` when `decision=reject` (explicit draft).
 
-## Gates
+## Policies
 
-### Addressable
-
-Fail if:
-
-- a codebook `code → class_id` has no matching symbol
-- a symbol `code` is missing from the codebook
-- an alias chain cycles
-- an alias resolves to a missing code
-- integer keys were lost in JSON (loaders must restore `int` keys)
-
-### Unfoldable
-
-For each symbol with `quarantined=false`:
-
-- `observation_ids` must be a non-empty list of strings
-
-Quarantined symbols are allowed to lack a fold path; they must not appear as `state=ok` in translation.
-
-### Gloss-bound
-
-- Recompute checksum from canonical pack content.
-- Fail if it differs from `pack.checksum` (tamper / unsealed mutation).
-- Fail if a live symbol has an empty `definition` when `require_gloss=true` (default).
-
-Checksum covers: `pack_id`, codebook, aliases, each symbol’s `class_id`, `code`, `observation_ids`, `definition`, `quarantined`, and rounded `reconstruction_error`.
-
-It does **not** cover wall-clock timestamps, so certification is deterministic.
-
-### Residual
-
-Default `tau_residual = 0.55` (mean normalized reconstruction error).
-
-Override:
-
-```bash
-neuralese certify pack.json --tau-residual 0.4 --fail-on-undecodable
-```
-
-Confidence cap used by the translator:
-
-```text
-confidence := min(symbol.confidence, 1 - clip(residual, 0, 1))
-```
-
-### Parent packs (evolution)
-
-If `parent_pack_id` is set, the new pack should record:
-
-- `aliases` from previous codes to current codes
-- `delta_mdl_bits` on the finalize receipt (`new_mdl - parent_mdl`)
-- a reject when `delta_mdl_bits > 0` unless metadata marks an explicit exception
-
-This leaf implements ΔMDL against the previous pack’s `mdl_bits`. It does not silently inherit stubbed deltas from any origin engine.
-
-## Translation states
-
-| state | when | English |
-|---|---|---|
-| `ok` | resolved, not quarantined, definition present | bound definition |
-| `aliased` | input code rewritten, then ok | bound definition of the *resolved* code |
-| `quarantined` | resolved to a quarantined class | `[quarantined: …]` |
-| `unknown` | no resolution | `[undecodable: no symbol for code N]` |
-
-No other states. No default “probably this word.”
-
-## Receipts
-
-Each learn run appends receipts:
-
-| step | records |
+| policy | `passed` when |
 |---|---|
-| `factorization` | reconstruction error, atom/rank count |
-| `clustering` | class count, min survival |
-| `finalize` | decision `accept` \| `accept_provisional` \| `reject`, ΔMDL |
+| `default` | integrity ∧ evidence ∧ admission (`accept` or `accept_provisional`) |
+| `strict` | default plus `decision=accept` and `guards.pass_all` |
+| `integrity` | seal/schema only (does **not** authorize translation) |
 
-Receipts are evidence of the *update*. The certificate is the *gate*. Both ship inside `SymbolPack`.
+`translate_stream(..., policy="default", require_certified=True)` is the library default. `policy="integrity"` is for inspecting a seal; `translate` and `translate_stream` reject it, including when `require_certified=False` / `--allow-uncertified`.
 
-## Fail-closed policy
+## Seal (full SHA-256)
+
+Checksum is 64 hex characters over the complete semantic manifest:
+
+- `pack_id`, `decoder_version`, `decision`
+- `parent_pack_id`, `parent_checksum`
+- codebook, versioned aliases, evidence map
+- every symbol: class/code, prototype, observation ids, definition, example hashes, confidence, survival, quarantine, metadata
+- guards, receipts, MDL, residual, pack metadata
+
+Wall-clock `timestamp` on the pack object is **not** in the checksum. Receipt timestamps **are** (receipts are append-only once sealed).
+
+This is self-consistency, not publisher authenticity. Sign or externally anchor the manifest if you need that. A pack whose `decoder_version` is not this decoder (`0.1.1`) fails integrity; the field is reported and enforced.
+
+## Evidence / unfold
+
+A nonempty string in `observation_ids` is not enough. Each live id must be non-blank and appear in `pack.evidence` as `id → SHA-256(observation_id, embedding, text)`.
+
+Ids missing from the map fail. Blank ids fail. Mutating the manifest without resealing fails integrity.
+
+A well-formed digest in the map is **self-consistency**, not proof the tensors existed. Pass the original observations (`certify(..., observations=...)` / `--observations`) to recompute hashes. Fabricated ids with attacker-chosen 64-hex digests fail that check. Duplicate `observation_id` values fail during `learn` and during content verification; they are not a fold path. Blank or whitespace-only observation IDs also fail during `learn`, so the command cannot admit a pack that `certify()` would reject at the blank-ID gate. JSONL `observation_id` values that are present but not strings (`null`, `1`, `true`) fail at `load_observations_jsonl` instead of being `str()`-coerced; `Observation.from_dict` / `learn_pack` keep a JSON `null` as `None` rather than the fold-path id `"None"`. The same live observation id on two classes fails evidence. A supplied observation with neither embedding nor text fails `evidence_valid` instead of crashing. A supplied observation whose embedding is a scalar or overflows `float()` fails `evidence_valid` instead of raising `TypeError` or `OverflowError`. A supplied observation whose embedding is `NaN` / `Infinity` fails `evidence_valid` instead of raising `ValueError` from canonical JSON during content hashing. Programmatic `Observation` construction also rejects non-finite embedding elements (`NaN` / `Infinity` / overflow) before `learn_pack` can reach SVD; JSONL is not the only gate. Observation embeddings must be arrays (including NumPy arrays); mappings and sets are rejected so `embedding={1: 0.5}` cannot hash as `[1.0]` and a set cannot produce order-dependent evidence. Observation embeddings must be arrays (including NumPy arrays); mappings and sets are rejected so `embedding={1: 0.5}` cannot hash as `[1.0]` and a set cannot produce order-dependent evidence. Mutating `obs.embedding` after construction to a non-finite list still fails `evidence_valid` rather than crashing. A supplied `--observations` row that is not an `Observation` (`None`, `{}`) fails `evidence_valid` instead of raising `AttributeError`. A supplied `Observation` whose metadata contains a cycle fails `evidence_valid` instead of raising `RecursionError` from `Observation.to_dict()` / `asdict`. Symbol `to_dict()` / checksum preserve non-mapping `metadata` (`[]`) instead of `dict()`-laundering it to `{}` so a rejected pack cannot reseal as an empty-object schema pass. Supplied observation IDs that are not strings (`1`, `null`) fail evidence; they are not `str()`-indexed to match a string key in `pack.evidence`. `guards.pass_all` must equal the conjunction of the component flags; a sealed `pass_all=true` with a false component fails integrity. Receipt fields used in the sealed manifest (`step`, `ok`, `timestamp`, `kappa`, `reconstruction_error`, `delta_mdl_bits`, `metadata`) are schema-checked: `timestamp` and present numeric metrics must be finite reals, `step` a string, and `metadata` an object. A sealed `finalize` receipt with `timestamp=NaN` (or a non-finite metric) fails integrity rather than supporting admission. Pack wall-clock `timestamp` is excluded from the checksum but must still be a finite real; JSON `1e309` / `NaN` fail schema. Alias traversal catches `OverflowError` (JSON `1e309` becoming `inf`) so `certify` returns a failed certificate instead of aborting. A non-mapping `codebook` (`null`) with a nonempty alias table fails closed without `TypeError` on membership.
+
+Every `example_hashes` value must be a full 64-character SHA-256 hex **string**. A public pack that stores `"raw secret"`, a digest plus a trailing newline, or a JSON number (including a 64-digit decimal) in that field fails integrity; the field itself is not a place to store plaintext, and non-strings are not coerced with `str()`. Those hashes are unsalted SHA-256 of the canonical JSON object `{"example": <text>}` (the same `canonical_dumps` envelope as the pack seal), not SHA-256 of the UTF-8 bytes alone. `learn_pack` hashes the original nonblank observation text when no private examples are stored; leading and trailing whitespace is part of that commitment. This is a self-consistency commitment, not a confidentiality control. Guessable strings can be recovered by hashing candidates through `example_hash`. Keyed or per-pack commitments are out of scope for v0.1.1. Changing the envelope would reseal existing packs, so v0.1.1 keeps this function.
+
+Public packs store hashes, not raw example text (`include_private=false` by default). Heuristic glosses then use keywords that do not reproduce an observation, or an explicit `[unglossed]` / quarantine marker. They do not copy the first observation verbatim into `definition`, and a single-token observation such as `TOPSECRET1234` is not kept as a public keyword. Optional LLM glosses for public packs are prompted from those remaining keywords only; a response that echoes raw observation text of any length is discarded. A recorded `[unglossed]` sentinel keeps confidence at 0 and translates as an explicit gap, not as bound English. Default certification treats that sentinel as unglossed, so `gloss_bound` fails unless `--allow-unglossed` is set. Empty or missing `definition` values fail `gloss_bound` even with that opt-in; `--allow-unglossed` / `require_gloss=False` relaxes only the explicit `[unglossed]` marker. `translate_stream(..., require_gloss=False)` and `translate --allow-unglossed` forward that relaxed gloss requirement through the certification gate; they do not bypass evidence or admission. An explicit empty `decoder_version` or `decision` is preserved on load and fails integrity rather than being silently replaced with this decoder's defaults. Unknown `decision` values fail schema even under `--policy integrity`. A pack whose `metadata` is `null` loads as `{}` instead of raising. Explicit `metadata` that is not a mapping (`[]`, `false`, `""`) fails load rather than becoming `{}` and resealing to the empty-object checksum. Symbol and receipt `metadata` use the same omitted-or-null default; `false` / `[]` / `""` fail load, and a constructed symbol whose `metadata` is not a mapping fails schema before checksum recomputation (`dict(s.metadata)`). Constructed mapping metadata whose values are not JSON-serializable (`object()`) fails integrity instead of raising `TypeError` from `json.dumps` during checksum recomputation. A self-referential dict, list, or tuple in pack, symbol, or receipt metadata fails schema (`contains a cycle`) instead of raising `RecursionError` from the JSON-key walk. Canonical dumps set `allow_nan=False`, so metadata `NaN` / `Infinity` (JSON `1e309`) also fail integrity rather than sealing a non-standard payload that strict consumers cannot reproduce. Pack wall-clock `timestamp` defaults only when the key is absent; explicit `null` / `false` / `"1.0"` are preserved and fail schema. Receipt `timestamp` / `kappa` / `reconstruction_error` / `delta_mdl_bits` keep their present JSON types instead of `float()` coercion, so `"1.0"` fails schema rather than matching a sealed numeric checksum. Receipt `step` keeps its present JSON type instead of `str()` coercion, so `null` / `1` / `true` fail schema rather than becoming `"None"` / `"1"` / `"True"` and being treated as a non-`finalize` record. `--allow-uncertified` translation guards `code in codebook` with `isinstance(pack.codebook, dict)`, so a JSON `null` codebook does not traceback on the debug path. That debug path also catches `TypeError` and `OverflowError` from malformed live fields such as `confidence="0.5"` reaching `confidence_cap`, or a loaded legacy alias target of JSON `1e309` becoming `inf` and overflowing `int()` in `follow_aliases`, so the CLI returns a clean failure instead of a traceback. Loaded `pack_id` keeps its present JSON type instead of `str()` coercion, so numeric `123` cannot reload as `"123"` and keep a matching checksum; non-string pack IDs fail schema. Loaded `parent_pack_id` is the same: a JSON number or array is preserved and fails schema even after resealing, so an invalid lineage identity cannot pass `certify()`. A pack whose `evidence` is a non-mapping (`[]`, `null`) keeps that field type instead of collapsing it to `{}`; `to_dict()` and the checksum payload preserve that value, so a load/save round trip cannot launder `[]`/`null` into `{}`. Certification fails schema and `evidence_valid` even when there are no live observation ids. Missing `evidence` still defaults to `{}`. Every evidence entry, including unused keys, must be `id → SHA-256`; an unused `null` digest fails even if live ids are valid. Evidence keys are not `str()`-coerced on load: a constructed mapping keyed by `None` stays `None` and fails as a non-string key rather than becoming `"None"`. Guard snapshot metrics (`kappa_avg`, `reconstruction_error`, `delta_mdl`, `min_survival`) must be finite real numbers; a string `"0.8"` fails schema even when the boolean pass flags are true. `learn --tau-residual` only affects learning-time `pass_residual` / `decision`. `certify` / `translate` / `translate_stream` use the caller residual (CLI `--tau-residual`, default 0.55) and never read `metadata.tau_residual` from the pack. Guard flags, receipt `ok`, `quarantined`, and `include_private` must be JSON booleans; `"false"`/`"true"` strings are not coerced and fail schema/admission. Symbol `confidence` and `survival` must be real numbers in `[0, 1]`; strings such as `"0.5"` and booleans are not coerced with `float()` and fail integrity. Load preserves those present values (and `reconstruction_error`) instead of converting them, so a sealed pack rewritten with `"confidence": "0.5"` cannot reload as the original number and pass. Explicit JSON `null` for `confidence`, `survival`, or `reconstruction_error` is also preserved and fails schema; it is not rewritten to `0.0`/`1.0`. `reconstruction_error` must be a real number before residual arithmetic; a string residual fails schema instead of raising `TypeError`. A raw negative residual such as `-1e-9` fails `residual_ok` even if rounding would produce `-0.0`. If schema fails, `certify` does not recompute the checksum, so `confidence="not-a-number"` still yields a failed certificate rather than an exception. `mdl_bits` must be a finite real; `NaN` / `Inf` / a string fail schema even after resealing. Symbol `proto_embedding` must be an array of finite reals; `None` or a non-numeric element fails schema instead of raising in `round_vec`. Private constructed `examples=None` / `example_hashes=None` can be sealed without `TypeError`; certification still fails schema. Private packs (`include_private=true`) with nonempty `examples` must have matching `example_hashes` of equal length; an unrelated 64-hex digest is not a commitment to that text. A scalar `"examples": "secret"` fails load rather than becoming one example per character. Constructed packs whose `example_hashes` is `null` fail schema instead of raising during iteration. Private JSON with `examples` plus explicit `example_hashes: null` keeps `null` rather than deriving hashes in `Symbol.__post_init__`. Explicit private `"examples": null` is preserved the same way, so a sealed empty list cannot be mutated to `null` and reload as `[]` with the same checksum. Explicit private `"examples": null` is preserved the same way, so a sealed empty list cannot be mutated to `null` and reload as `[]` with the same checksum. A non-string `checksum` such as `123` fails integrity instead of raising `TypeError` in the SHA-256 check. Loaded checksum keeps its present JSON type instead of `str()` coercion, so a JSON number (including a 64-digit decimal) cannot be laundered into a matching SHA-256 string. `to_dict()` / `save_pack()` preserve explicit `example_hashes: null` without calling `list(None)`. Constructed packs that mutate `definition` to a non-string fail schema instead of raising `AttributeError` while sealing. Constructed `examples=None` fails schema instead of raising while sealing. Constructed non-mapping `evidence` (`[]`, `None`) fails schema before checksum or evidence lookups, so `certify` returns a failed certificate instead of `AttributeError`. Loading a public pack (`include_private` is not exactly `true`) drops any serialized `examples` from live symbols; a constructed public pack that still holds raw examples fails schema. `learn_pack(previous=...)` requires a sealed parent checksum that matches `previous.compute_checksum()`; an empty checksum or a 64-hex claim that does not bind the parent manifest is not recorded as lineage and is not used as an alias source key. Parent prototypes must have the same dimensionality as the current observation matrix; a sealed 3-value parent cannot be followed by 32-dimensional observations. Parent prototypes must have the same dimensionality as the current observation matrix; a sealed 3-value parent cannot be followed by 32-dimensional observations. Empty or non-SHA-256 `parent_checksum` fails schema. Private `learn` examples keep the original nonblank `Observation.text`, including leading and trailing whitespace; stripped copies are used only for tokenization and prompting. `include_private: "false"` is therefore not loaded as a private pack, and save/re-serialize uses an exact-`True` check so that string cannot leak `Symbol.examples`. Evidence digest values that are not strings (`null`, `123`, a 64-digit JSON number) fail `evidence_valid` instead of raising `TypeError` or being `str()`-coerced into hex. Malformed or empty `--observations` files fail `audit`/`certify` with a CLI error instead of a traceback. Syntactically valid non-object JSONL records (`[]`, `null`, a string) also fail that way, including on `learn`. Object records with unusable field types (for example `"embedding": 1`, `"embedding": "1"`, `"text": 1`, or `"observation_id": null`) are the same clean CLI error, not a traceback. Symbol `definition` must be a string or null; a numeric definition fails `load_pack` with a CLI error. A top-level pack that is `[]`/`null`, or a `symbols` entry that is not an object, fails `load_pack` as an invalid pack rather than an `AttributeError` traceback. An explicit `symbols` value that is not an array (`0`, `""`, `{}`) is the same failure; only a missing key defaults to an empty list. `guards` may be omitted or `null`; `[]`, `{}`, `false`, or `""` do not mean "no guards" and fail load. Explicit `aliases` values that are not mappings (`[]`, `false`, `""`) fail load; only a missing or `null` field means no aliases. Mixed alias shapes (one nested table and one scalar) fail the same way. Stream files whose `codes` are `null` or contain `null`, a non-integral number such as `1.9`, or a boolean fail `translate` as a CLI error. Public echo filtering collapses whitespace before comparing observation windows, so `alpha   beta` cannot sneak through as `alpha beta`. Payload tokenization includes 1-character, numeric, and non-ASCII tokens that the keyword tokenizer drops, so an LLM echo of `x` from `x alpha quark` is discarded without blocking the remaining keyword `quark`. Contiguous token spans are compared as token subsequences in the definition, so punctuation cannot sneak `red fox` through as `Symbol for red, fox.`. Public heuristic fallback uses a single remaining keyword (`Symbol for hello.`) so it cannot reconstruct those spans by joining keywords with commas. Those spans are scanned at every starting position with a bounded width (2–8 tokens), not only a 64-token prefix, so a short interior span such as `red fox` near the end of a long observation cannot land in a public `definition`. A 7-character prefix such as `red fox` from `red fox dog` is rejected the same way, and a 3–7 character prefix of a long secret token such as `TOPSECR` from `TOPSECRET1234` is discarded. An empty private gloss is recorded as `[unglossed]` at confidence 0, the same gap contract as the public sentinel. `Observation.content_hash()` uses the same text-only n-gram fill as `learn`/`certify`, so a JSONL row without an embedding reproduces the sealed evidence digest. Symbol `observation_ids` must be an array of strings; `[null]` is not coerced to `"None"`, and a scalar string is not iterated into characters. Explicit JSON `null` for `observation_ids` is preserved (only an omitted field defaults to `[]`), so a quarantined symbol cannot reseal `null` into a passing empty list. Explicit JSON `null` for pack `receipts` is the same: only an omitted field defaults to `[]`, so a sealed empty receipt array cannot be mutated to `null` and reload as `[]` with the same checksum. `to_dict()` / `save_pack()` preserve that `null` without calling `list(None)`. Constructed packs that mutate `observation_ids` to `[None]` fail integrity and evidence; `certify` does not `str()` the id before looking it up in `pack.evidence`. `Observation` embedding elements that are JSON booleans (`true`/`false`) are rejected before `float()` coercion on the programmatic path, matching the JSONL adapter, so `float(True) → 1.0` cannot mint evidence. Reloaded audit certificates require JSON booleans for `passed` and the authority flags; `"false"` is not coerced with `bool()`. Failed `translate` writes that certificate JSON to stderr, not stdout, so a redirected translation result cannot be a certificate object.
+
+## Aliases
+
+Aliases are version-scoped: `{source_pack_checksum: {old_code: new_code}}`.
+
+Current codebook codes are never rewritten. A map `{0: 1}` does not steal live code `0`. Pack resolution and `certify` pass those current codes into `resolve_alias_table`, so a walk stops at the first live code: `{7: 0, 0: 1}` resolves historical `7` to `0`, and `{7: 0, 0: 7}` is not a cycle. Standalone `rewrite_stream` / `follow_aliases` without a codebook still follow every table key. Historical codes absent from the current codebook follow hops (`rewrite_stream` is multi-hop, bounded by one past the alias table size so an acyclic chain is not truncated and a full cycle is detected rather than returned as a resolved code). Each table is resolved in one linear pass (`resolve_alias_table`); `certify` and `rewrite_stream` reuse those terminals instead of walking each start independently, so a long acyclic chain cannot turn the gate into quadratic work. Alias targets that miss the codebook are checked against a precomputed set of current symbol codes, so certification cannot scan the symbol list once per alias. Codebook class lookups use a class-id index built once while checking duplicate identities, so the translation gate is not O(|codebook|×|symbols|) before the first token. `certify()` treats a non-string checksum (including a NumPy array) as failed SHA-256 rather than evaluating its truthiness, so `bool(array)` cannot abort the certificate. `AuditCertificate.pack_checksum` is an empty string whenever the pack checksum is not a string, so `json.dumps(certificate.to_dict())` stays fail-closed. Schema checks require `decoder_version` and `decision` to be strings before `!=` / membership tests. Live-symbol iteration treats only boolean `False` as admitted; `symbol_by_class` compares only non-boolean integer identities. `translate_stream` resolves the selected table once per stream and reuses those terminals for every historical code, so a long stream cannot repeat O(|aliases|) work per token. `follow_aliases` / standalone `rewrite_stream` raise `ValueError` on a cycle (`{0: 1, 1: 0}`) instead of emitting a cycle member. A caller-supplied `max_hops` cannot undercut that bound: the effective hop cap is at least `len(aliases) + 1`, so `follow_aliases(0, {0: 1, 1: 0}, max_hops=2)` still raises. `learn` compatibility (`pass_compat`) treats an alias cycle the same as a missing alias target, so a cluster-id swap (`0→1`, `1→0`) cannot mark `accept`/`pass_all` when `certify()` would reject the cycle. `learn_pack(previous=...)` treats `RecursionError` from parent `compute_checksum` (for example a cyclic or deeply nested private `examples` list) as a clean `ValueError`, matching other malformed-parent failures. `learn_pack` also converts `RecursionError` from cyclic observation `metadata` (`Observation.to_dict()` / `asdict`) into `ValueError`, so learning cannot crash on the same malformed input certification already treats as unverifiable. JSON codebook and alias keys that normalize to the same integer (`"1"` and `"01"`) are rejected on load instead of silently collapsing, so a colliding extra key cannot keep the original checksum.
+
+Pass `--source-pack <checksum>` to select a parent table explicitly. An explicit source, including empty string, never merges other tables and never selects a table keyed by `""`. An explicit selector that is not a full SHA-256 checksum (including `legacy` and labels such as `not-a-checksum`) selects nothing, even if that label is present in the stored alias map. Stored alias source keys must be the reserved `legacy` key or a full SHA-256 checksum; `normalize_aliases` / `from_dict` reject other labels rather than treating them as pack checksums. A flat `{old: new}` map whose keys are non-numeric strings (`{"not-a-checksum": 0}`) is rejected rather than wrapped as `legacy`. They are not `str()`-coerced, so a constructed table keyed by `None` stays `None` and fails schema rather than becoming `"None"`. Explicit `aliases` that are not a mapping (`[]`, `false`, `""`) fail load rather than becoming an empty table; only an omitted field means no aliases. Explicit JSON `null` is preserved and fails schema, so a sealed empty object cannot be mutated to `null` and reload as `{}` with the same checksum. Constructed non-mapping `pack.aliases` (`None`, `[]`) cannot be serialized: `aliases_to_dict` raises instead of writing a payload `from_dict` cannot load. A flat `{old: new}` map is treated as the unscoped `legacy` table: with an explicit source it is not applied, including the reserved selector `legacy` itself. With no source, `alias_table` / `translate_stream` use only `legacy` and ignore versioned tables. Standalone `rewrite_stream` is stricter: a versioned-only mapping with no `source_pack_checksum` raises `ValueError`. Mixed `legacy` + versioned still uses only `legacy` when no source is given. `audit` and `certify` reject unknown `--policy` values at the CLI.
+
+## Admission
+
+| `decision` | meaning | default certify |
+|---|---|---|
+| `accept` | admitted lexicon | pass if a GuardSnapshot or finalize receipt is present and guards allow |
+| `accept_provisional` | admitted with notes | pass unless `--policy strict` or the latest `finalize` receipt has `ok` other than `true` |
+| `reject` | draft | **fail** |
+
+Learning rejection and certification now agree. A pack with `decision=accept`, `guards=None`, and no finalize receipt fails admission: missing artifacts are not a pass. `integrity` can still inspect that pack; it does not authorize translation. When a finalize receipt records `metadata.decision`, that value must match `pack.decision`; resealing `decision=accept` while finalize metadata still says `reject` fails admission.
+
+## Fail-closed
 
 1. Missing data fails. It does not become a zero.
-2. Unknown codes fail translation honesty (explicit `unknown`), and they fail certify only if they appear *inside* the pack’s own codebook — not because a user later asked about an unused integer.
-3. Quarantine is not a pass. It is a labeled hold.
-4. `passed` is a conjunction, never a majority vote.
+2. Translation does not outrun certification.
+3. Quarantine is a labeled hold, not a pass.
+4. Negative residuals, duplicate identities, and unsealed mutations fail integrity.
 
-## Thresholds (defaults)
-
-| name | default | role |
-|---|---|---|
-| `tau_kappa` | 0.35 | min mean cosine of members to prototype |
-| `tau_residual` | 0.55 | max normalized reconstruction error |
-| `tau_persist` | 0.80 | min cluster survival vs parent (1.0 on first pack) |
-| `min_cluster_size` | 2 | below this, class is quarantined |
-
-These are knobs for auditors. They are not moral facts. Publish the values you used with the certificate.
+JSON loaders convert `RecursionError` from deeply nested `json.loads` into `ValueError`, so a malformed observation file, stream, or pack is a clean CLI failure instead of a traceback. `AuditCertificate` copies only JSON-safe identifiers and finite reals (`None` for a NumPy array / NaN / inf residual or MDL), so `json.dumps(certificate.to_dict())` can emit a failed certificate. Finalize-receipt and private-example comparisons require strings before `==`, so a NumPy array step or digest cannot abort `certify()`.
