@@ -8,7 +8,7 @@ import numbers
 import re
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 GLOSS_STATES = ("ok", "aliased", "quarantined", "unknown")
 DECODER_VERSION = "0.1.1"
@@ -130,29 +130,50 @@ def _copy_seq(value: Any) -> Any:
     return value
 
 
-def _copy_mapping(value: Any) -> Any:
-    if isinstance(value, dict):
-        copied: Dict[Any, Any] = {}
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise TypeError("metadata keys must be strings")
-            copied[key] = _copy_mapping(item)
-        return copied
-    if isinstance(value, (list, tuple)):
-        return [_copy_mapping(item) for item in value]
+def _copy_mapping(value: Any, *, _seen: Optional[Set[int]] = None) -> Any:
+    if isinstance(value, dict) or isinstance(value, (list, tuple)):
+        ident = id(value)
+        seen = set() if _seen is None else _seen
+        if ident in seen:
+            raise TypeError("metadata contains a cycle")
+        seen.add(ident)
+        try:
+            if isinstance(value, dict):
+                copied: Dict[Any, Any] = {}
+                for key, item in value.items():
+                    if not isinstance(key, str):
+                        raise TypeError("metadata keys must be strings")
+                    copied[key] = _copy_mapping(item, _seen=seen)
+                return copied
+            return [_copy_mapping(item, _seen=seen) for item in value]
+        finally:
+            seen.discard(ident)
     return value
 
 
-def _require_json_object_keys(value: Any, *, label: str = "metadata") -> None:
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise TypeError(f"{label} keys must be strings")
-            _require_json_object_keys(item, label=label)
+def _require_json_object_keys(
+    value: Any, *, label: str = "metadata", _seen: Optional[Set[int]] = None
+) -> None:
+    is_mapping = isinstance(value, dict)
+    is_seq = isinstance(value, (list, tuple)) and not isinstance(value, (str, bytes))
+    if not is_mapping and not is_seq:
         return
-    if isinstance(value, (list, tuple)) and not isinstance(value, (str, bytes)):
+    ident = id(value)
+    seen = set() if _seen is None else _seen
+    if ident in seen:
+        raise TypeError(f"{label} contains a cycle")
+    seen.add(ident)
+    try:
+        if is_mapping:
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    raise TypeError(f"{label} keys must be strings")
+                _require_json_object_keys(item, label=label, _seen=seen)
+            return
         for item in value:
-            _require_json_object_keys(item, label=label)
+            _require_json_object_keys(item, label=label, _seen=seen)
+    finally:
+        seen.discard(ident)
 
 
 def _json_object_key_errors(value: Any, label: str) -> List[str]:
@@ -160,6 +181,8 @@ def _json_object_key_errors(value: Any, label: str) -> List[str]:
         _require_json_object_keys(value, label=label)
     except TypeError as exc:
         return [str(exc)]
+    except RecursionError:
+        return [f"{label} contains a cycle"]
     return []
 
 
