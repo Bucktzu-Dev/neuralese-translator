@@ -1,1 +1,1 @@
-PLACEHOLDER
+@file:/tmp/test_authority_followup.py
