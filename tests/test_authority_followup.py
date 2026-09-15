@@ -1208,3 +1208,76 @@ def test_json_alias_mapping_keys_are_coerced_only_on_load():
     constructed = make_pack(aliases={source: {"7": 0}}, checksum="unsealed")
     assert constructed.aliases[source] == {"7": 0}
     assert certify(constructed).passed is False
+
+
+def test_integer_metadata_key_cannot_be_json_laundered(tmp_path):
+    from neuralese.adapters import save_pack
+
+    pack = make_pack()
+    pack.metadata[1] = "x"
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("metadata keys must be strings" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="metadata keys must be strings"):
+        pack.to_dict()
+    with pytest.raises(TypeError, match="metadata keys must be strings"):
+        pack.seal()
+    with pytest.raises(TypeError, match="metadata keys must be strings"):
+        save_pack(pack, tmp_path / "pack.json")
+    nested = make_pack()
+    nested.metadata["config"] = {True: 0.55}
+    cert = certify(nested)
+    assert not cert.passed
+    assert any("metadata keys must be strings" in f for f in cert.failures)
+
+
+def test_symbol_and_receipt_metadata_keys_cannot_be_json_laundered():
+    pack = make_pack()
+    pack.symbols[0].metadata = {1: "x"}
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("metadata keys must be strings" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="metadata keys must be strings"):
+        pack.to_dict()
+    pack = make_pack(
+        guards=None,
+        receipts=[Receipt(step="finalize", ok=True, timestamp=1.0, metadata={1: "x"})],
+        checksum="unsealed",
+    )
+    cert = certify(pack)
+    assert not cert.passed
+    assert any("metadata keys must be strings" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="metadata keys must be strings"):
+        pack.receipts[0].to_dict()
+
+
+def test_residual_gate_uses_checksum_canonical_reconstruction_error():
+    pack = make_pack(reconstruction_error=0.550000001)
+    assert certify(pack, tau_residual=0.55).passed
+    original = pack.checksum
+    pack.reconstruction_error = 0.55
+    assert pack.compute_checksum() == original
+    assert certify(pack, tau_residual=0.55).passed
+
+
+def test_legacy_null_alias_table_is_not_flattened_on_load():
+    from neuralese.contracts import normalize_aliases
+
+    pack = make_pack()
+    data = pack.to_dict()
+    data["aliases"] = {"legacy": None}
+    with pytest.raises(ValueError, match="alias source keys must map to an alias table"):
+        pack.from_dict(data)
+    with pytest.raises(ValueError, match="alias source keys must map to an alias table"):
+        normalize_aliases({"legacy": None})
+    with pytest.raises(ValueError, match="alias source keys must map to an alias table"):
+        normalize_aliases({"c" * 64: None})
+    pack.aliases = {"legacy": None}
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("alias table is not an object" in f for f in cert.failures)
+    with pytest.raises(TypeError, match="alias table is not an object"):
+        pack.to_dict()
