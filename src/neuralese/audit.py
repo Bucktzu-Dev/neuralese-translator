@@ -158,7 +158,10 @@ def certify(
             elif expected != pack.checksum:
                 failures.append("checksum mismatch: pack mutated after sealing")
 
-    if not _real_number(pack.reconstruction_error):
+    if not _real_number(tau_residual) or not _finite(tau_residual) or tau_residual < 0:
+        residual_ok = False
+        failures.append("tau_residual is not a finite non-negative real")
+    elif not _real_number(pack.reconstruction_error):
         residual_ok = False
     else:
         residual_ok = (
