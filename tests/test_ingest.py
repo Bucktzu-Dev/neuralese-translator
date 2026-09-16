@@ -321,12 +321,12 @@ def test_float_jsonl_layer_fails_closed(tmp_path):
 
 def test_json_loaders_reject_recursive_activation_payloads(tmp_path, capsys):
     acts = tmp_path / "acts.jsonl"
-    acts.write_text("{}\n")
+    acts.write_text("{}" + "\n")
     with patch("neuralese.adapters.json.loads", side_effect=RecursionError("nested")):
         with pytest.raises(ValueError, match="invalid JSON"):
             load_activations(acts)
     texts = tmp_path / "texts.json"
-    texts.write_text("[]\n")
+    texts.write_text("[]" + "\n")
     with patch("neuralese.adapters.json.loads", side_effect=RecursionError("nested")):
         with pytest.raises(ValueError, match="invalid JSON"):
             load_alignment_texts(texts)
@@ -591,6 +591,86 @@ def test_json_single_vector_is_one_observation(tmp_path):
     assert rows[0].embedding == [1.0, 0.0, 0.0]
 
 
+def test_json_single_record_object_ingests(tmp_path):
+    src = tmp_path / "acts.json"
+    src.write_text(
+        json.dumps(
+            {
+                "observation_id": "solo",
+                "hidden_state": [1.0, 0.0],
+                "text": "hello there friend",
+                "layer": 12,
+            }
+        )
+    )
+    rows = load_activations(src)
+    assert len(rows) == 1
+    assert rows[0].observation_id == "solo"
+    assert rows[0].embedding == [1.0, 0.0]
+    assert rows[0].text == "hello there friend"
+    assert rows[0].metadata["layer"] == 12
+    assert rows[0].metadata["source"] == "acts.json"
+
+
+def test_json_activations_nested_record_ingests(tmp_path):
+    src = tmp_path / "acts.json"
+    src.write_text(
+        json.dumps({"activations": {"hidden_state": [0.0, 1.0], "text": "audit"}})
+    )
+    rows = load_activations(src)
+    assert len(rows) == 1
+    assert rows[0].embedding == [0.0, 1.0]
+    assert rows[0].text == "audit"
+
+
+def test_json_hidden_states_matrix_ingests(tmp_path):
+    src = tmp_path / "acts.json"
+    src.write_text(
+        json.dumps(
+            {
+                "hidden_states": [[1.0, 0.0], [0.0, 1.0]],
+                "texts": ["hello", "audit"],
+                "observation_ids": ["a", "b"],
+                "layer": 12,
+            }
+        )
+    )
+    rows = load_activations(src)
+    assert [row.observation_id for row in rows] == ["a", "b"]
+    assert [row.text for row in rows] == ["hello", "audit"]
+    assert rows[0].embedding == [1.0, 0.0]
+    assert rows[0].metadata["layer"] == 12
+    assert rows[0].metadata["source"] == "acts.json"
+
+
+def test_json_activations_and_rows_fail_closed(tmp_path, capsys):
+    src = tmp_path / "acts.json"
+    src.write_text(
+        json.dumps(
+            {
+                "activations": [[1.0, 0.0]],
+                "rows": [[0.0, 1.0]],
+            }
+        )
+    )
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "activations or rows" in err
+    assert "Traceback" not in err
+
+
+def test_json_1d_hidden_states_is_a_clean_typo(tmp_path, capsys):
+    src = tmp_path / "acts.json"
+    src.write_text(json.dumps({"hidden_states": [1.0, 0.0]}))
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "hidden_state" in err
+    assert "npz" in err
+    assert "Traceback" not in err
+
+
 def test_texts_flag_rejected_for_json(tmp_path, capsys):
     src = tmp_path / "acts.json"
     src.write_text("[[1.0, 0.0]]\n")
@@ -613,4 +693,3 @@ def test_shipped_activation_json_round_trip(tmp_path, capsys):
     pack = learn_pack(rows, config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0))
     cert = certify(pack, observations=rows)
     assert cert.passed, cert.failures
-
