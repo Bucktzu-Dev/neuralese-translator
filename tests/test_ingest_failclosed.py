@@ -402,6 +402,34 @@ def test_alignment_json_prompts_object_unwraps(tmp_path):
     assert rows == ["hello there friend"]
 
 
+def test_save_rejects_non_string_observation_id(tmp_path):
+    out = tmp_path / "obs.jsonl"
+    out.write_text('{"observation_id":"stale"}\n')
+    rows = [Observation(observation_id="obs-1", embedding=[1.0, 0.0])]
+    rows[0].observation_id = 1
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        save_observations_jsonl(rows, out)
+    assert out.read_text() == '{"observation_id":"stale"}\n'
+
+
+def test_save_rejects_non_string_text(tmp_path):
+    out = tmp_path / "obs.jsonl"
+    rows = [Observation(observation_id="obs-1", embedding=[1.0, 0.0], text="ok")]
+    rows[0].text = 123
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        save_observations_jsonl(rows, out)
+    assert not out.exists()
+
+
+def test_save_rejects_bool_embedding(tmp_path):
+    out = tmp_path / "obs.jsonl"
+    rows = [Observation(observation_id="obs-1", embedding=[1.0, 0.0])]
+    rows[0].embedding = [True, False]
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        save_observations_jsonl(rows, out)
+    assert not out.exists()
+
+
 def test_npz_does_not_rescan_validated_matrix(tmp_path):
     path = tmp_path / "bundle.npz"
     np.savez(path, hidden_states=np.array([[1.0, 0.0]]))
