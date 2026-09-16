@@ -390,36 +390,14 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
     return _require_2d_finite(array, label=str(source))
 
 
-def observations_from_activations(
-    hidden_states,
+def _observations_from_vectors(
+    vectors: List[List[float]],
     *,
     texts=None,
     observation_ids=None,
     layer: Optional[int] = None,
     source: Optional[str] = None,
 ) -> List[Observation]:
-    if isinstance(hidden_states, np.ndarray):
-        matrix = _require_2d_finite(hidden_states, label="hidden_states")
-        vectors = [
-            _as_activation_vector(row, label=f"hidden_states[{index}]")
-            for index, row in enumerate(matrix)
-        ]
-    else:
-        if isinstance(hidden_states, (str, bytes)) or not isinstance(
-            hidden_states, (list, tuple)
-        ):
-            raise ValueError("hidden_states must be a 2-D array")
-        if hidden_states and _is_real_number(hidden_states[0]):
-            hidden_states = [list(hidden_states)]
-        vectors = [
-            _as_activation_vector(row, label=f"hidden_states[{index}]")
-            for index, row in enumerate(hidden_states)
-        ]
-        if not vectors:
-            raise ValueError("hidden_states must be nonempty")
-        dim = len(vectors[0])
-        if any(len(row) != dim for row in vectors):
-            raise ValueError("hidden_states rows must share one hidden_dim")
     n_rows = len(vectors)
     if texts is not None:
         _require_row_sequence(texts, label="texts", kind="strings")
@@ -460,6 +438,63 @@ def observations_from_activations(
             )
         )
     return rows
+
+
+def _observations_from_validated_matrix(
+    matrix: np.ndarray,
+    *,
+    texts=None,
+    observation_ids=None,
+    layer: Optional[int] = None,
+    source: Optional[str] = None,
+) -> List[Observation]:
+    return _observations_from_vectors(
+        matrix.tolist(),
+        texts=texts,
+        observation_ids=observation_ids,
+        layer=layer,
+        source=source,
+    )
+
+
+def observations_from_activations(
+    hidden_states,
+    *,
+    texts=None,
+    observation_ids=None,
+    layer: Optional[int] = None,
+    source: Optional[str] = None,
+) -> List[Observation]:
+    if isinstance(hidden_states, np.ndarray):
+        return _observations_from_validated_matrix(
+            _require_2d_finite(hidden_states, label="hidden_states"),
+            texts=texts,
+            observation_ids=observation_ids,
+            layer=layer,
+            source=source,
+        )
+    if isinstance(hidden_states, (str, bytes)) or not isinstance(
+        hidden_states, (list, tuple)
+    ):
+        raise ValueError("hidden_states must be a 2-D array")
+    if hidden_states and _is_real_number(hidden_states[0]):
+        hidden_states = [list(hidden_states)]
+    vectors = [
+        _as_activation_vector(row, label=f"hidden_states[{index}]")
+        for index, row in enumerate(hidden_states)
+    ]
+    if not vectors:
+        raise ValueError("hidden_states must be nonempty")
+    dim = len(vectors[0])
+    if any(len(row) != dim for row in vectors):
+        raise ValueError("hidden_states rows must share one hidden_dim")
+    return _observations_from_vectors(
+        vectors,
+        texts=texts,
+        observation_ids=observation_ids,
+        layer=layer,
+        source=source,
+    )
 
 
 def _text_row(data: object, *, path: PathLike, line_no: int):
@@ -507,8 +542,10 @@ def load_alignment_texts(path: PathLike):
             texts.append(text)
     else:
         payload = _loads_json(raw, label=str(source))
-        if isinstance(payload, dict) and "texts" in payload:
-            payload = payload["texts"]
+        if isinstance(payload, dict):
+            texts_key = _exclusive_key(payload, _NPZ_TEXT_KEYS, label=str(source))
+            if texts_key is not None:
+                payload = payload[texts_key]
         if not isinstance(payload, list):
             raise ValueError(f"{source} texts must be a JSON array or JSONL")
         for index, row in enumerate(payload, start=1):
@@ -765,7 +802,7 @@ def load_activations(
     suffix = origin.suffix.lower()
     source_label = _activation_source_label(origin, source)
     if suffix == ".npy":
-        return observations_from_activations(
+        return _observations_from_validated_matrix(
             load_activation_matrix(origin),
             layer=layer,
             source=source_label,
@@ -782,7 +819,7 @@ def load_activations(
         finally:
             if callable(closer):
                 closer()
-        return observations_from_activations(
+        return _observations_from_validated_matrix(
             _require_2d_finite(array, label=str(origin)),
             texts=texts,
             observation_ids=ids,
