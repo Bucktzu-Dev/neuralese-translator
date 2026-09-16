@@ -64,7 +64,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "ingest",
         help="turn dumped hidden states into observation JSONL",
         description=(
-            "Load a 2-D .npy/.npz hidden-state dump or activation JSONL and write "
+            "Load a 2-D .npy/.npz hidden-state dump or activation JSON/JSONL and write "
             "observation JSONL. Rank-3+ tensors fail closed; pool token/layer axes first. "
             "Metadata.source is the activations filename, or --source."
         ),
@@ -185,6 +185,10 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "ingest":
         try:
+            if args.output.resolve() == args.activations.resolve():
+                raise ValueError(
+                    "output path must differ from the activations path"
+                )
             source_label = (
                 args.source if args.source is not None else args.activations.name
             )
