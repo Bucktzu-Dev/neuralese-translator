@@ -514,3 +514,103 @@ def test_shipped_activation_jsonl_round_trip(tmp_path, capsys):
     cert = certify(pack, observations=rows)
     assert cert.passed, cert.failures
 
+
+def test_utf8_bom_jsonl_ingests(tmp_path):
+    src = tmp_path / "acts.jsonl"
+    src.write_bytes(b'\xef\xbb\xbf{"hidden_state":[1.0,0.0]}\n{"hidden_state":[0.0,1.0]}\n')
+    rows = load_activations(src)
+    assert len(rows) == 2
+    assert rows[0].embedding == [1.0, 0.0]
+
+
+def test_bare_array_jsonl_rows_ingest(tmp_path, capsys):
+    src = tmp_path / "acts.jsonl"
+    src.write_text("[1.0, 0.0]\n[0.0, 1.0]\n")
+    out = tmp_path / "obs.jsonl"
+    rc = main(["ingest", str(src), "-o", str(out)])
+    assert rc == 0
+    loaded = [json.loads(line) for line in out.read_text().splitlines() if line]
+    assert [row["observation_id"] for row in loaded] == ["obs-1", "obs-2"]
+    assert loaded[0]["embedding"] == [1.0, 0.0]
+
+
+def test_jsonl_hidden_states_plural_is_a_clean_typo(tmp_path, capsys):
+    src = tmp_path / "acts.jsonl"
+    src.write_text('{"hidden_states":[1.0,0.0]}\n')
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "hidden_state" in err
+    assert "npz" in err
+    assert "Traceback" not in err
+
+
+def test_ingest_refuses_to_overwrite_activations(tmp_path, capsys):
+    src = tmp_path / "acts.jsonl"
+    src.write_text('{"hidden_state":[1.0,0.0]}\n')
+    rc = main(["ingest", str(src), "-o", str(src)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "differ" in err
+    assert "Traceback" not in err
+
+
+def test_json_activation_array_ingests(tmp_path, capsys):
+    src = tmp_path / "acts.json"
+    src.write_text(json.dumps([[1.0, 0.0], [0.0, 1.0]]))
+    out = tmp_path / "obs.jsonl"
+    rc = main(["ingest", str(src), "-o", str(out)])
+    assert rc == 0
+    loaded = [json.loads(line) for line in out.read_text().splitlines() if line]
+    assert len(loaded) == 2
+    assert loaded[0]["metadata"]["source"] == "acts.json"
+
+
+def test_json_activations_object_ingests(tmp_path):
+    src = tmp_path / "acts.json"
+    src.write_text(
+        json.dumps(
+            {
+                "activations": [
+                    {"observation_id": "a", "hidden_state": [1.0, 0.0], "text": "hello"},
+                    {"observation_id": "b", "hidden_state": [0.0, 1.0], "text": "audit"},
+                ]
+            }
+        )
+    )
+    rows = load_activations(src)
+    assert [row.observation_id for row in rows] == ["a", "b"]
+    assert rows[0].text == "hello"
+
+
+def test_json_single_vector_is_one_observation(tmp_path):
+    src = tmp_path / "acts.json"
+    src.write_text("[1.0, 0.0, 0.0]\n")
+    rows = load_activations(src)
+    assert len(rows) == 1
+    assert rows[0].embedding == [1.0, 0.0, 0.0]
+
+
+def test_texts_flag_rejected_for_json(tmp_path, capsys):
+    src = tmp_path / "acts.json"
+    src.write_text("[[1.0, 0.0]]\n")
+    texts = tmp_path / "texts.json"
+    texts.write_text('["hello"]\n')
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl"), "--texts", str(texts)])
+    assert rc == 1
+    assert "--texts is only valid" in capsys.readouterr().err
+
+
+def test_shipped_activation_json_round_trip(tmp_path, capsys):
+    src = Path(__file__).resolve().parents[1] / "examples" / "activations" / "states.json"
+    out = tmp_path / "obs.jsonl"
+    rc = main(["ingest", str(src), "-o", str(out)])
+    assert rc == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["n_observations"] == 4
+    assert summary["source"] == "states.json"
+    rows = load_observations_jsonl(out)
+    pack = learn_pack(rows, config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0))
+    cert = certify(pack, observations=rows)
+    assert cert.passed, cert.failures
+
