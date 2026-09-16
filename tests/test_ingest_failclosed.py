@@ -136,3 +136,65 @@ def test_npz_truncated_member_is_clean_cli_failure(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "invalid activation archive" in err
     assert "Traceback" not in err
+
+
+def test_npz_last_hidden_state_collides_with_hidden_states(tmp_path):
+    path = tmp_path / "bundle.npz"
+    np.savez(
+        path,
+        hidden_states=np.array([[1.0, 0.0]]),
+        last_hidden_state=np.array([[0.0, 1.0]]),
+    )
+    with pytest.raises(ValueError, match="only one of"):
+        load_activation_matrix(path)
+
+
+def test_npz_texts_and_prompts_fail_closed(tmp_path, capsys):
+    path = tmp_path / "bundle.npz"
+    np.savez(
+        path,
+        hidden_states=np.array([[1.0, 0.0]]),
+        texts=np.array(["from-texts"]),
+        prompts=np.array(["from-prompts"]),
+    )
+    rc = main(["ingest", str(path), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "texts or prompts" in err
+    assert "Traceback" not in err
+
+
+def test_jsonl_id_and_observation_id_fail_closed(tmp_path, capsys):
+    src = tmp_path / "acts.jsonl"
+    src.write_text(
+        '{"id":"a","observation_id":"b","hidden_state":[1.0,0.0]}\n'
+    )
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "observation_id or id" in err
+    assert "Traceback" not in err
+
+
+def test_jsonl_activation_and_hidden_state_fail_closed(tmp_path, capsys):
+    src = tmp_path / "acts.jsonl"
+    src.write_text(
+        '{"hidden_state":[1.0,0.0],"activation":[0.0,1.0]}\n'
+    )
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "exactly one of" in err
+    assert "Traceback" not in err
+
+
+def test_jsonl_text_and_prompt_fail_closed(tmp_path, capsys):
+    src = tmp_path / "acts.jsonl"
+    src.write_text(
+        '{"hidden_state":[1.0,0.0],"text":"hello","prompt":"audit"}\n'
+    )
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "text or prompt" in err
+    assert "Traceback" not in err
