@@ -148,10 +148,9 @@ def _as_optional_id(value: object, *, label: str, generated: str) -> str:
         return generated
     if not isinstance(value, str):
         raise ValueError(f"{label} must be a string or null")
-    obs_id = value.strip()
-    if not obs_id:
+    if not value.strip():
         raise ValueError(f"{label} is blank")
-    return obs_id
+    return value
 
 
 def _detach_metadata(value: object, *, label: str) -> Dict[str, object]:
@@ -161,7 +160,7 @@ def _detach_metadata(value: object, *, label: str) -> Dict[str, object]:
         raise ValueError(f"{label} must be an object or null")
     try:
         copied = _copy_mapping(value)
-    except TypeError as exc:
+    except (TypeError, RecursionError) as exc:
         raise ValueError(f"{label} is invalid") from exc
     if not isinstance(copied, dict):
         raise ValueError(f"{label} must be an object or null")
@@ -171,7 +170,7 @@ def _detach_metadata(value: object, *, label: str) -> Dict[str, object]:
 def _as_activation_vector(value: object, *, label: str) -> List[float]:
     if isinstance(value, (str, bytes)) or not isinstance(value, (list, tuple, np.ndarray)):
         raise ValueError(f"{label} must be a numeric array")
-    items = np.asarray(value, dtype=object).tolist()
+    items = value.tolist() if isinstance(value, np.ndarray) else list(value)
     if not isinstance(items, list):
         raise ValueError(f"{label} must be a 1-D vector")
     if items and isinstance(items[0], list):
@@ -223,9 +222,15 @@ def _array_from_npz(bundle: np.lib.npyio.NpzFile) -> np.ndarray:
     names = list(bundle.files)
     if not names:
         raise ValueError("npz archive contains no arrays")
-    for key in ("hidden_states", "activations", "embeddings"):
-        if key in bundle:
-            return np.asarray(bundle[key])
+    recognized = [
+        key for key in ("hidden_states", "activations", "embeddings") if key in bundle
+    ]
+    if len(recognized) > 1:
+        raise ValueError(
+            "npz archive must contain only one of hidden_states, activations, embeddings"
+        )
+    if recognized:
+        return np.asarray(bundle[recognized[0]])
     extras = {"texts", "observation_ids"}
     matrices = [name for name in names if name not in extras]
     if len(matrices) != 1:
@@ -295,10 +300,17 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
             raise ValueError(f"invalid activation matrix in {source}")
     elif suffix == ".npz":
         try:
-            with np.load(source, allow_pickle=False) as bundle:
-                array = _array_from_npz(bundle)
+            loaded = np.load(source, allow_pickle=False)
         except (OSError, ValueError, zipfile.BadZipFile) as exc:
             raise ValueError(f"invalid activation archive in {source}") from exc
+        closer = getattr(loaded, "close", None)
+        try:
+            if not hasattr(loaded, "files"):
+                raise ValueError(f"invalid activation archive in {source}")
+            array = _array_from_npz(loaded)
+        finally:
+            if callable(closer):
+                closer()
     else:
         raise ValueError("activation matrix must be a .npy or .npz file")
     return _require_2d_finite(array, label=str(source))
@@ -525,7 +537,12 @@ def save_observations_jsonl(observations: Sequence[Observation], path: PathLike)
     with target.open("w", encoding="utf-8") as handle:
         for obs in observations:
             try:
-                payload = json.dumps(obs.to_dict(), sort_keys=True, ensure_ascii=True)
+                payload = json.dumps(
+                    obs.to_dict(),
+                    sort_keys=True,
+                    ensure_ascii=True,
+                    allow_nan=False,
+                )
             except (TypeError, ValueError, RecursionError, OverflowError) as exc:
                 raise ValueError(
                     f"observation {obs.observation_id!r} is not JSON-serializable"
