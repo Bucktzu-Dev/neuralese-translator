@@ -21,6 +21,29 @@ from neuralese.contracts import (
 
 PathLike = Union[str, Path]
 
+_RECORD_VECTOR_KEYS = ("hidden_state", "embedding", "activation", "vector")
+_RECORD_ID_KEYS = ("observation_id", "id")
+_RECORD_TEXT_KEYS = ("text", "prompt")
+_NPZ_MATRIX_KEYS = (
+    "hidden_states",
+    "activations",
+    "embeddings",
+    "last_hidden_state",
+)
+_NPZ_TEXT_KEYS = ("texts", "prompts")
+_NPZ_ID_KEYS = ("observation_ids", "ids")
+
+
+def _exclusive_key(mapping, keys: Sequence[str], *, label: str) -> Optional[str]:
+    present = [key for key in keys if key in mapping]
+    if len(present) > 1:
+        if len(keys) == 2:
+            raise ValueError(f"{label} provide {keys[0]} or {keys[1]}, not both")
+        raise ValueError(f"{label} provide exactly one of {', '.join(keys)}")
+    if not present:
+        return None
+    return present[0]
+
 
 def hashed_ngram_vector(text: str, dim: int = 32, n: int = 3) -> List[float]:
     """Deterministic hashed character n-gram embedding for text-only rows."""
@@ -213,10 +236,14 @@ def _as_activation_vector(value: object, *, label: str) -> List[float]:
 
 
 def _require_2d_finite(array: np.ndarray, *, label: str) -> np.ndarray:
-    if array.ndim != 2:
+    if array.ndim == 1:
+        if array.shape[0] < 1:
+            raise ValueError(f"{label} must be nonempty")
+        array = np.reshape(array, (1, int(array.shape[0])))
+    elif array.ndim != 2:
         raise ValueError(
             f"{label} must be a 2-D array of shape (n_observations, hidden_dim); "
-            "pool token/layer axes before ingest "
+            "a 1-D vector is one observation; pool token/layer axes before ingest "
             "(see examples/activations/README.md)"
         )
     if array.shape[0] < 1 or array.shape[1] < 1:
@@ -244,21 +271,20 @@ def _array_from_npz(bundle: np.lib.npyio.NpzFile) -> np.ndarray:
     names = list(bundle.files)
     if not names:
         raise ValueError("npz archive contains no arrays")
-    recognized = [
-        key for key in ("hidden_states", "activations", "embeddings") if key in bundle
-    ]
+    recognized = [key for key in _NPZ_MATRIX_KEYS if key in bundle]
     if len(recognized) > 1:
         raise ValueError(
-            "npz archive must contain only one of hidden_states, activations, embeddings"
+            "npz archive must contain only one of hidden_states, activations, "
+            "embeddings, last_hidden_state"
         )
     if recognized:
         return np.asarray(bundle[recognized[0]])
-    extras = {"texts", "observation_ids"}
+    extras = set(_NPZ_TEXT_KEYS) | set(_NPZ_ID_KEYS)
     matrices = [name for name in names if name not in extras]
     if len(matrices) != 1:
         raise ValueError(
             "npz archive must contain hidden_states, activations, embeddings, "
-            "or exactly one matrix array"
+            "last_hidden_state, or exactly one matrix array"
         )
     return np.asarray(bundle[matrices[0]])
 
@@ -285,22 +311,30 @@ def _as_optional_str_vector(array: np.ndarray, *, label: str) -> List[object]:
 def _optional_npz_alignment(path: PathLike):
     source = Path(path)
     try:
-        with np.load(source, allow_pickle=False) as bundle:
-            texts_arr = np.asarray(bundle["texts"]) if "texts" in bundle else None
-            ids_arr = (
-                np.asarray(bundle["observation_ids"])
-                if "observation_ids" in bundle
-                else None
-            )
+        loaded = np.load(source, allow_pickle=False)
     except (OSError, ValueError, zipfile.BadZipFile) as exc:
         raise ValueError(f"invalid activation archive in {source}") from exc
+    closer = getattr(loaded, "close", None)
+    try:
+        if not hasattr(loaded, "files"):
+            raise ValueError(f"invalid activation archive in {source}")
+        texts_key = _exclusive_key(loaded, _NPZ_TEXT_KEYS, label=str(source))
+        ids_key = _exclusive_key(loaded, _NPZ_ID_KEYS, label=str(source))
+        try:
+            texts_arr = np.asarray(loaded[texts_key]) if texts_key is not None else None
+            ids_arr = np.asarray(loaded[ids_key]) if ids_key is not None else None
+        except (OSError, zipfile.BadZipFile) as exc:
+            raise ValueError(f"invalid activation archive in {source}") from exc
+    finally:
+        if callable(closer):
+            closer()
     texts = (
-        _as_optional_str_vector(texts_arr, label=f"{source} texts")
+        _as_optional_str_vector(texts_arr, label=f"{source} {texts_key}")
         if texts_arr is not None
         else None
     )
     ids = (
-        _as_optional_str_vector(ids_arr, label=f"{source} observation_ids")
+        _as_optional_str_vector(ids_arr, label=f"{source} {ids_key}")
         if ids_arr is not None
         else None
     )
@@ -360,6 +394,8 @@ def observations_from_activations(
             hidden_states, (list, tuple)
         ):
             raise ValueError("hidden_states must be a 2-D array")
+        if hidden_states and _is_real_number(hidden_states[0]):
+            hidden_states = [list(hidden_states)]
         vectors = [
             _as_activation_vector(row, label=f"hidden_states[{index}]")
             for index, row in enumerate(hidden_states)
@@ -418,16 +454,18 @@ def _text_row(data: object, *, path: PathLike, line_no: int):
         return None, data
     if not isinstance(data, dict):
         raise ValueError(f"{path}:{line_no} text record must be a JSON object or string")
-    text = data.get("text")
+    text_key = _exclusive_key(data, _RECORD_TEXT_KEYS, label=f"{path}:{line_no}")
+    text = None if text_key is None else data[text_key]
     if text is not None and not isinstance(text, str):
-        raise ValueError(f"{path}:{line_no} text must be a string or null")
-    raw_id = data.get("observation_id")
+        raise ValueError(f"{path}:{line_no} {text_key} must be a string or null")
+    id_key = _exclusive_key(data, _RECORD_ID_KEYS, label=f"{path}:{line_no}")
+    raw_id = None if id_key is None else data[id_key]
     if raw_id is None:
         return None, text
     return (
         _as_optional_id(
             raw_id,
-            label=f"{path}:{line_no} observation_id",
+            label=f"{path}:{line_no} {id_key}",
             generated="obs-unused",
         ),
         text,
@@ -472,22 +510,21 @@ def load_alignment_texts(path: PathLike):
 def _activation_from_record(
     data: Dict[str, object], *, path: PathLike, line_no: int
 ) -> List[float]:
-    if "hidden_state" in data and "embedding" in data:
-        raise ValueError(f"{path}:{line_no} provide hidden_state or embedding, not both")
-    if "hidden_state" in data:
+    key = _exclusive_key(
+        data, _RECORD_VECTOR_KEYS, label=f"{path}:{line_no}"
+    )
+    if key is not None:
         return _as_activation_vector(
-            data["hidden_state"], label=f"{path}:{line_no} hidden_state"
-        )
-    if "embedding" in data:
-        return _as_activation_vector(
-            data["embedding"], label=f"{path}:{line_no} embedding"
+            data[key], label=f"{path}:{line_no} {key}"
         )
     if "hidden_states" in data:
         raise ValueError(
             f"{path}:{line_no} missing hidden_state or embedding "
             "(JSON rows use hidden_state; hidden_states is the npz matrix name)"
         )
-    raise ValueError(f"{path}:{line_no} missing hidden_state or embedding")
+    raise ValueError(
+        f"{path}:{line_no} missing hidden_state, embedding, activation, or vector"
+    )
 
 
 def _observation_from_activation_payload(
@@ -511,17 +548,19 @@ def _observation_from_activation_payload(
         raise ValueError(
             f"{path}:{line_no} embedding dim mismatch: {len(vector)}, expected {dim}"
         )
+    id_key = _exclusive_key(data, _RECORD_ID_KEYS, label=f"{path}:{line_no}")
     obs_id = _as_optional_id(
-        data.get("observation_id"),
-        label=f"{path}:{line_no} observation_id",
+        None if id_key is None else data.get(id_key),
+        label=f"{path}:{line_no} {id_key or 'observation_id'}",
         generated=f"obs-{line_no}",
     )
     if obs_id in seen:
         raise ValueError(f"duplicate observation_id {obs_id!r}")
     seen.add(obs_id)
-    text = data.get("text")
+    text_key = _exclusive_key(data, _RECORD_TEXT_KEYS, label=f"{path}:{line_no}")
+    text = None if text_key is None else data.get(text_key)
     if text is not None and not isinstance(text, str):
-        raise ValueError(f"{path}:{line_no} text must be a string or null")
+        raise ValueError(f"{path}:{line_no} {text_key} must be a string or null")
     metadata = _detach_metadata(
         data.get("metadata"), label=f"{path}:{line_no} metadata"
     )
@@ -586,9 +625,13 @@ def load_activation_jsonl(
     return _stamp_ingest_metadata(rows, layer=layer, source=source)
 
 
+def _has_record_vector(payload: dict) -> bool:
+    return any(key in payload for key in _RECORD_VECTOR_KEYS)
+
+
 def _json_activation_conflict(payload: dict, *, origin: Path) -> None:
     collections = [name for name in ("activations", "rows") if name in payload]
-    has_record = "hidden_state" in payload or "embedding" in payload
+    has_record = _has_record_vector(payload)
     has_matrix = "hidden_states" in payload
     if len(collections) > 1:
         raise ValueError(f"{origin} provide activations or rows, not both")
@@ -599,9 +642,7 @@ def _json_activation_conflict(payload: dict, *, origin: Path) -> None:
 
 
 def _as_json_row_list(payload: object, *, origin: Path) -> List[object]:
-    if isinstance(payload, dict) and (
-        "hidden_state" in payload or "embedding" in payload
-    ):
+    if isinstance(payload, dict) and _has_record_vector(payload):
         return [payload]
     if not isinstance(payload, list):
         raise ValueError(
@@ -628,7 +669,7 @@ def _normalize_json_activation_payload(
         return ("rows", _as_json_row_list(payload["activations"], origin=origin))
     if "rows" in payload:
         return ("rows", _as_json_row_list(payload["rows"], origin=origin))
-    if "hidden_state" in payload or "embedding" in payload:
+    if _has_record_vector(payload):
         return ("rows", [payload])
     if "hidden_states" in payload:
         return ("matrix", payload)
@@ -654,10 +695,12 @@ def _observations_from_json_matrix(
             "(JSON rows use hidden_state; hidden_states is a 2-D matrix or the npz name)"
         )
     overlay_layer = layer if layer is not None else payload.get("layer")
+    texts_key = _exclusive_key(payload, _NPZ_TEXT_KEYS, label=str(origin))
+    ids_key = _exclusive_key(payload, _NPZ_ID_KEYS, label=str(origin))
     return observations_from_activations(
         matrix,
-        texts=payload.get("texts"),
-        observation_ids=payload.get("observation_ids"),
+        texts=None if texts_key is None else payload.get(texts_key),
+        observation_ids=None if ids_key is None else payload.get(ids_key),
         layer=overlay_layer,
         source=source,
     )
