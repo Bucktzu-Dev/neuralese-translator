@@ -4,7 +4,7 @@ Inner representations are not a mythical language. They are a **compact symbol s
 
 If a code cannot be unfolded to the observations that produced it, it is residue — not a symbol.
 
-Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what v0.1.1 does not claim.
+Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what v0.1.2 does not claim. Changes: [CHANGELOG.md](CHANGELOG.md).
 
 ## Why this exists
 
@@ -35,6 +35,14 @@ JSONL observations:
 ```
 
 If `embedding` is omitted, the tool builds a deterministic hashed n-gram vector from `text`.
+
+Dumped hidden states (`.npy` / `.npz` / activation JSON or JSONL) become that observation JSONL with `neuralese ingest`. The package does not import HuggingFace; pool token/layer axes before ingest. A four-row demo is in [examples/activations](examples/activations). See [examples/activations/README.md](examples/activations/README.md).
+
+```bash
+neuralese ingest examples/activations/states.jsonl -o observations.jsonl
+neuralese learn observations.jsonl -o pack.json
+neuralese certify pack.json --observations observations.jsonl --fail-on-undecodable
+```
 
 A stream file is `{"codes": [0, 1, 0]}` or a JSON list of integers.
 
@@ -69,9 +77,16 @@ Read [docs/DECODABILITY.md](docs/DECODABILITY.md) and [docs/AUDIT_PROTOCOL.md](d
 ## Library
 
 ```python
-from neuralese import load_observations_jsonl, learn_pack, translate_stream, certify
+from neuralese import (
+    load_observations_jsonl,
+    load_activations,
+    learn_pack,
+    translate_stream,
+    certify,
+)
 
 obs = load_observations_jsonl("examples/toy_stream/observations.jsonl")
+# or: obs = load_activations("examples/activations/states.jsonl")
 pack = learn_pack(obs)
 cert = certify(pack, observations=obs)
 assert cert.passed

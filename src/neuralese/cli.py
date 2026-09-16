@@ -1,4 +1,4 @@
-"""CLI: neuralese learn | translate | audit | certify."""
+"""CLI: neuralese learn | ingest | translate | audit | certify."""
 from __future__ import annotations
 
 import argparse
@@ -8,11 +8,28 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from neuralese.adapters import load_observations_jsonl, load_pack, load_stream, save_pack
+from neuralese.adapters import (
+    load_activation_matrix,
+    load_activations,
+    load_alignment_texts,
+    load_observations_jsonl,
+    load_pack,
+    load_stream,
+    save_observations_jsonl,
+    save_pack,
+    _observations_from_validated_matrix,
+)
 from neuralese.alphabet import LearnConfig, learn_pack
 from neuralese.audit import certify
 from neuralese.contracts import CERT_POLICIES, UncertifiedPackError
 from neuralese.translator import translate_stream
+
+
+def _receipt_layer(rows):
+    first = rows[0].metadata.get("layer")
+    if any(row.metadata.get("layer") != first for row in rows[1:]):
+        return None
+    return first
 
 
 def _tau_residual_arg(raw: str) -> float:
@@ -48,6 +65,36 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--include-private",
         action="store_true",
         help="serialize raw example text (off by default)",
+    )
+
+    ingest_p = sub.add_parser(
+        "ingest",
+        help="turn dumped hidden states into observation JSONL",
+        description=(
+            "Load a .npy/.npz hidden-state dump or activation JSON/JSONL and write "
+            "observation JSONL. A 1-D vector is one observation; rank-3+ tensors fail "
+            "closed until token/layer axes are pooled. "
+            "Metadata.source is the activations filename, or --source."
+        ),
+    )
+    ingest_p.add_argument("activations", type=Path)
+    ingest_p.add_argument("-o", "--output", type=Path, required=True)
+    ingest_p.add_argument(
+        "--texts",
+        type=Path,
+        default=None,
+        help="JSONL or JSON array of texts aligned to activation rows (text/prompt, optional id)",
+    )
+    ingest_p.add_argument(
+        "--layer",
+        type=int,
+        default=None,
+        help="optional layer index stored on each observation's metadata",
+    )
+    ingest_p.add_argument(
+        "--source",
+        default=None,
+        help="source label stored on each observation (default: activations filename)",
     )
 
     tr_p = sub.add_parser("translate", help="gloss a code stream using a sealed pack")
@@ -144,6 +191,61 @@ def main(argv: Optional[List[str]] = None) -> int:
         )
         return 2 if pack.decision == "reject" else 0
 
+    if args.cmd == "ingest":
+        try:
+            if args.output.resolve() == args.activations.resolve():
+                raise ValueError(
+                    "output path must differ from the activations path"
+                )
+            if args.texts is not None and args.output.resolve() == args.texts.resolve():
+                raise ValueError("output path must differ from the --texts path")
+            source_label = (
+                args.source if args.source is not None else args.activations.name
+            )
+            suffix = args.activations.suffix.lower()
+            if suffix in {".npy", ".npz"}:
+                if args.texts is not None:
+                    ids, texts = load_alignment_texts(args.texts)
+                    rows = _observations_from_validated_matrix(
+                        load_activation_matrix(args.activations),
+                        texts=texts,
+                        observation_ids=ids,
+                        layer=args.layer,
+                        source=source_label,
+                    )
+                else:
+                    rows = load_activations(
+                        args.activations,
+                        layer=args.layer,
+                        source=source_label,
+                    )
+            else:
+                if args.texts is not None:
+                    raise ValueError("--texts is only valid with .npy or .npz activations")
+                rows = load_activations(
+                    args.activations,
+                    layer=args.layer,
+                    source=source_label,
+                )
+            save_observations_jsonl(rows, args.output)
+        except (TypeError, ValueError, OSError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+        print(
+            json.dumps(
+                {
+                    "n_observations": len(rows),
+                    "dim": len(rows[0].embedding),
+                    "n_with_text": sum(1 for row in rows if row.text is not None),
+                    "layer": _receipt_layer(rows),
+                    "source": rows[0].metadata.get("source"),
+                    "output": str(args.output),
+                },
+                indent=2,
+            )
+        )
+        return 0
+
     if args.cmd == "translate":
         try:
             pack = load_pack(args.pack)
@@ -161,9 +263,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 source_pack_checksum=args.source_pack,
                 tau_residual=args.tau_residual,
             )
-        except UncertifiedPackError as exc:
+        except UncertifiedPackError as copilot_exc:
             print(
-                json.dumps(exc.certificate.to_dict(), indent=2, sort_keys=True),
+                json.dumps(copilot_exc.certificate.to_dict(), indent=2, sort_keys=True),
                 file=sys.stderr,
             )
             return 1
