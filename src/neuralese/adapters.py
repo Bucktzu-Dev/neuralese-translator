@@ -4,12 +4,13 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import zipfile
 from pathlib import Path
-from typing import Iterable, List, Sequence, Union
+from typing import Dict, Iterable, List, Optional, Sequence, Union
 
 import numpy as np
 
-from neuralese.contracts import Observation, SymbolPack
+from neuralese.contracts import Observation, SymbolPack, _copy_mapping
 
 PathLike = Union[str, Path]
 
@@ -119,6 +120,418 @@ def _as_stream_code(value: object) -> int:
             raise ValueError("stream codes must be integers")
         return int(value)
     return int(value)
+
+
+def _loads_json(raw: str, *, label: str) -> object:
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, RecursionError) as exc:
+        raise ValueError(f"{label} invalid JSON") from exc
+
+
+def _is_real_number(value: object) -> bool:
+    if isinstance(value, (bool, np.bool_)):
+        return False
+    return isinstance(value, (int, float, np.integer, np.floating))
+
+
+def _as_layer(value: object, *, label: str) -> int:
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value, (int, np.integer)
+    ):
+        raise ValueError(f"{label} must be an integer")
+    return int(value)
+
+
+def _as_optional_id(value: object, *, label: str, generated: str) -> str:
+    if value is None:
+        return generated
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string or null")
+    obs_id = value.strip()
+    if not obs_id:
+        raise ValueError(f"{label} is blank")
+    return obs_id
+
+
+def _detach_metadata(value: object, *, label: str) -> Dict[str, object]:
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be an object or null")
+    try:
+        copied = _copy_mapping(value)
+    except TypeError as exc:
+        raise ValueError(f"{label} is invalid") from exc
+    if not isinstance(copied, dict):
+        raise ValueError(f"{label} must be an object or null")
+    return copied
+
+
+def _as_activation_vector(value: object, *, label: str) -> List[float]:
+    if isinstance(value, (str, bytes)) or not isinstance(value, (list, tuple, np.ndarray)):
+        raise ValueError(f"{label} must be a numeric array")
+    items = np.asarray(value, dtype=object).tolist()
+    if not isinstance(items, list):
+        raise ValueError(f"{label} must be a 1-D vector")
+    if items and isinstance(items[0], list):
+        raise ValueError(f"{label} must be a 1-D vector")
+    out: List[float] = []
+    for index, item in enumerate(items):
+        if not _is_real_number(item):
+            raise ValueError(f"{label}[{index}] is not a real number")
+        try:
+            number = float(item)
+        except OverflowError as exc:
+            raise ValueError(f"{label}[{index}] is not a real number") from exc
+        if not np.isfinite(number):
+            raise ValueError(f"{label}[{index}] is not finite")
+        out.append(number)
+    if not out:
+        raise ValueError(f"{label} must be nonempty")
+    return out
+
+
+def _require_2d_finite(array: np.ndarray, *, label: str) -> np.ndarray:
+    if array.ndim != 2:
+        raise ValueError(
+            f"{label} must be a 2-D array of shape (n_observations, hidden_dim); "
+            "pool token/layer axes before ingest"
+        )
+    if array.shape[0] < 1 or array.shape[1] < 1:
+        raise ValueError(f"{label} must be nonempty")
+    if (
+        array.dtype == object
+        or np.issubdtype(array.dtype, np.bool_)
+        or np.issubdtype(array.dtype, np.complexfloating)
+        or not (
+            np.issubdtype(array.dtype, np.integer)
+            or np.issubdtype(array.dtype, np.floating)
+        )
+    ):
+        raise ValueError(f"{label} must contain real numbers")
+    try:
+        matrix = np.asarray(array, dtype=np.float64)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must contain real numbers") from exc
+    if not np.isfinite(matrix).all():
+        raise ValueError(f"{label} must contain finite real numbers")
+    return matrix
+
+
+def _array_from_npz(bundle: np.lib.npyio.NpzFile) -> np.ndarray:
+    names = list(bundle.files)
+    if not names:
+        raise ValueError("npz archive contains no arrays")
+    for key in ("hidden_states", "activations", "embeddings"):
+        if key in bundle:
+            return np.asarray(bundle[key])
+    extras = {"texts", "observation_ids"}
+    matrices = [name for name in names if name not in extras]
+    if len(matrices) != 1:
+        raise ValueError(
+            "npz archive must contain hidden_states, activations, embeddings, "
+            "or exactly one matrix array"
+        )
+    return np.asarray(bundle[matrices[0]])
+
+
+def _as_optional_str_vector(array: np.ndarray, *, label: str) -> List[object]:
+    if array.ndim != 1:
+        raise ValueError(f"{label} must be a 1-D array")
+    if array.shape[0] < 1:
+        raise ValueError(f"{label} must be nonempty")
+    out: List[object] = []
+    for index, item in enumerate(array.tolist()):
+        if item is None:
+            out.append(None)
+            continue
+        if isinstance(item, (float, np.floating)) and np.isnan(item):
+            out.append(None)
+            continue
+        if not isinstance(item, str):
+            raise ValueError(f"{label}[{index}] must be a string or null")
+        out.append(item)
+    return out
+
+
+def _optional_npz_alignment(path: PathLike):
+    source = Path(path)
+    try:
+        with np.load(source, allow_pickle=False) as bundle:
+            texts_arr = np.asarray(bundle["texts"]) if "texts" in bundle else None
+            ids_arr = (
+                np.asarray(bundle["observation_ids"])
+                if "observation_ids" in bundle
+                else None
+            )
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        raise ValueError(f"invalid activation archive in {source}") from exc
+    texts = (
+        _as_optional_str_vector(texts_arr, label=f"{source} texts")
+        if texts_arr is not None
+        else None
+    )
+    ids = (
+        _as_optional_str_vector(ids_arr, label=f"{source} observation_ids")
+        if ids_arr is not None
+        else None
+    )
+    return ids, texts
+
+
+def load_activation_matrix(path: PathLike) -> np.ndarray:
+    source = Path(path)
+    suffix = source.suffix.lower()
+    if suffix == ".npy":
+        try:
+            array = np.load(source, allow_pickle=False)
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+            raise ValueError(f"invalid activation matrix in {source}") from exc
+        if not isinstance(array, np.ndarray):
+            closer = getattr(array, "close", None)
+            if callable(closer):
+                closer()
+            raise ValueError(f"invalid activation matrix in {source}")
+    elif suffix == ".npz":
+        try:
+            with np.load(source, allow_pickle=False) as bundle:
+                array = _array_from_npz(bundle)
+        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+            raise ValueError(f"invalid activation archive in {source}") from exc
+    else:
+        raise ValueError("activation matrix must be a .npy or .npz file")
+    return _require_2d_finite(array, label=str(source))
+
+
+def observations_from_activations(
+    hidden_states,
+    *,
+    texts=None,
+    observation_ids=None,
+    layer: Optional[int] = None,
+    source: Optional[str] = None,
+) -> List[Observation]:
+    if isinstance(hidden_states, np.ndarray):
+        matrix = _require_2d_finite(hidden_states, label="hidden_states")
+        vectors = [
+            _as_activation_vector(row, label=f"hidden_states[{index}]")
+            for index, row in enumerate(matrix)
+        ]
+    else:
+        if isinstance(hidden_states, (str, bytes)) or not isinstance(
+            hidden_states, (list, tuple)
+        ):
+            raise ValueError("hidden_states must be a 2-D array")
+        vectors = [
+            _as_activation_vector(row, label=f"hidden_states[{index}]")
+            for index, row in enumerate(hidden_states)
+        ]
+        if not vectors:
+            raise ValueError("hidden_states must be nonempty")
+        dim = len(vectors[0])
+        if any(len(row) != dim for row in vectors):
+            raise ValueError("hidden_states rows must share one hidden_dim")
+    n_rows = len(vectors)
+    if texts is not None:
+        if isinstance(texts, (str, bytes)):
+            raise TypeError("texts must be a sequence of strings, not a string")
+        if len(texts) != n_rows:
+            raise ValueError("texts length must match hidden_states rows")
+    if observation_ids is not None:
+        if isinstance(observation_ids, (str, bytes)):
+            raise TypeError("observation_ids must be a sequence of ids, not a string")
+        if len(observation_ids) != n_rows:
+            raise ValueError("observation_ids length must match hidden_states rows")
+    parsed_layer = None if layer is None else _as_layer(layer, label="layer")
+    if source is not None and not isinstance(source, str):
+        raise ValueError("source must be a string")
+    rows: List[Observation] = []
+    seen: set[str] = set()
+    for index in range(n_rows):
+        raw_id = None if observation_ids is None else observation_ids[index]
+        obs_id = _as_optional_id(
+            raw_id,
+            label=f"observation_ids[{index}]",
+            generated=f"obs-{index + 1}",
+        )
+        if obs_id in seen:
+            raise ValueError(f"duplicate observation_id {obs_id!r}")
+        seen.add(obs_id)
+        text = None if texts is None else texts[index]
+        if text is not None and not isinstance(text, str):
+            raise TypeError("texts must contain strings or null")
+        metadata: Dict[str, object] = {}
+        if parsed_layer is not None:
+            metadata["layer"] = parsed_layer
+        if source:
+            metadata["source"] = source
+        rows.append(
+            Observation(
+                observation_id=obs_id,
+                embedding=list(vectors[index]),
+                text=text,
+                metadata=metadata,
+            )
+        )
+    return rows
+
+
+def _text_row(data: object, *, path: PathLike, line_no: int):
+    if isinstance(data, str):
+        return None, data
+    if not isinstance(data, dict):
+        raise ValueError(f"{path}:{line_no} text record must be a JSON object or string")
+    text = data.get("text")
+    if text is not None and not isinstance(text, str):
+        raise ValueError(f"{path}:{line_no} text must be a string or null")
+    raw_id = data.get("observation_id")
+    if raw_id is None:
+        return None, text
+    return (
+        _as_optional_id(
+            raw_id,
+            label=f"{path}:{line_no} observation_id",
+            generated="obs-unused",
+        ),
+        text,
+    )
+
+
+def load_alignment_texts(path: PathLike):
+    source = Path(path)
+    raw = source.read_text(encoding="utf-8").strip()
+    if not raw:
+        raise ValueError(f"no texts in {source}")
+    ids: List[Optional[str]] = []
+    texts: List[Optional[str]] = []
+    if source.suffix.lower() == ".jsonl":
+        for line_no, line in enumerate(raw.splitlines(), start=1):
+            blob = line.strip()
+            if not blob or blob.startswith("#"):
+                continue
+            data = _loads_json(blob, label=f"{source}:{line_no}")
+            oid, text = _text_row(data, path=source, line_no=line_no)
+            ids.append(oid)
+            texts.append(text)
+    else:
+        payload = _loads_json(raw, label=str(source))
+        if isinstance(payload, dict) and "texts" in payload:
+            payload = payload["texts"]
+        if not isinstance(payload, list):
+            raise ValueError(f"{source} texts must be a JSON array or JSONL")
+        for index, row in enumerate(payload, start=1):
+            oid, text = _text_row(row, path=source, line_no=index)
+            ids.append(oid)
+            texts.append(text)
+    if not texts:
+        raise ValueError(f"no texts in {source}")
+    return ids, texts
+
+
+def _activation_from_record(
+    data: Dict[str, object], *, path: PathLike, line_no: int
+) -> List[float]:
+    if "hidden_state" in data and "embedding" in data:
+        raise ValueError(f"{path}:{line_no} provide hidden_state or embedding, not both")
+    if "hidden_state" in data:
+        return _as_activation_vector(
+            data["hidden_state"], label=f"{path}:{line_no} hidden_state"
+        )
+    if "embedding" in data:
+        return _as_activation_vector(
+            data["embedding"], label=f"{path}:{line_no} embedding"
+        )
+    raise ValueError(f"{path}:{line_no} missing hidden_state or embedding")
+
+
+def load_activation_jsonl(path: PathLike) -> List[Observation]:
+    source = Path(path)
+    rows: List[Observation] = []
+    seen: set[str] = set()
+    dim: Optional[int] = None
+    with source.open("r", encoding="utf-8") as handle:
+        for line_no, line in enumerate(handle, start=1):
+            raw = line.strip()
+            if not raw or raw.startswith("#"):
+                continue
+            data = _loads_json(raw, label=f"{source}:{line_no}")
+            if not isinstance(data, dict):
+                raise ValueError(
+                    f"{source}:{line_no} activation record must be a JSON object"
+                )
+            vector = _activation_from_record(data, path=source, line_no=line_no)
+            if dim is None:
+                dim = len(vector)
+            elif len(vector) != dim:
+                raise ValueError(
+                    f"{source}:{line_no} embedding dim mismatch: {len(vector)}, expected {dim}"
+                )
+            obs_id = _as_optional_id(
+                data.get("observation_id"),
+                label=f"{source}:{line_no} observation_id",
+                generated=f"obs-{line_no}",
+            )
+            if obs_id in seen:
+                raise ValueError(f"duplicate observation_id {obs_id!r}")
+            seen.add(obs_id)
+            text = data.get("text")
+            if text is not None and not isinstance(text, str):
+                raise ValueError(f"{source}:{line_no} text must be a string or null")
+            metadata = _detach_metadata(
+                data.get("metadata"), label=f"{source}:{line_no} metadata"
+            )
+            layer = data.get("layer")
+            if layer is not None:
+                metadata["layer"] = _as_layer(
+                    layer, label=f"{source}:{line_no} layer"
+                )
+            rows.append(
+                Observation(
+                    observation_id=obs_id,
+                    embedding=vector,
+                    text=text,
+                    metadata=metadata,
+                )
+            )
+    if not rows:
+        raise ValueError(f"no activations in {source}")
+    return rows
+
+
+def load_activations(path: PathLike) -> List[Observation]:
+    source = Path(path)
+    suffix = source.suffix.lower()
+    if suffix in {".npy", ".npz"}:
+        ids = None
+        texts = None
+        if suffix == ".npz":
+            ids, texts = _optional_npz_alignment(source)
+        return observations_from_activations(
+            load_activation_matrix(source),
+            texts=texts,
+            observation_ids=ids,
+            source=str(source),
+        )
+    if suffix == ".jsonl":
+        return load_activation_jsonl(source)
+    raise ValueError("activations must be a .npy, .npz, or .jsonl file")
+
+
+def save_observations_jsonl(observations: Sequence[Observation], path: PathLike) -> None:
+    if not observations:
+        raise ValueError("no observations to save")
+    target = Path(path)
+    with target.open("w", encoding="utf-8") as handle:
+        for obs in observations:
+            try:
+                payload = json.dumps(obs.to_dict(), sort_keys=True, ensure_ascii=True)
+            except (TypeError, ValueError, RecursionError, OverflowError) as exc:
+                raise ValueError(
+                    f"observation {obs.observation_id!r} is not JSON-serializable"
+                ) from exc
+            handle.write(payload)
+            handle.write("\n")
 
 
 def save_pack(pack: SymbolPack, path: PathLike) -> None:
