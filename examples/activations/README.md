@@ -49,6 +49,7 @@ The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`
 - `--texts` does not skip colliding npz `texts`+`prompts` or `observation_ids`+`ids`
 - `--texts` JSON object `texts`+`prompts`
 - Observation JSONL save rejects non-string `observation_id` / `text` and non-real `embedding` before replacing the output
+- Named npz matrix plus another unrecognized array (`hidden_states` + `arr_0`)
 - NaN npz `observation_ids`/`ids` (NaN npz `texts`/`prompts` stay missing)
 - JSONL/record-row `hidden_states` (plural) instead of `hidden_state`, including when a singular vector is also present (a 2-D JSON `hidden_states` matrix is still valid)
 
