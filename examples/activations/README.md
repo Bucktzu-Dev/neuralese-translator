@@ -23,7 +23,9 @@ Accepted activation files:
 - Rank-3+ dumps, empty axes, bool/complex/object/unicode dtypes, non-finite values
 - Corrupt ZIP-backed `.npy` / `.npz`, pickle payloads (`allow_pickle=False`), mislabeled `.npz` bytes served as `.npy`
 - Overflowing JSON numbers, recursive JSON, cyclic metadata, non-object metadata
-- Duplicate ids, blank ids, non-string ids (JSON `null` means missing and gets `obs-{line}`)
+- Duplicate ids, blank ids, non-string ids (JSON `null` means missing and gets `obs-{line}`). Nonblank ids keep surrounding whitespace.
+- More than one of `hidden_states` / `activations` / `embeddings` in the same `.npz`
+- Non-finite metadata (`NaN` / `Infinity`) when writing observation JSONL
 - String/bytes used as a texts or ids sequence, `--texts` on JSONL activations
 
 Library helpers: `load_activation_matrix`, `load_activations`, `load_alignment_texts`, `observations_from_activations`, `save_observations_jsonl`.
