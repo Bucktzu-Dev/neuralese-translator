@@ -9,6 +9,7 @@ import pytest
 from neuralese.adapters import (
     load_activation_matrix,
     load_activations,
+    load_alignment_texts,
     observations_from_activations,
     save_observations_jsonl,
 )
@@ -377,3 +378,43 @@ def test_npz_is_loaded_once(tmp_path):
     assert len(calls) == 1
     assert rows[0].text == "hello"
     assert rows[0].observation_id == "obs-1"
+
+
+def test_alignment_json_texts_and_prompts_fail_closed(tmp_path, capsys):
+    src = tmp_path / "states.npy"
+    np.save(src, np.array([[1.0, 0.0]]))
+    texts = tmp_path / "texts.json"
+    texts.write_text('{"texts":["from-texts"],"prompts":["from-prompts"]}\n')
+    rc = main(
+        ["ingest", str(src), "-o", str(tmp_path / "obs.jsonl"), "--texts", str(texts)]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "texts or prompts" in err
+    assert "Traceback" not in err
+
+
+def test_alignment_json_prompts_object_unwraps(tmp_path):
+    texts = tmp_path / "texts.json"
+    texts.write_text('{"prompts":["hello there friend"]}\n')
+    ids, rows = load_alignment_texts(texts)
+    assert ids == [None]
+    assert rows == ["hello there friend"]
+
+
+def test_npz_does_not_rescan_validated_matrix(tmp_path):
+    path = tmp_path / "bundle.npz"
+    np.savez(path, hidden_states=np.array([[1.0, 0.0]]))
+    from neuralese import adapters as adapters_mod
+
+    real = adapters_mod._require_2d_finite
+    calls = []
+
+    def counting(array, *, label):
+        calls.append(label)
+        return real(array, label=label)
+
+    with patch.object(adapters_mod, "_require_2d_finite", side_effect=counting):
+        rows = load_activations(path)
+    assert len(calls) == 1
+    assert rows[0].embedding == [1.0, 0.0]
