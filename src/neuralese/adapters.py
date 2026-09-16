@@ -7,6 +7,7 @@ import math
 import os
 import tempfile
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Union
 
@@ -43,6 +44,13 @@ def _exclusive_key(mapping, keys: Sequence[str], *, label: str) -> Optional[str]
     if not present:
         return None
     return present[0]
+
+
+def _require_row_sequence(value, *, label: str, kind: str) -> None:
+    if isinstance(value, (str, bytes)):
+        raise TypeError(f"{label} must be a sequence of {kind}, not a string")
+    if isinstance(value, Mapping):
+        raise TypeError(f"{label} must be a sequence of {kind}, not a mapping")
 
 
 def hashed_ngram_vector(text: str, dim: int = 32, n: int = 3) -> List[float]:
@@ -312,7 +320,7 @@ def _optional_npz_alignment(path: PathLike):
     source = Path(path)
     try:
         loaded = np.load(source, allow_pickle=False)
-    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+    except (OSError, ValueError, zipfile.BadZipFile, EOFError) as exc:
         raise ValueError(f"invalid activation archive in {source}") from exc
     closer = getattr(loaded, "close", None)
     try:
@@ -323,7 +331,7 @@ def _optional_npz_alignment(path: PathLike):
         try:
             texts_arr = np.asarray(loaded[texts_key]) if texts_key is not None else None
             ids_arr = np.asarray(loaded[ids_key]) if ids_key is not None else None
-        except (OSError, zipfile.BadZipFile) as exc:
+        except (OSError, zipfile.BadZipFile, EOFError) as exc:
             raise ValueError(f"invalid activation archive in {source}") from exc
     finally:
         if callable(closer):
@@ -347,7 +355,7 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
     if suffix == ".npy":
         try:
             array = np.load(source, allow_pickle=False)
-        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        except (OSError, ValueError, zipfile.BadZipFile, EOFError) as exc:
             raise ValueError(f"invalid activation matrix in {source}") from exc
         if not isinstance(array, np.ndarray):
             closer = getattr(array, "close", None)
@@ -357,7 +365,7 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
     elif suffix == ".npz":
         try:
             loaded = np.load(source, allow_pickle=False)
-        except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        except (OSError, ValueError, zipfile.BadZipFile, EOFError) as exc:
             raise ValueError(f"invalid activation archive in {source}") from exc
         closer = getattr(loaded, "close", None)
         try:
@@ -365,7 +373,7 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
                 raise ValueError(f"invalid activation archive in {source}")
             try:
                 array = _array_from_npz(loaded)
-            except (OSError, zipfile.BadZipFile) as exc:
+            except (OSError, zipfile.BadZipFile, EOFError) as exc:
                 raise ValueError(f"invalid activation archive in {source}") from exc
         finally:
             if callable(closer):
@@ -407,13 +415,11 @@ def observations_from_activations(
             raise ValueError("hidden_states rows must share one hidden_dim")
     n_rows = len(vectors)
     if texts is not None:
-        if isinstance(texts, (str, bytes)):
-            raise TypeError("texts must be a sequence of strings, not a string")
+        _require_row_sequence(texts, label="texts", kind="strings")
         if len(texts) != n_rows:
             raise ValueError("texts length must match hidden_states rows")
     if observation_ids is not None:
-        if isinstance(observation_ids, (str, bytes)):
-            raise TypeError("observation_ids must be a sequence of ids, not a string")
+        _require_row_sequence(observation_ids, label="observation_ids", kind="ids")
         if len(observation_ids) != n_rows:
             raise ValueError("observation_ids length must match hidden_states rows")
     parsed_layer = None if layer is None else _as_layer(layer, label="layer")
@@ -771,6 +777,8 @@ def save_observations_jsonl(observations: Sequence[Observation], path: PathLike)
     lines: List[str] = []
     for obs in observations:
         try:
+            if not isinstance(obs.metadata, dict):
+                raise TypeError("metadata must be an object")
             _require_json_object_keys(obs.metadata)
             payload = json.dumps(
                 obs.to_dict(),
