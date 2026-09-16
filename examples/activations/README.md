@@ -40,6 +40,8 @@ The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`
 - Duplicate ids, blank ids, non-string ids (JSON `null` means missing and gets `obs-{line}`). Nonblank ids keep surrounding whitespace.
 - More than one of `hidden_states` / `activations` / `embeddings` in the same `.npz`
 - Non-finite metadata (`NaN` / `Infinity`) when writing observation JSONL
+- Non-string metadata keys (`{1: ...}` is not laundered to `"1"`)
+- Truncated ZIP members inside a `.npz` that already opened
 - String/bytes used as a texts or ids sequence, `--texts` on JSONL/JSON activations
 - Blank `--source` / `source="  "` (metadata.source is a nonblank string)
 - Ingest `-o` pointing at the same path as the activations file
