@@ -197,6 +197,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 raise ValueError(
                     "output path must differ from the activations path"
                 )
+            if args.texts is not None and args.output.resolve() == args.texts.resolve():
+                raise ValueError("output path must differ from the --texts path")
             source_label = (
                 args.source if args.source is not None else args.activations.name
             )
