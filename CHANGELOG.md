@@ -14,6 +14,7 @@ Activation ingest. Pack schema and `decoder_version` stay `0.1.1`. Authority-gat
 - `.npz` alignment arrays and the matrix are read from one archive snapshot; NaN npz `texts`/`prompts` stay missing
 - `--texts` JSON objects use exclusive `texts`/`prompts`; a validated npy/npz matrix is not finite-scanned again
 - Observation JSONL save validates `observation_id`, `text`, and `embedding` against the loader schema before replacing the output
+- A named npz matrix plus another unrecognized array fails closed
 - JSONL/JSON loaders accept UTF-8 BOM and bare numeric arrays per row
 - No in-tree HuggingFace client. Dump recipe: `examples/activations/README.md`. Shipped demo: `examples/activations/states.jsonl`
 
