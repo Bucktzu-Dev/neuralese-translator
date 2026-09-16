@@ -12,6 +12,7 @@ Activation ingest. Pack schema and `decoder_version` stay `0.1.1`. Authority-gat
 - CLI ingest receipt reports `layer: null` when record-level layers differ
 - Observation JSONL is streamed to a tempfile and replaced only after every row serializes; `--texts` does not skip colliding npz alignment aliases
 - `.npz` alignment arrays and the matrix are read from one archive snapshot; NaN npz `texts`/`prompts` stay missing
+- `--texts` JSON objects use exclusive `texts`/`prompts`; a validated npy/npz matrix is not finite-scanned again
 - JSONL/JSON loaders accept UTF-8 BOM and bare numeric arrays per row
 - No in-tree HuggingFace client. Dump recipe: `examples/activations/README.md`. Shipped demo: `examples/activations/states.jsonl`
 
