@@ -315,3 +315,65 @@ def test_cli_texts_does_not_skip_npz_alias_collision(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "texts or prompts" in err
     assert "Traceback" not in err
+
+
+def test_ingest_refuses_to_overwrite_texts(tmp_path, capsys):
+    src = tmp_path / "states.npy"
+    np.save(src, np.array([[1.0, 0.0]]))
+    texts = tmp_path / "prompts.jsonl"
+    texts.write_text('{"text":"hello there friend"}\n')
+    rc = main(["ingest", str(src), "-o", str(texts), "--texts", str(texts)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "differ" in err
+    assert "Traceback" not in err
+    assert texts.read_text() == '{"text":"hello there friend"}\n'
+
+
+def test_npz_nan_ids_fail_closed(tmp_path, capsys):
+    path = tmp_path / "bundle.npz"
+    np.savez(
+        path,
+        hidden_states=np.array([[1.0, 0.0]]),
+        observation_ids=np.array([np.nan]),
+    )
+    rc = main(["ingest", str(path), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "must be a string or null" in err
+    assert "Traceback" not in err
+
+
+def test_npz_nan_texts_are_missing(tmp_path):
+    path = tmp_path / "bundle.npz"
+    np.savez(
+        path,
+        hidden_states=np.array([[1.0, 0.0]]),
+        texts=np.array([np.nan]),
+    )
+    rows = load_activations(path)
+    assert len(rows) == 1
+    assert rows[0].text is None
+    assert rows[0].observation_id == "obs-1"
+
+
+def test_npz_is_loaded_once(tmp_path):
+    path = tmp_path / "bundle.npz"
+    np.savez(
+        path,
+        hidden_states=np.array([[1.0, 0.0]]),
+        texts=np.array(["hello"]),
+        observation_ids=np.array(["obs-1"]),
+    )
+    real_load = np.load
+    calls = []
+
+    def counting_load(*args, **kwargs):
+        calls.append(1)
+        return real_load(*args, **kwargs)
+
+    with patch("neuralese.adapters.np.load", side_effect=counting_load):
+        rows = load_activations(path)
+    assert len(calls) == 1
+    assert rows[0].text == "hello"
+    assert rows[0].observation_id == "obs-1"
