@@ -1,4 +1,4 @@
-"""Observation and pack I/O. No event bus; JSONL and JSON only."""
+"""Observation and pack I/O. No event bus; JSONL/JSON and npy/npz activations."""
 from __future__ import annotations
 
 import hashlib
@@ -833,6 +833,27 @@ def load_activations(
     raise ValueError("activations must be a .npy, .npz, .jsonl, or .json file")
 
 
+def _require_reloadable_observation(obs: Observation) -> None:
+    if not isinstance(obs.observation_id, str):
+        raise TypeError("observation_id must be a string")
+    if obs.text is not None and not isinstance(obs.text, str):
+        raise TypeError("text must be a string or null")
+    embedding = obs.embedding
+    if embedding is None:
+        return
+    if not isinstance(embedding, list):
+        raise TypeError("embedding must be an array or null")
+    for item in embedding:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise TypeError("embedding must contain real numbers")
+        try:
+            number = float(item)
+        except OverflowError as copilot_exc:
+            raise TypeError("embedding must contain real numbers") from copilot_exc
+        if not math.isfinite(number):
+            raise ValueError("embedding must contain finite real numbers")
+
+
 def save_observations_jsonl(observations: Sequence[Observation], path: PathLike) -> None:
     if not observations:
         raise ValueError("no observations to save")
@@ -850,6 +871,7 @@ def save_observations_jsonl(observations: Sequence[Observation], path: PathLike)
                     if not isinstance(obs.metadata, dict):
                         raise TypeError("metadata must be an object")
                     _require_json_object_keys(obs.metadata)
+                    _require_reloadable_observation(obs)
                     payload = json.dumps(
                         obs.to_dict(),
                         sort_keys=True,
