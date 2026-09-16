@@ -89,8 +89,8 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
                 continue
             try:
                 data = json.loads(raw)
-            except (json.JSONDecodeError, RecursionError) as exc:
-                raise ValueError(f"{path}:{line_no} invalid JSON") from exc
+            except (json.JSONDecodeError, RecursionError) as copilot_exc:
+                raise ValueError(f"{path}:{line_no} invalid JSON") from copilot_exc
             if not isinstance(data, dict):
                 raise ValueError(
                     f"{path}:{line_no} observation record must be a JSON object"
@@ -111,18 +111,18 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
                         raise ValueError(f"{path}:{line_no} invalid observation record")
                     try:
                         number = float(item)
-                    except OverflowError as exc:
+                    except OverflowError as copilot_exc:
                         raise ValueError(
                             f"{path}:{line_no} invalid observation record"
-                        ) from exc
+                        ) from copilot_exc
                     if not math.isfinite(number):
                         raise ValueError(f"{path}:{line_no} invalid observation record")
             try:
                 rows.append(Observation.from_dict(data))
-            except (TypeError, ValueError, KeyError, OverflowError) as exc:
+            except (TypeError, ValueError, KeyError, OverflowError) as copilot_exc:
                 raise ValueError(
                     f"{path}:{line_no} invalid observation record"
-                ) from exc
+                ) from copilot_exc
     if not rows:
         raise ValueError(f"no observations in {path}")
     return rows
@@ -131,10 +131,10 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
 def load_stream(path: PathLike) -> List[int]:
     try:
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, RecursionError) as exc:
+    except (json.JSONDecodeError, RecursionError) as copilot_exc:
         raise ValueError(
             "stream file must be a JSON list or an object with a codes array"
-        ) from exc
+        ) from copilot_exc
     if isinstance(payload, dict) and "codes" in payload:
         codes = payload["codes"]
     elif isinstance(payload, list):
@@ -145,8 +145,8 @@ def load_stream(path: PathLike) -> List[int]:
         raise ValueError("stream codes must be an array")
     try:
         return [_as_stream_code(c) for c in codes]
-    except (TypeError, ValueError) as exc:
-        raise ValueError("stream codes must be integers") from exc
+    except (TypeError, ValueError) as copilot_exc:
+        raise ValueError("stream codes must be integers") from copilot_exc
 
 
 def _as_stream_code(value: object) -> int:
@@ -163,8 +163,8 @@ def _as_stream_code(value: object) -> int:
 def _loads_json(raw: str, *, label: str) -> object:
     try:
         return json.loads(raw)
-    except (json.JSONDecodeError, RecursionError) as exc:
-        raise ValueError(f"{label} invalid JSON") from exc
+    except (json.JSONDecodeError, RecursionError) as copilot_exc:
+        raise ValueError(f"{label} invalid JSON") from copilot_exc
 
 
 def _is_real_number(value: object) -> bool:
@@ -212,8 +212,8 @@ def _detach_metadata(value: object, *, label: str) -> Dict[str, object]:
         raise ValueError(f"{label} must be an object or null")
     try:
         copied = _copy_mapping(value)
-    except (TypeError, RecursionError) as exc:
-        raise ValueError(f"{label} is invalid") from exc
+    except (TypeError, RecursionError) as copilot_exc:
+        raise ValueError(f"{label} is invalid") from copilot_exc
     if not isinstance(copied, dict):
         raise ValueError(f"{label} must be an object or null")
     return copied
@@ -233,8 +233,8 @@ def _as_activation_vector(value: object, *, label: str) -> List[float]:
             raise ValueError(f"{label}[{index}] is not a real number")
         try:
             number = float(item)
-        except OverflowError as exc:
-            raise ValueError(f"{label}[{index}] is not a real number") from exc
+        except OverflowError as copilot_exc:
+            raise ValueError(f"{label}[{index}] is not a real number") from copilot_exc
         if not np.isfinite(number):
             raise ValueError(f"{label}[{index}] is not finite")
         out.append(number)
@@ -268,8 +268,8 @@ def _require_2d_finite(array: np.ndarray, *, label: str) -> np.ndarray:
         raise ValueError(f"{label} must contain real numbers")
     try:
         matrix = np.asarray(array, dtype=np.float64)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{label} must contain real numbers") from exc
+    except (TypeError, ValueError) as copilot_exc:
+        raise ValueError(f"{label} must contain real numbers") from copilot_exc
     if not np.isfinite(matrix).all():
         raise ValueError(f"{label} must contain finite real numbers")
     return matrix
@@ -297,7 +297,9 @@ def _array_from_npz(bundle: np.lib.npyio.NpzFile) -> np.ndarray:
     return np.asarray(bundle[matrices[0]])
 
 
-def _as_optional_str_vector(array: np.ndarray, *, label: str) -> List[object]:
+def _as_optional_str_vector(
+    array: np.ndarray, *, label: str, allow_nan: bool
+) -> List[object]:
     if array.ndim != 1:
         raise ValueError(f"{label} must be a 1-D array")
     if array.shape[0] < 1:
@@ -308,6 +310,8 @@ def _as_optional_str_vector(array: np.ndarray, *, label: str) -> List[object]:
             out.append(None)
             continue
         if isinstance(item, (float, np.floating)) and np.isnan(item):
+            if not allow_nan:
+                raise ValueError(f"{label}[{index}] must be a string or null")
             out.append(None)
             continue
         if not isinstance(item, str):
@@ -316,33 +320,39 @@ def _as_optional_str_vector(array: np.ndarray, *, label: str) -> List[object]:
     return out
 
 
-def _optional_npz_alignment(path: PathLike):
+def _open_npz(path: PathLike):
     source = Path(path)
     try:
         loaded = np.load(source, allow_pickle=False)
-    except (OSError, ValueError, zipfile.BadZipFile, EOFError) as exc:
-        raise ValueError(f"invalid activation archive in {source}") from exc
-    closer = getattr(loaded, "close", None)
-    try:
-        if not hasattr(loaded, "files"):
-            raise ValueError(f"invalid activation archive in {source}")
-        texts_key = _exclusive_key(loaded, _NPZ_TEXT_KEYS, label=str(source))
-        ids_key = _exclusive_key(loaded, _NPZ_ID_KEYS, label=str(source))
-        try:
-            texts_arr = np.asarray(loaded[texts_key]) if texts_key is not None else None
-            ids_arr = np.asarray(loaded[ids_key]) if ids_key is not None else None
-        except (OSError, zipfile.BadZipFile, EOFError) as exc:
-            raise ValueError(f"invalid activation archive in {source}") from exc
-    finally:
+    except (OSError, ValueError, zipfile.BadZipFile, EOFError) as copilot_exc:
+        raise ValueError(f"invalid activation archive in {source}") from copilot_exc
+    if not hasattr(loaded, "files"):
+        closer = getattr(loaded, "close", None)
         if callable(closer):
             closer()
+        raise ValueError(f"invalid activation archive in {source}")
+    return loaded
+
+
+def _alignment_from_open_npz(loaded, *, source: Path):
+    texts_key = _exclusive_key(loaded, _NPZ_TEXT_KEYS, label=str(source))
+    ids_key = _exclusive_key(loaded, _NPZ_ID_KEYS, label=str(source))
+    try:
+        texts_arr = np.asarray(loaded[texts_key]) if texts_key is not None else None
+        ids_arr = np.asarray(loaded[ids_key]) if ids_key is not None else None
+    except (OSError, zipfile.BadZipFile, EOFError) as copilot_exc:
+        raise ValueError(f"invalid activation archive in {source}") from copilot_exc
     texts = (
-        _as_optional_str_vector(texts_arr, label=f"{source} {texts_key}")
+        _as_optional_str_vector(
+            texts_arr, label=f"{source} {texts_key}", allow_nan=True
+        )
         if texts_arr is not None
         else None
     )
     ids = (
-        _as_optional_str_vector(ids_arr, label=f"{source} {ids_key}")
+        _as_optional_str_vector(
+            ids_arr, label=f"{source} {ids_key}", allow_nan=False
+        )
         if ids_arr is not None
         else None
     )
@@ -355,28 +365,23 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
     if suffix == ".npy":
         try:
             array = np.load(source, allow_pickle=False)
-        except (OSError, ValueError, zipfile.BadZipFile, EOFError) as exc:
-            raise ValueError(f"invalid activation matrix in {source}") from exc
+        except (OSError, ValueError, zipfile.BadZipFile, EOFError) as copilot_exc:
+            raise ValueError(f"invalid activation matrix in {source}") from copilot_exc
         if not isinstance(array, np.ndarray):
             closer = getattr(array, "close", None)
             if callable(closer):
                 closer()
             raise ValueError(f"invalid activation matrix in {source}")
     elif suffix == ".npz":
-        try:
-            loaded = np.load(source, allow_pickle=False)
-        except (OSError, ValueError, zipfile.BadZipFile, EOFError) as exc:
-            raise ValueError(f"invalid activation archive in {source}") from exc
+        loaded = _open_npz(source)
         closer = getattr(loaded, "close", None)
         try:
-            if not hasattr(loaded, "files"):
-                raise ValueError(f"invalid activation archive in {source}")
             _exclusive_key(loaded, _NPZ_TEXT_KEYS, label=str(source))
             _exclusive_key(loaded, _NPZ_ID_KEYS, label=str(source))
             try:
                 array = _array_from_npz(loaded)
-            except (OSError, zipfile.BadZipFile, EOFError) as exc:
-                raise ValueError(f"invalid activation archive in {source}") from exc
+            except (OSError, zipfile.BadZipFile, EOFError) as copilot_exc:
+                raise ValueError(f"invalid activation archive in {source}") from copilot_exc
         finally:
             if callable(closer):
                 closer()
@@ -759,13 +764,26 @@ def load_activations(
     origin = Path(path)
     suffix = origin.suffix.lower()
     source_label = _activation_source_label(origin, source)
-    if suffix in {".npy", ".npz"}:
-        ids = None
-        texts = None
-        if suffix == ".npz":
-            ids, texts = _optional_npz_alignment(origin)
+    if suffix == ".npy":
         return observations_from_activations(
             load_activation_matrix(origin),
+            layer=layer,
+            source=source_label,
+        )
+    if suffix == ".npz":
+        loaded = _open_npz(origin)
+        closer = getattr(loaded, "close", None)
+        try:
+            ids, texts = _alignment_from_open_npz(loaded, source=origin)
+            try:
+                array = _array_from_npz(loaded)
+            except (OSError, zipfile.BadZipFile, EOFError) as copilot_exc:
+                raise ValueError(f"invalid activation archive in {origin}") from copilot_exc
+        finally:
+            if callable(closer):
+                closer()
+        return observations_from_activations(
+            _require_2d_finite(array, label=str(origin)),
             texts=texts,
             observation_ids=ids,
             layer=layer,
@@ -801,10 +819,10 @@ def save_observations_jsonl(observations: Sequence[Observation], path: PathLike)
                         ensure_ascii=True,
                         allow_nan=False,
                     )
-                except (TypeError, ValueError, RecursionError, OverflowError) as exc:
+                except (TypeError, ValueError, RecursionError, OverflowError) as copilot_exc:
                     raise ValueError(
                         f"observation {obs.observation_id!r} is not JSON-serializable"
-                    ) from exc
+                    ) from copilot_exc
                 handle.write(payload)
                 handle.write("\n")
         os.replace(tmp_name, target)
@@ -837,8 +855,8 @@ def load_pack(path: PathLike) -> SymbolPack:
         OverflowError,
         RecursionError,
         json.JSONDecodeError,
-    ) as exc:
-        raise ValueError(f"invalid pack in {path}") from exc
+    ) as copilot_exc:
+        raise ValueError(f"invalid pack in {path}") from copilot_exc
 
 
 def stack_embeddings(observations: Sequence[Observation]) -> np.ndarray:
