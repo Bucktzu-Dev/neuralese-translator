@@ -285,10 +285,16 @@ def _array_from_npz(bundle: np.lib.npyio.NpzFile) -> np.ndarray:
             "npz archive must contain only one of hidden_states, activations, "
             "embeddings, last_hidden_state"
         )
-    if recognized:
-        return np.asarray(bundle[recognized[0]])
     extras = set(_NPZ_TEXT_KEYS) | set(_NPZ_ID_KEYS)
     matrices = [name for name in names if name not in extras]
+    if recognized:
+        leftover = [name for name in matrices if name not in recognized]
+        if leftover:
+            raise ValueError(
+                "npz archive must contain hidden_states, activations, embeddings, "
+                "last_hidden_state, or exactly one matrix array"
+            )
+        return np.asarray(bundle[recognized[0]])
     if len(matrices) != 1:
         raise ValueError(
             "npz archive must contain hidden_states, activations, embeddings, "
