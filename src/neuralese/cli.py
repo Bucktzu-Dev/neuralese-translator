@@ -63,6 +63,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     ingest_p = sub.add_parser(
         "ingest",
         help="turn dumped hidden states into observation JSONL",
+        description=(
+            "Load a 2-D .npy/.npz hidden-state dump or activation JSONL and write "
+            "observation JSONL. Rank-3+ tensors fail closed; pool token/layer axes first. "
+            "Metadata.source is the activations filename, or --source."
+        ),
     )
     ingest_p.add_argument("activations", type=Path)
     ingest_p.add_argument("-o", "--output", type=Path, required=True)
@@ -77,6 +82,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         type=int,
         default=None,
         help="optional layer index stored on each observation's metadata",
+    )
+    ingest_p.add_argument(
+        "--source",
+        default=None,
+        help="source label stored on each observation (default: activations filename)",
     )
 
     tr_p = sub.add_parser("translate", help="gloss a code stream using a sealed pack")
@@ -175,6 +185,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "ingest":
         try:
+            source_label = (
+                args.source if args.source is not None else args.activations.name
+            )
             suffix = args.activations.suffix.lower()
             if suffix in {".npy", ".npz"}:
                 if args.texts is not None:
@@ -184,24 +197,22 @@ def main(argv: Optional[List[str]] = None) -> int:
                         texts=texts,
                         observation_ids=ids,
                         layer=args.layer,
-                        source=str(args.activations),
+                        source=source_label,
                     )
                 else:
-                    rows = load_activations(args.activations)
-                    if args.layer is not None:
-                        for row in rows:
-                            metadata = dict(row.metadata)
-                            metadata["layer"] = int(args.layer)
-                            row.metadata = metadata
+                    rows = load_activations(
+                        args.activations,
+                        layer=args.layer,
+                        source=source_label,
+                    )
             else:
                 if args.texts is not None:
                     raise ValueError("--texts is only valid with .npy or .npz activations")
-                rows = load_activations(args.activations)
-                if args.layer is not None:
-                    for row in rows:
-                        metadata = dict(row.metadata)
-                        metadata["layer"] = int(args.layer)
-                        row.metadata = metadata
+                rows = load_activations(
+                    args.activations,
+                    layer=args.layer,
+                    source=source_label,
+                )
             save_observations_jsonl(rows, args.output)
         except (TypeError, ValueError, OSError) as exc:
             print(str(exc), file=sys.stderr)
@@ -211,6 +222,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 {
                     "n_observations": len(rows),
                     "dim": len(rows[0].embedding),
+                    "n_with_text": sum(1 for row in rows if row.text is not None),
+                    "layer": rows[0].metadata.get("layer"),
+                    "source": rows[0].metadata.get("source"),
                     "output": str(args.output),
                 },
                 indent=2,
