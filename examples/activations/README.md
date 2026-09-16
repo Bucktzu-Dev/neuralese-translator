@@ -25,9 +25,10 @@ Accepted activation files:
 
 - `.npy` — 2-D real array `(n_observations, hidden_dim)`
 - `.npz` — named `hidden_states` / `activations` / `embeddings`, or exactly one matrix array. Optional 1-D `texts` and `observation_ids` arrays are aligned to rows. `--texts` replaces both.
-- `.jsonl` — one object per row with `hidden_state` or `embedding` (not both)
+- `.jsonl` — one object or numeric array per row (`hidden_state` or `embedding`, not both). UTF-8 BOM is ignored.
+- `.json` — a JSON array of those records/vectors, or an object with `activations` (or `rows`)
 
-`--texts` is only valid with `.npy` / `.npz`. It may be JSONL objects (`text`, optional `observation_id`) or a JSON array of strings. `--layer` is stored on each observation's metadata; on JSONL it overwrites a record `layer`. `--source` is stored on each observation's metadata (default: the activations filename, not an absolute path).
+`--texts` is only valid with `.npy` / `.npz`. It may be JSONL objects (`text`, optional `observation_id`) or a JSON array of strings. `--layer` is stored on each observation's metadata; on JSONL/JSON it overwrites a record `layer`. `--source` is stored on each observation's metadata (default: the activations filename, not an absolute path). The output path must differ from the activations path.
 
 The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`, and `output`.
 
@@ -39,8 +40,10 @@ The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`
 - Duplicate ids, blank ids, non-string ids (JSON `null` means missing and gets `obs-{line}`). Nonblank ids keep surrounding whitespace.
 - More than one of `hidden_states` / `activations` / `embeddings` in the same `.npz`
 - Non-finite metadata (`NaN` / `Infinity`) when writing observation JSONL
-- String/bytes used as a texts or ids sequence, `--texts` on JSONL activations
+- String/bytes used as a texts or ids sequence, `--texts` on JSONL/JSON activations
 - Blank `--source` / `source="  "` (metadata.source is a nonblank string)
+- Ingest `-o` pointing at the same path as the activations file
+- JSONL/JSON `hidden_states` (plural) instead of `hidden_state`
 
 Library helpers: `load_activation_matrix`, `load_activations`, `load_alignment_texts`, `observations_from_activations`, `save_observations_jsonl`. `load_activations` and `observations_from_activations` accept `layer=` and `source=`.
 
