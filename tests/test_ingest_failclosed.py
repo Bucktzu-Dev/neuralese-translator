@@ -284,3 +284,34 @@ def test_cli_mixed_record_layers_receipt_is_null(tmp_path, capsys):
     assert summary["layer"] is None
     loaded = [json.loads(line) for line in out.read_text().splitlines() if line]
     assert [row["metadata"]["layer"] for row in loaded] == [3, 9]
+
+
+def test_jsonl_hidden_state_and_hidden_states_fail_closed(tmp_path, capsys):
+    src = tmp_path / "acts.jsonl"
+    src.write_text(
+        '{"hidden_state":[1.0,0.0],"hidden_states":[0.0,1.0]}\n'
+    )
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "hidden_state or hidden_states" in err
+    assert "Traceback" not in err
+
+
+def test_cli_texts_does_not_skip_npz_alias_collision(tmp_path, capsys):
+    path = tmp_path / "bundle.npz"
+    np.savez(
+        path,
+        hidden_states=np.array([[1.0, 0.0]]),
+        texts=np.array(["from-texts"]),
+        prompts=np.array(["from-prompts"]),
+    )
+    texts = tmp_path / "texts.jsonl"
+    texts.write_text('{"text":"hello there friend"}\n')
+    rc = main(
+        ["ingest", str(path), "-o", str(tmp_path / "obs.jsonl"), "--texts", str(texts)]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "texts or prompts" in err
+    assert "Traceback" not in err
