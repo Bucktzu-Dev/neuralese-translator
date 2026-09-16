@@ -26,7 +26,7 @@ Accepted activation files:
 - `.npy` — 2-D real array `(n_observations, hidden_dim)`
 - `.npz` — named `hidden_states` / `activations` / `embeddings`, or exactly one matrix array. Optional 1-D `texts` and `observation_ids` arrays are aligned to rows. `--texts` replaces both.
 - `.jsonl` — one object or numeric array per row (`hidden_state` or `embedding`, not both). UTF-8 BOM is ignored.
-- `.json` — a JSON array of those records/vectors, or an object with `activations` (or `rows`)
+- `.json` — a JSON array of those records/vectors, a single record object, a single vector, an object with `activations` (or `rows`), or a 2-D `hidden_states` matrix (optional aligned `texts` / `observation_ids`)
 
 `--texts` is only valid with `.npy` / `.npz`. It may be JSONL objects (`text`, optional `observation_id`) or a JSON array of strings. `--layer` is stored on each observation's metadata; on JSONL/JSON it overwrites a record `layer`. `--source` is stored on each observation's metadata (default: the activations filename, not an absolute path). The output path must differ from the activations path.
 
