@@ -15,9 +15,9 @@ from neuralese.adapters import (
     load_observations_jsonl,
     load_pack,
     load_stream,
-    observations_from_activations,
     save_observations_jsonl,
     save_pack,
+    _observations_from_validated_matrix,
 )
 from neuralese.alphabet import LearnConfig, learn_pack
 from neuralese.audit import certify
@@ -206,7 +206,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             if suffix in {".npy", ".npz"}:
                 if args.texts is not None:
                     ids, texts = load_alignment_texts(args.texts)
-                    rows = observations_from_activations(
+                    rows = _observations_from_validated_matrix(
                         load_activation_matrix(args.activations),
                         texts=texts,
                         observation_ids=ids,
@@ -263,9 +263,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 source_pack_checksum=args.source_pack,
                 tau_residual=args.tau_residual,
             )
-        except UncertifiedPackError as exc:
+        except UncertifiedPackError as copilot_exc:
             print(
-                json.dumps(exc.certificate.to_dict(), indent=2, sort_keys=True),
+                json.dumps(copilot_exc.certificate.to_dict(), indent=2, sort_keys=True),
                 file=sys.stderr,
             )
             return 1
