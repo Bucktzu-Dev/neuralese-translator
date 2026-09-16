@@ -61,3 +61,24 @@ def test_recursive_metadata_copy_fails_closed(tmp_path):
     ):
         with pytest.raises(ValueError, match="metadata is invalid"):
             load_activations(src)
+
+
+def test_npz_texts_length_mismatch_fails_closed(tmp_path):
+    path = tmp_path / "bundle.npz"
+    np.savez(
+        path,
+        hidden_states=np.array([[1.0, 0.0], [0.0, 1.0]]),
+        texts=np.array(["only-one"]),
+    )
+    with pytest.raises(ValueError, match="length must match"):
+        load_activations(path)
+
+
+def test_non_finite_npy_fails_closed(tmp_path):
+    path = tmp_path / "states.npy"
+    np.save(path, np.array([[1.0, np.nan]]))
+    with pytest.raises(ValueError, match="finite"):
+        load_activation_matrix(path)
+    np.save(path, np.array([[1.0, np.inf]]))
+    with pytest.raises(ValueError, match="finite"):
+        load_activation_matrix(path)
