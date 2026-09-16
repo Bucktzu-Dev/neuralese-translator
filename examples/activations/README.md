@@ -43,10 +43,10 @@ The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`
 - Non-finite metadata (`NaN` / `Infinity`) when writing observation JSONL
 - Non-string metadata keys (`{1: ...}` is not laundered to `"1"`)
 - Truncated ZIP members inside a `.npz` that already opened
-- String/bytes used as a texts or ids sequence, `--texts` on JSONL/JSON activations
+- String/bytes/mapping used as a texts or ids sequence, `--texts` on JSONL/JSON activations
 - Blank `--source` / `source="  "` (metadata.source is a nonblank string)
 - Ingest `-o` pointing at the same path as the activations file
-- JSONL/JSON `hidden_states` (plural) instead of `hidden_state`
+- JSONL/record-row `hidden_states` (plural) instead of `hidden_state` (a 2-D JSON `hidden_states` matrix is still valid)
 
 Library helpers: `load_activation_matrix`, `load_activations`, `load_alignment_texts`, `observations_from_activations`, `save_observations_jsonl`. `load_activations` and `observations_from_activations` accept `layer=` and `source=`.
 
