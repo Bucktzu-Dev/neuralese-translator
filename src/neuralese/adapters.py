@@ -153,6 +153,20 @@ def _as_optional_id(value: object, *, label: str, generated: str) -> str:
     return value
 
 
+def _as_source(value: object, *, label: str = "source") -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string")
+    if not value.strip():
+        raise ValueError(f"{label} is blank")
+    return value
+
+
+def _activation_source_label(path: PathLike, source: Optional[str] = None) -> str:
+    if source is None:
+        return _as_source(Path(path).name)
+    return _as_source(source)
+
+
 def _detach_metadata(value: object, *, label: str) -> Dict[str, object]:
     if value is None:
         return {}
@@ -356,8 +370,7 @@ def observations_from_activations(
         if len(observation_ids) != n_rows:
             raise ValueError("observation_ids length must match hidden_states rows")
     parsed_layer = None if layer is None else _as_layer(layer, label="layer")
-    if source is not None and not isinstance(source, str):
-        raise ValueError("source must be a string")
+    parsed_source = None if source is None else _as_source(source)
     rows: List[Observation] = []
     seen: set[str] = set()
     for index in range(n_rows):
@@ -376,8 +389,8 @@ def observations_from_activations(
         metadata: Dict[str, object] = {}
         if parsed_layer is not None:
             metadata["layer"] = parsed_layer
-        if source:
-            metadata["source"] = source
+        if parsed_source is not None:
+            metadata["source"] = parsed_source
         rows.append(
             Observation(
                 observation_id=obs_id,
@@ -457,31 +470,56 @@ def _activation_from_record(
     raise ValueError(f"{path}:{line_no} missing hidden_state or embedding")
 
 
-def load_activation_jsonl(path: PathLike) -> List[Observation]:
-    source = Path(path)
+def _stamp_ingest_metadata(
+    rows: List[Observation],
+    *,
+    layer: Optional[int] = None,
+    source: Optional[str] = None,
+) -> List[Observation]:
+    parsed_layer = None if layer is None else _as_layer(layer, label="layer")
+    parsed_source = None if source is None else _as_source(source)
+    if parsed_layer is None and parsed_source is None:
+        return rows
+    for row in rows:
+        metadata = dict(row.metadata)
+        if parsed_layer is not None:
+            metadata["layer"] = parsed_layer
+        if parsed_source is not None:
+            metadata["source"] = parsed_source
+        row.metadata = metadata
+    return rows
+
+
+def load_activation_jsonl(
+    path: PathLike,
+    *,
+    layer: Optional[int] = None,
+    source: Optional[str] = None,
+) -> List[Observation]:
+    origin = Path(path)
     rows: List[Observation] = []
     seen: set[str] = set()
     dim: Optional[int] = None
-    with source.open("r", encoding="utf-8") as handle:
+    with origin.open("r", encoding="utf-8") as handle:
         for line_no, line in enumerate(handle, start=1):
             raw = line.strip()
             if not raw or raw.startswith("#"):
                 continue
-            data = _loads_json(raw, label=f"{source}:{line_no}")
+            data = _loads_json(raw, label=f"{origin}:{line_no}")
             if not isinstance(data, dict):
                 raise ValueError(
-                    f"{source}:{line_no} activation record must be a JSON object"
+                    f"{origin}:{line_no} activation record must be a JSON object"
                 )
-            vector = _activation_from_record(data, path=source, line_no=line_no)
+            vector = _activation_from_record(data, path=origin, line_no=line_no)
             if dim is None:
                 dim = len(vector)
             elif len(vector) != dim:
                 raise ValueError(
-                    f"{source}:{line_no} embedding dim mismatch: {len(vector)}, expected {dim}"
+                    f"{origin}:{line_no} embedding dim mismatch: {len(vector)}, expected {dim}"
                 )
             obs_id = _as_optional_id(
                 data.get("observation_id"),
-                label=f"{source}:{line_no} observation_id",
+                label=f"{origin}:{line_no} observation_id",
                 generated=f"obs-{line_no}",
             )
             if obs_id in seen:
@@ -489,14 +527,14 @@ def load_activation_jsonl(path: PathLike) -> List[Observation]:
             seen.add(obs_id)
             text = data.get("text")
             if text is not None and not isinstance(text, str):
-                raise ValueError(f"{source}:{line_no} text must be a string or null")
+                raise ValueError(f"{origin}:{line_no} text must be a string or null")
             metadata = _detach_metadata(
-                data.get("metadata"), label=f"{source}:{line_no} metadata"
+                data.get("metadata"), label=f"{origin}:{line_no} metadata"
             )
-            layer = data.get("layer")
-            if layer is not None:
+            record_layer = data.get("layer")
+            if record_layer is not None:
                 metadata["layer"] = _as_layer(
-                    layer, label=f"{source}:{line_no} layer"
+                    record_layer, label=f"{origin}:{line_no} layer"
                 )
             rows.append(
                 Observation(
@@ -507,26 +545,33 @@ def load_activation_jsonl(path: PathLike) -> List[Observation]:
                 )
             )
     if not rows:
-        raise ValueError(f"no activations in {source}")
-    return rows
+        raise ValueError(f"no activations in {origin}")
+    return _stamp_ingest_metadata(rows, layer=layer, source=source)
 
 
-def load_activations(path: PathLike) -> List[Observation]:
-    source = Path(path)
-    suffix = source.suffix.lower()
+def load_activations(
+    path: PathLike,
+    *,
+    layer: Optional[int] = None,
+    source: Optional[str] = None,
+) -> List[Observation]:
+    origin = Path(path)
+    suffix = origin.suffix.lower()
+    source_label = _activation_source_label(origin, source)
     if suffix in {".npy", ".npz"}:
         ids = None
         texts = None
         if suffix == ".npz":
-            ids, texts = _optional_npz_alignment(source)
+            ids, texts = _optional_npz_alignment(origin)
         return observations_from_activations(
-            load_activation_matrix(source),
+            load_activation_matrix(origin),
             texts=texts,
             observation_ids=ids,
-            source=str(source),
+            layer=layer,
+            source=source_label,
         )
     if suffix == ".jsonl":
-        return load_activation_jsonl(source)
+        return load_activation_jsonl(origin, layer=layer, source=source_label)
     raise ValueError("activations must be a .npy, .npz, or .jsonl file")
 
 
