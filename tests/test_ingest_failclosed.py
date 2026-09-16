@@ -1,3 +1,4 @@
+import json
 import math
 import zipfile
 from unittest.mock import patch
@@ -198,3 +199,88 @@ def test_jsonl_text_and_prompt_fail_closed(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "text or prompt" in err
     assert "Traceback" not in err
+
+
+def test_mapping_texts_are_not_indexed_as_rows():
+    with pytest.raises(TypeError, match="not a mapping"):
+        observations_from_activations([[1.0, 0.0]], texts={"label": "hello"})
+
+
+def test_mapping_observation_ids_are_not_indexed_as_rows():
+    with pytest.raises(TypeError, match="not a mapping"):
+        observations_from_activations(
+            [[1.0, 0.0]],
+            observation_ids={"0": "obs-1"},
+        )
+
+
+def test_json_matrix_texts_object_is_clean_cli_failure(tmp_path, capsys):
+    src = tmp_path / "acts.json"
+    src.write_text(
+        '{"hidden_states":[[1.0,0.0]],"texts":{"label":"hello"}}\n'
+    )
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "not a mapping" in err
+    assert "Traceback" not in err
+
+
+def test_json_matrix_ids_object_is_clean_cli_failure(tmp_path, capsys):
+    src = tmp_path / "acts.json"
+    src.write_text(
+        '{"hidden_states":[[1.0,0.0]],"observation_ids":{"0":"obs-1"}}\n'
+    )
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "not a mapping" in err
+    assert "Traceback" not in err
+
+
+def test_npz_truncated_member_eoferror_is_clean_cli_failure(tmp_path, capsys):
+    path = tmp_path / "states.npz"
+    np.savez(path, hidden_states=np.array([[1.0, 0.0]]))
+    with patch(
+        "neuralese.adapters._array_from_npz",
+        side_effect=EOFError("truncated"),
+    ):
+        rc = main(["ingest", str(path), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid activation archive" in err
+    assert "Traceback" not in err
+
+
+def test_non_object_metadata_is_not_json_serializable(tmp_path):
+    out = tmp_path / "obs.jsonl"
+    rows = [
+        Observation(
+            observation_id="obs-1",
+            embedding=[1.0, 0.0],
+            metadata={"ok": 1},
+        )
+    ]
+    rows[0].metadata = None
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        save_observations_jsonl(rows, out)
+    assert not out.exists()
+    rows[0].metadata = []
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        save_observations_jsonl(rows, out)
+    assert not out.exists()
+
+
+def test_cli_mixed_record_layers_receipt_is_null(tmp_path, capsys):
+    src = tmp_path / "acts.jsonl"
+    src.write_text(
+        '{"hidden_state":[1.0,0.0],"layer":3}\n'
+        '{"hidden_state":[0.0,1.0],"layer":9}\n'
+    )
+    out = tmp_path / "obs.jsonl"
+    rc = main(["ingest", str(src), "-o", str(out)])
+    assert rc == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["layer"] is None
+    loaded = [json.loads(line) for line in out.read_text().splitlines() if line]
+    assert [row["metadata"]["layer"] for row in loaded] == [3, 9]
