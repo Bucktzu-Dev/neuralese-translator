@@ -4,13 +4,20 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
+import tempfile
 import zipfile
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Union
 
 import numpy as np
 
-from neuralese.contracts import Observation, SymbolPack, _copy_mapping
+from neuralese.contracts import (
+    Observation,
+    SymbolPack,
+    _copy_mapping,
+    _require_json_object_keys,
+)
 
 PathLike = Union[str, Path]
 
@@ -322,7 +329,10 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
         try:
             if not hasattr(loaded, "files"):
                 raise ValueError(f"invalid activation archive in {source}")
-            array = _array_from_npz(loaded)
+            try:
+                array = _array_from_npz(loaded)
+            except (OSError, zipfile.BadZipFile) as exc:
+                raise ValueError(f"invalid activation archive in {source}") from exc
         finally:
             if callable(closer):
                 closer()
@@ -715,22 +725,40 @@ def load_activations(
 def save_observations_jsonl(observations: Sequence[Observation], path: PathLike) -> None:
     if not observations:
         raise ValueError("no observations to save")
+    lines: List[str] = []
+    for obs in observations:
+        try:
+            _require_json_object_keys(obs.metadata)
+            payload = json.dumps(
+                obs.to_dict(),
+                sort_keys=True,
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+        except (TypeError, ValueError, RecursionError, OverflowError) as exc:
+            raise ValueError(
+                f"observation {obs.observation_id!r} is not JSON-serializable"
+            ) from exc
+        lines.append(payload)
     target = Path(path)
-    with target.open("w", encoding="utf-8") as handle:
-        for obs in observations:
-            try:
-                payload = json.dumps(
-                    obs.to_dict(),
-                    sort_keys=True,
-                    ensure_ascii=True,
-                    allow_nan=False,
-                )
-            except (TypeError, ValueError, RecursionError, OverflowError) as exc:
-                raise ValueError(
-                    f"observation {obs.observation_id!r} is not JSON-serializable"
-                ) from exc
-            handle.write(payload)
-            handle.write("\n")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+        dir=str(target.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            for payload in lines:
+                handle.write(payload)
+                handle.write("\n")
+        os.replace(tmp_name, target)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def save_pack(pack: SymbolPack, path: PathLike) -> None:
