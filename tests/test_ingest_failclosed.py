@@ -1,4 +1,5 @@
 import math
+import zipfile
 from unittest.mock import patch
 
 import numpy as np
@@ -10,6 +11,7 @@ from neuralese.adapters import (
     observations_from_activations,
     save_observations_jsonl,
 )
+from neuralese.cli import main
 from neuralese.contracts import Observation
 
 
@@ -83,3 +85,54 @@ def test_non_finite_npy_fails_closed(tmp_path):
     with pytest.raises(ValueError, match="finite"):
         load_activation_matrix(path)
 
+
+def test_non_string_metadata_keys_are_not_json_laundered(tmp_path):
+    out = tmp_path / "obs.jsonl"
+    rows = [
+        Observation(
+            observation_id="obs-1",
+            embedding=[1.0, 0.0],
+            metadata={1: "bad"},
+        )
+    ]
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        save_observations_jsonl(rows, out)
+    assert not out.exists()
+    rows[0].metadata = {"nested": {True: 1}}
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        save_observations_jsonl(rows, out)
+    assert not out.exists()
+
+
+def test_save_does_not_leave_partial_jsonl_on_later_row_failure(tmp_path):
+    out = tmp_path / "obs.jsonl"
+    out.write_text('{"observation_id":"stale"}\n')
+    rows = [
+        Observation(
+            observation_id="obs-1",
+            embedding=[1.0, 0.0],
+            metadata={"ok": 1},
+        ),
+        Observation(
+            observation_id="obs-2",
+            embedding=[0.0, 1.0],
+            metadata={"score": math.nan},
+        ),
+    ]
+    with pytest.raises(ValueError, match="JSON-serializable"):
+        save_observations_jsonl(rows, out)
+    assert out.read_text() == '{"observation_id":"stale"}\n'
+
+
+def test_npz_truncated_member_is_clean_cli_failure(tmp_path, capsys):
+    path = tmp_path / "states.npz"
+    np.savez(path, hidden_states=np.array([[1.0, 0.0]]))
+    with patch(
+        "neuralese.adapters._array_from_npz",
+        side_effect=zipfile.BadZipFile("truncated"),
+    ):
+        rc = main(["ingest", str(path), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid activation archive" in err
+    assert "Traceback" not in err
