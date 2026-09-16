@@ -371,6 +371,8 @@ def load_activation_matrix(path: PathLike) -> np.ndarray:
         try:
             if not hasattr(loaded, "files"):
                 raise ValueError(f"invalid activation archive in {source}")
+            _exclusive_key(loaded, _NPZ_TEXT_KEYS, label=str(source))
+            _exclusive_key(loaded, _NPZ_ID_KEYS, label=str(source))
             try:
                 array = _array_from_npz(loaded)
             except (OSError, zipfile.BadZipFile, EOFError) as exc:
@@ -519,6 +521,11 @@ def _activation_from_record(
     key = _exclusive_key(
         data, _RECORD_VECTOR_KEYS, label=f"{path}:{line_no}"
     )
+    if key is not None and "hidden_states" in data:
+        raise ValueError(
+            f"{path}:{line_no} provide {key} or hidden_states, not both "
+            "(JSON rows use hidden_state; hidden_states is a 2-D matrix or the npz name)"
+        )
     if key is not None:
         return _as_activation_vector(
             data[key], label=f"{path}:{line_no} {key}"
@@ -774,23 +781,6 @@ def load_activations(
 def save_observations_jsonl(observations: Sequence[Observation], path: PathLike) -> None:
     if not observations:
         raise ValueError("no observations to save")
-    lines: List[str] = []
-    for obs in observations:
-        try:
-            if not isinstance(obs.metadata, dict):
-                raise TypeError("metadata must be an object")
-            _require_json_object_keys(obs.metadata)
-            payload = json.dumps(
-                obs.to_dict(),
-                sort_keys=True,
-                ensure_ascii=True,
-                allow_nan=False,
-            )
-        except (TypeError, ValueError, RecursionError, OverflowError) as exc:
-            raise ValueError(
-                f"observation {obs.observation_id!r} is not JSON-serializable"
-            ) from exc
-        lines.append(payload)
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(
@@ -800,7 +790,21 @@ def save_observations_jsonl(observations: Sequence[Observation], path: PathLike)
     )
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            for payload in lines:
+            for obs in observations:
+                try:
+                    if not isinstance(obs.metadata, dict):
+                        raise TypeError("metadata must be an object")
+                    _require_json_object_keys(obs.metadata)
+                    payload = json.dumps(
+                        obs.to_dict(),
+                        sort_keys=True,
+                        ensure_ascii=True,
+                        allow_nan=False,
+                    )
+                except (TypeError, ValueError, RecursionError, OverflowError) as exc:
+                    raise ValueError(
+                        f"observation {obs.observation_id!r} is not JSON-serializable"
+                    ) from exc
                 handle.write(payload)
                 handle.write("\n")
         os.replace(tmp_name, target)
