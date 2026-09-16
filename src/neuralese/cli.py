@@ -25,6 +25,13 @@ from neuralese.contracts import CERT_POLICIES, UncertifiedPackError
 from neuralese.translator import translate_stream
 
 
+def _receipt_layer(rows):
+    first = rows[0].metadata.get("layer")
+    if any(row.metadata.get("layer") != first for row in rows[1:]):
+        return None
+    return first
+
+
 def _tau_residual_arg(raw: str) -> float:
     try:
         value = float(raw)
@@ -228,7 +235,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     "n_observations": len(rows),
                     "dim": len(rows[0].embedding),
                     "n_with_text": sum(1 for row in rows if row.text is not None),
-                    "layer": rows[0].metadata.get("layer"),
+                    "layer": _receipt_layer(rows),
                     "source": rows[0].metadata.get("source"),
                     "output": str(args.output),
                 },
