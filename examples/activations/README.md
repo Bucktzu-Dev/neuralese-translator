@@ -23,12 +23,12 @@ neuralese certify pack.json --observations observations.jsonl --fail-on-undecoda
 
 Accepted activation files:
 
-- `.npy` — 2-D real array `(n_observations, hidden_dim)`
-- `.npz` — named `hidden_states` / `activations` / `embeddings`, or exactly one matrix array. Optional 1-D `texts` and `observation_ids` arrays are aligned to rows. `--texts` replaces both.
-- `.jsonl` — one object or numeric array per row (`hidden_state` or `embedding`, not both). UTF-8 BOM is ignored.
-- `.json` — a JSON array of those records/vectors, a single record object, a single vector, an object with `activations` (or `rows`), or a 2-D `hidden_states` matrix (optional aligned `texts` / `observation_ids`)
+- `.npy` — 2-D real array `(n_observations, hidden_dim)`, or a 1-D vector (one observation)
+- `.npz` — named `hidden_states` / `activations` / `embeddings` / `last_hidden_state`, or exactly one matrix array. Optional 1-D `texts` (or `prompts`) and `observation_ids` (or `ids`) arrays are aligned to rows. `--texts` replaces both.
+- `.jsonl` — one object or numeric array per row. Vector field: exactly one of `hidden_state`, `embedding`, `activation`, `vector`. Id: `observation_id` or `id`. Text: `text` or `prompt`. UTF-8 BOM is ignored.
+- `.json` — a JSON array of those records/vectors, a single record object, a single vector, an object with `activations` (or `rows`), or a 2-D `hidden_states` matrix (optional aligned `texts`/`prompts` and `observation_ids`/`ids`)
 
-`--texts` is only valid with `.npy` / `.npz`. It may be JSONL objects (`text`, optional `observation_id`) or a JSON array of strings. `--layer` is stored on each observation's metadata; on JSONL/JSON it overwrites a record `layer`. `--source` is stored on each observation's metadata (default: the activations filename, not an absolute path). The output path must differ from the activations path.
+`--texts` is only valid with `.npy` / `.npz`. It may be JSONL objects (`text` or `prompt`, optional `observation_id` or `id`) or a JSON array of strings. `--layer` is stored on each observation's metadata; on JSONL/JSON it overwrites a record `layer`. `--source` is stored on each observation's metadata (default: the activations filename, not an absolute path). The output path must differ from the activations path.
 
 The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`, and `output`.
 
@@ -38,7 +38,8 @@ The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`
 - Corrupt ZIP-backed `.npy` / `.npz`, pickle payloads (`allow_pickle=False`), mislabeled `.npz` bytes served as `.npy`
 - Overflowing JSON numbers, recursive JSON, cyclic metadata, non-object metadata
 - Duplicate ids, blank ids, non-string ids (JSON `null` means missing and gets `obs-{line}`). Nonblank ids keep surrounding whitespace.
-- More than one of `hidden_states` / `activations` / `embeddings` in the same `.npz`
+- More than one of `hidden_states` / `activations` / `embeddings` / `last_hidden_state` in the same `.npz`
+- Colliding dump aliases (`observation_id`+`id`, `text`+`prompt`, `hidden_state`+`activation`, `texts`+`prompts`, `observation_ids`+`ids`)
 - Non-finite metadata (`NaN` / `Infinity`) when writing observation JSONL
 - Non-string metadata keys (`{1: ...}` is not laundered to `"1"`)
 - Truncated ZIP members inside a `.npz` that already opened
