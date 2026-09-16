@@ -41,6 +41,20 @@ def test_npz_multiple_named_matrices_fail_closed(tmp_path):
         load_activation_matrix(path)
 
 
+def test_npz_named_matrix_plus_extra_array_fails_closed(tmp_path, capsys):
+    path = tmp_path / "bundle.npz"
+    np.savez(
+        path,
+        hidden_states=np.array([[1.0, 0.0]]),
+        arr_0=np.array([[0.0, 1.0]]),
+    )
+    rc = main(["ingest", str(path), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "exactly one matrix" in err
+    assert "Traceback" not in err
+
+
 def test_non_finite_metadata_is_not_json_serializable(tmp_path):
     rows = [
         Observation(
