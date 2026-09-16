@@ -82,3 +82,4 @@ def test_non_finite_npy_fails_closed(tmp_path):
     np.save(path, np.array([[1.0, np.inf]]))
     with pytest.raises(ValueError, match="finite"):
         load_activation_matrix(path)
+
