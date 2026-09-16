@@ -9,6 +9,7 @@ from neuralese.adapters import (
     load_activation_matrix,
     load_activations,
     load_alignment_texts,
+    load_observations_jsonl,
     observations_from_activations,
     save_observations_jsonl,
 )
@@ -57,10 +58,15 @@ def test_npy_ingest_cli(tmp_path, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["n_observations"] == 3
     assert payload["dim"] == 2
+    assert payload["n_with_text"] == 3
+    assert payload["layer"] == 7
+    assert payload["source"] == "states.npy"
     loaded = [json.loads(line) for line in out.read_text().splitlines() if line]
     assert loaded[0]["observation_id"] == "a"
     assert loaded[0]["metadata"]["layer"] == 7
+    assert loaded[0]["metadata"]["source"] == "states.npy"
     assert loaded[0]["text"] == "hello there friend"
+    assert str(tmp_path) not in loaded[0]["metadata"]["source"]
 
 
 def test_jsonl_hidden_state_ingest(tmp_path, capsys):
@@ -421,3 +427,90 @@ def test_null_alignment_id_is_generated(tmp_path):
     assert rc == 0
     loaded = [json.loads(line) for line in out.read_text().splitlines() if line]
     assert [row["observation_id"] for row in loaded] == ["obs-1", "obs-2"]
+
+
+def test_cli_source_is_filename_not_absolute_path(tmp_path, capsys):
+    npy = tmp_path / "states.npy"
+    np.save(npy, np.array([[1.0, 0.0]]))
+    out = tmp_path / "obs.jsonl"
+    rc = main(["ingest", str(npy), "-o", str(out)])
+    assert rc == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["source"] == "states.npy"
+    assert summary["n_with_text"] == 0
+    loaded = json.loads(out.read_text().splitlines()[0])
+    assert loaded["metadata"]["source"] == "states.npy"
+    assert str(tmp_path) not in json.dumps(loaded)
+
+
+def test_cli_source_override(tmp_path, capsys):
+    npy = tmp_path / "states.npy"
+    np.save(npy, np.array([[1.0, 0.0]]))
+    out = tmp_path / "obs.jsonl"
+    rc = main(["ingest", str(npy), "-o", str(out), "--source", "gpt2-layer12"])
+    assert rc == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["source"] == "gpt2-layer12"
+    loaded = json.loads(out.read_text().splitlines()[0])
+    assert loaded["metadata"]["source"] == "gpt2-layer12"
+
+
+def test_cli_blank_source_fails(tmp_path, capsys):
+    npy = tmp_path / "states.npy"
+    np.save(npy, np.array([[1.0, 0.0]]))
+    rc = main(["ingest", str(npy), "-o", str(tmp_path / "obs.jsonl"), "--source", "  "])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "blank" in err
+    assert "Traceback" not in err
+
+
+def test_blank_source_fails_closed():
+    with pytest.raises(ValueError, match="source is blank"):
+        observations_from_activations([[1.0, 0.0]], source="  ")
+
+
+def test_duplicate_jsonl_ids_fail_closed(tmp_path, capsys):
+    src = tmp_path / "acts.jsonl"
+    src.write_text(
+        '{"observation_id":"same","hidden_state":[1.0,0.0]}\n'
+        '{"observation_id":"same","hidden_state":[0.0,1.0]}\n'
+    )
+    rc = main(["ingest", str(src), "-o", str(tmp_path / "obs.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "duplicate observation_id" in err
+    assert "Traceback" not in err
+
+
+def test_integer_npy_is_promoted_to_float(tmp_path):
+    path = tmp_path / "states.npy"
+    np.save(path, np.array([[1, 0], [0, 1]], dtype=np.uint8))
+    matrix = load_activation_matrix(path)
+    assert matrix.dtype == np.float64
+    assert matrix[0, 0] == 1.0
+
+
+def test_load_activations_stamps_jsonl_filename(tmp_path):
+    src = tmp_path / "acts.jsonl"
+    src.write_text('{"hidden_state":[1.0,0.0],"layer":3}\n')
+    rows = load_activations(src)
+    assert rows[0].metadata["source"] == "acts.jsonl"
+    assert rows[0].metadata["layer"] == 3
+
+
+def test_shipped_activation_jsonl_round_trip(tmp_path, capsys):
+    src = Path(__file__).resolve().parents[1] / "examples" / "activations" / "states.jsonl"
+    out = tmp_path / "obs.jsonl"
+    rc = main(["ingest", str(src), "-o", str(out)])
+    assert rc == 0
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["n_observations"] == 4
+    assert summary["n_with_text"] == 4
+    assert summary["source"] == "states.jsonl"
+    assert summary["layer"] == 12
+    rows = load_observations_jsonl(out)
+    pack = learn_pack(rows, config=LearnConfig(n_symbols=2, min_cluster_size=2, seed=0))
+    cert = certify(pack, observations=rows)
+    assert cert.passed, cert.failures
+
