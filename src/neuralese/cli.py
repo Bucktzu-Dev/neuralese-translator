@@ -64,8 +64,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         "ingest",
         help="turn dumped hidden states into observation JSONL",
         description=(
-            "Load a 2-D .npy/.npz hidden-state dump or activation JSON/JSONL and write "
-            "observation JSONL. Rank-3+ tensors fail closed; pool token/layer axes first. "
+            "Load a .npy/.npz hidden-state dump or activation JSON/JSONL and write "
+            "observation JSONL. A 1-D vector is one observation; rank-3+ tensors fail "
+            "closed until token/layer axes are pooled. "
             "Metadata.source is the activations filename, or --source."
         ),
     )
@@ -75,7 +76,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--texts",
         type=Path,
         default=None,
-        help="JSONL or JSON array of texts aligned to activation rows",
+        help="JSONL or JSON array of texts aligned to activation rows (text/prompt, optional id)",
     )
     ingest_p.add_argument(
         "--layer",
