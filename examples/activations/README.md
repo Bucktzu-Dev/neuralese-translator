@@ -28,7 +28,7 @@ Accepted activation files:
 - `.jsonl` — one object or numeric array per row. Vector field: exactly one of `hidden_state`, `embedding`, `activation`, `vector`. Id: `observation_id` or `id`. Text: `text` or `prompt`. UTF-8 BOM is ignored.
 - `.json` — a JSON array of those records/vectors, a single record object, a single vector, an object with `activations` (or `rows`), or a 2-D `hidden_states` matrix (optional aligned `texts`/`prompts` and `observation_ids`/`ids`)
 
-`--texts` is only valid with `.npy` / `.npz`. It may be JSONL objects (`text` or `prompt`, optional `observation_id` or `id`) or a JSON array of strings. `--layer` is stored on each observation's metadata; on JSONL/JSON it overwrites a record `layer`. `--source` is stored on each observation's metadata (default: the activations filename, not an absolute path). The output path must differ from the activations path and from `--texts`.
+`--texts` is only valid with `.npy` / `.npz`. It may be JSONL objects (`text` or `prompt`, optional `observation_id` or `id`), a JSON array of strings, or a JSON object with `texts` or `prompts` (not both). `--layer` is stored on each observation's metadata; on JSONL/JSON it overwrites a record `layer`. `--source` is stored on each observation's metadata (default: the activations filename, not an absolute path). The output path must differ from the activations path and from `--texts`.
 
 The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`, and `output`.
 
@@ -47,6 +47,7 @@ The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`
 - Blank `--source` / `source="  "` (metadata.source is a nonblank string)
 - Ingest `-o` pointing at the same path as the activations file or `--texts`
 - `--texts` does not skip colliding npz `texts`+`prompts` or `observation_ids`+`ids`
+- `--texts` JSON object `texts`+`prompts`
 - NaN npz `observation_ids`/`ids` (NaN npz `texts`/`prompts` stay missing)
 - JSONL/record-row `hidden_states` (plural) instead of `hidden_state`, including when a singular vector is also present (a 2-D JSON `hidden_states` matrix is still valid)
 
