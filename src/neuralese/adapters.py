@@ -209,7 +209,8 @@ def _require_2d_finite(array: np.ndarray, *, label: str) -> np.ndarray:
     if array.ndim != 2:
         raise ValueError(
             f"{label} must be a 2-D array of shape (n_observations, hidden_dim); "
-            "pool token/layer axes before ingest"
+            "pool token/layer axes before ingest "
+            "(see examples/activations/README.md)"
         )
     if array.shape[0] < 1 or array.shape[1] < 1:
         raise ValueError(f"{label} must be nonempty")
@@ -423,9 +424,13 @@ def _text_row(data: object, *, path: PathLike, line_no: int):
     )
 
 
+def _read_utf8(path: PathLike) -> str:
+    return Path(path).read_text(encoding="utf-8-sig")
+
+
 def load_alignment_texts(path: PathLike):
     source = Path(path)
-    raw = source.read_text(encoding="utf-8").strip()
+    raw = _read_utf8(source).strip()
     if not raw:
         raise ValueError(f"no texts in {source}")
     ids: List[Optional[str]] = []
@@ -467,7 +472,63 @@ def _activation_from_record(
         return _as_activation_vector(
             data["embedding"], label=f"{path}:{line_no} embedding"
         )
+    if "hidden_states" in data:
+        raise ValueError(
+            f"{path}:{line_no} missing hidden_state or embedding "
+            "(JSON rows use hidden_state; hidden_states is the npz matrix name)"
+        )
     raise ValueError(f"{path}:{line_no} missing hidden_state or embedding")
+
+
+def _observation_from_activation_payload(
+    data: object,
+    *,
+    path: PathLike,
+    line_no: int,
+    seen: set[str],
+    dim: Optional[int],
+) -> tuple[Observation, int]:
+    if isinstance(data, list):
+        data = {"hidden_state": data}
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"{path}:{line_no} activation record must be a JSON object or array"
+        )
+    vector = _activation_from_record(data, path=path, line_no=line_no)
+    if dim is None:
+        dim = len(vector)
+    elif len(vector) != dim:
+        raise ValueError(
+            f"{path}:{line_no} embedding dim mismatch: {len(vector)}, expected {dim}"
+        )
+    obs_id = _as_optional_id(
+        data.get("observation_id"),
+        label=f"{path}:{line_no} observation_id",
+        generated=f"obs-{line_no}",
+    )
+    if obs_id in seen:
+        raise ValueError(f"duplicate observation_id {obs_id!r}")
+    seen.add(obs_id)
+    text = data.get("text")
+    if text is not None and not isinstance(text, str):
+        raise ValueError(f"{path}:{line_no} text must be a string or null")
+    metadata = _detach_metadata(
+        data.get("metadata"), label=f"{path}:{line_no} metadata"
+    )
+    record_layer = data.get("layer")
+    if record_layer is not None:
+        metadata["layer"] = _as_layer(
+            record_layer, label=f"{path}:{line_no} layer"
+        )
+    return (
+        Observation(
+            observation_id=obs_id,
+            embedding=vector,
+            text=text,
+            metadata=metadata,
+        ),
+        dim,
+    )
 
 
 def _stamp_ingest_metadata(
@@ -500,50 +561,52 @@ def load_activation_jsonl(
     rows: List[Observation] = []
     seen: set[str] = set()
     dim: Optional[int] = None
-    with origin.open("r", encoding="utf-8") as handle:
+    with origin.open("r", encoding="utf-8-sig") as handle:
         for line_no, line in enumerate(handle, start=1):
             raw = line.strip()
             if not raw or raw.startswith("#"):
                 continue
             data = _loads_json(raw, label=f"{origin}:{line_no}")
-            if not isinstance(data, dict):
-                raise ValueError(
-                    f"{origin}:{line_no} activation record must be a JSON object"
-                )
-            vector = _activation_from_record(data, path=origin, line_no=line_no)
-            if dim is None:
-                dim = len(vector)
-            elif len(vector) != dim:
-                raise ValueError(
-                    f"{origin}:{line_no} embedding dim mismatch: {len(vector)}, expected {dim}"
-                )
-            obs_id = _as_optional_id(
-                data.get("observation_id"),
-                label=f"{origin}:{line_no} observation_id",
-                generated=f"obs-{line_no}",
+            obs, dim = _observation_from_activation_payload(
+                data, path=origin, line_no=line_no, seen=seen, dim=dim
             )
-            if obs_id in seen:
-                raise ValueError(f"duplicate observation_id {obs_id!r}")
-            seen.add(obs_id)
-            text = data.get("text")
-            if text is not None and not isinstance(text, str):
-                raise ValueError(f"{origin}:{line_no} text must be a string or null")
-            metadata = _detach_metadata(
-                data.get("metadata"), label=f"{origin}:{line_no} metadata"
+            rows.append(obs)
+    if not rows:
+        raise ValueError(f"no activations in {origin}")
+    return _stamp_ingest_metadata(rows, layer=layer, source=source)
+
+
+def load_activation_json(
+    path: PathLike,
+    *,
+    layer: Optional[int] = None,
+    source: Optional[str] = None,
+) -> List[Observation]:
+    origin = Path(path)
+    payload = _loads_json(_read_utf8(origin), label=str(origin))
+    if isinstance(payload, dict):
+        if "activations" in payload:
+            payload = payload["activations"]
+        elif "rows" in payload:
+            payload = payload["rows"]
+        else:
+            raise ValueError(
+                f"{origin} must be a JSON array or an object with activations"
             )
-            record_layer = data.get("layer")
-            if record_layer is not None:
-                metadata["layer"] = _as_layer(
-                    record_layer, label=f"{origin}:{line_no} layer"
-                )
-            rows.append(
-                Observation(
-                    observation_id=obs_id,
-                    embedding=vector,
-                    text=text,
-                    metadata=metadata,
-                )
-            )
+    if not isinstance(payload, list):
+        raise ValueError(
+            f"{origin} must be a JSON array or an object with activations"
+        )
+    if payload and not isinstance(payload[0], (dict, list)):
+        payload = [payload]
+    rows: List[Observation] = []
+    seen: set[str] = set()
+    dim: Optional[int] = None
+    for index, item in enumerate(payload, start=1):
+        obs, dim = _observation_from_activation_payload(
+            item, path=origin, line_no=index, seen=seen, dim=dim
+        )
+        rows.append(obs)
     if not rows:
         raise ValueError(f"no activations in {origin}")
     return _stamp_ingest_metadata(rows, layer=layer, source=source)
@@ -572,7 +635,9 @@ def load_activations(
         )
     if suffix == ".jsonl":
         return load_activation_jsonl(origin, layer=layer, source=source_label)
-    raise ValueError("activations must be a .npy, .npz, or .jsonl file")
+    if suffix == ".json":
+        return load_activation_json(origin, layer=layer, source=source_label)
+    raise ValueError("activations must be a .npy, .npz, .jsonl, or .json file")
 
 
 def save_observations_jsonl(observations: Sequence[Observation], path: PathLike) -> None:
