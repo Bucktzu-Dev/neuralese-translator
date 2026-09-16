@@ -576,6 +576,83 @@ def load_activation_jsonl(
     return _stamp_ingest_metadata(rows, layer=layer, source=source)
 
 
+def _json_activation_conflict(payload: dict, *, origin: Path) -> None:
+    collections = [name for name in ("activations", "rows") if name in payload]
+    has_record = "hidden_state" in payload or "embedding" in payload
+    has_matrix = "hidden_states" in payload
+    if len(collections) > 1:
+        raise ValueError(f"{origin} provide activations or rows, not both")
+    if sum((bool(collections), has_record, has_matrix)) > 1:
+        raise ValueError(
+            f"{origin} provide one of activations, hidden_state, or hidden_states"
+        )
+
+
+def _as_json_row_list(payload: object, *, origin: Path) -> List[object]:
+    if isinstance(payload, dict) and (
+        "hidden_state" in payload or "embedding" in payload
+    ):
+        return [payload]
+    if not isinstance(payload, list):
+        raise ValueError(
+            f"{origin} must be a JSON array, a hidden_state record, "
+            "an object with activations, or a 2-D hidden_states matrix"
+        )
+    if payload and not isinstance(payload[0], (dict, list)):
+        return [payload]
+    return payload
+
+
+def _normalize_json_activation_payload(
+    payload: object, *, origin: Path
+) -> tuple[str, object]:
+    if isinstance(payload, list):
+        return ("rows", _as_json_row_list(payload, origin=origin))
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"{origin} must be a JSON array, a hidden_state record, "
+            "an object with activations, or a 2-D hidden_states matrix"
+        )
+    _json_activation_conflict(payload, origin=origin)
+    if "activations" in payload:
+        return ("rows", _as_json_row_list(payload["activations"], origin=origin))
+    if "rows" in payload:
+        return ("rows", _as_json_row_list(payload["rows"], origin=origin))
+    if "hidden_state" in payload or "embedding" in payload:
+        return ("rows", [payload])
+    if "hidden_states" in payload:
+        return ("matrix", payload)
+    raise ValueError(
+        f"{origin} must be a JSON array, a hidden_state record, "
+        "an object with activations, or a 2-D hidden_states matrix"
+    )
+
+
+def _observations_from_json_matrix(
+    payload: dict,
+    *,
+    origin: Path,
+    layer: Optional[int] = None,
+    source: Optional[str] = None,
+) -> List[Observation]:
+    matrix = payload["hidden_states"]
+    if not isinstance(matrix, list) or not matrix:
+        raise ValueError(f"no activations in {origin}")
+    if not isinstance(matrix[0], list):
+        raise ValueError(
+            f"{origin} missing hidden_state or embedding "
+            "(JSON rows use hidden_state; hidden_states is a 2-D matrix or the npz name)"
+        )
+    overlay_layer = layer if layer is not None else payload.get("layer")
+    return observations_from_activations(
+        matrix,
+        texts=payload.get("texts"),
+        observation_ids=payload.get("observation_ids"),
+        layer=overlay_layer,
+        source=source,
+    )
+
+
 def load_activation_json(
     path: PathLike,
     *,
@@ -584,25 +661,20 @@ def load_activation_json(
 ) -> List[Observation]:
     origin = Path(path)
     payload = _loads_json(_read_utf8(origin), label=str(origin))
-    if isinstance(payload, dict):
-        if "activations" in payload:
-            payload = payload["activations"]
-        elif "rows" in payload:
-            payload = payload["rows"]
-        else:
+    kind, body = _normalize_json_activation_payload(payload, origin=origin)
+    if kind == "matrix":
+        if not isinstance(body, dict):
             raise ValueError(
-                f"{origin} must be a JSON array or an object with activations"
+                f"{origin} must be a JSON array, a hidden_state record, "
+                "an object with activations, or a 2-D hidden_states matrix"
             )
-    if not isinstance(payload, list):
-        raise ValueError(
-            f"{origin} must be a JSON array or an object with activations"
+        return _observations_from_json_matrix(
+            body, origin=origin, layer=layer, source=source
         )
-    if payload and not isinstance(payload[0], (dict, list)):
-        payload = [payload]
     rows: List[Observation] = []
     seen: set[str] = set()
     dim: Optional[int] = None
-    for index, item in enumerate(payload, start=1):
+    for index, item in enumerate(body, start=1):
         obs, dim = _observation_from_activation_payload(
             item, path=origin, line_no=index, seen=seen, dim=dim
         )
