@@ -36,7 +36,12 @@ def _same_output_path(output: Path, other: Path) -> bool:
     try:
         return output.samefile(other)
     except OSError:
-        return output.resolve() == other.resolve()
+        try:
+            return output.resolve() == other.resolve()
+        except (OSError, RuntimeError) as copilot_exc:
+            raise ValueError(
+                "output path could not be compared to the evidence path"
+            ) from copilot_exc
 
 
 def _tau_residual_arg(raw: str) -> float:
