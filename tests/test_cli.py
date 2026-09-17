@@ -543,6 +543,32 @@ def test_cli_learn_refuses_hardlinked_observations(tmp_path, capsys):
     assert alias.read_text() == original
 
 
+def test_cli_learn_symlink_loop_is_clean_error(tmp_path, capsys):
+    obs = tmp_path / "observations.jsonl"
+    obs.write_text(
+        '{"observation_id":"obs-1","text":"hello there friend","embedding":[1.0,0.0,0.0,0.0]}\n'
+        '{"observation_id":"obs-2","text":"audit the trail please","embedding":[0.0,1.0,0.0,0.0]}\n'
+    )
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    rc = main(["learn", str(obs), "-o", str(loop / "pack.json"), "--n-symbols", "2"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "could not be compared" in err
+    assert "Traceback" not in err
+
+
+def test_cli_ingest_symlink_loop_is_clean_error(tmp_path, capsys):
+    demo = Path(__file__).resolve().parents[1] / "examples" / "activations" / "states.jsonl"
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    rc = main(["ingest", str(demo), "-o", str(loop / "observations.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "could not be compared" in err
+    assert "Traceback" not in err
+
+
 def test_cli_activation_quickstart_needs_n_symbols(tmp_path, capsys):
     demo = Path(__file__).resolve().parents[1] / "examples" / "activations" / "states.jsonl"
     obs = tmp_path / "observations.jsonl"
