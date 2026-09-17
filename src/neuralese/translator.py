@@ -11,6 +11,7 @@ from neuralese.contracts import (
     SymbolPack,
     UncertifiedPackError,
     as_stream_code,
+    explicit_source_resolved,
 )
 from neuralese.energy import confidence_cap
 from neuralese.gloss import UNGLOSSED
@@ -52,6 +53,13 @@ def translate_stream(
         )
         if not certificate.passed:
             raise UncertifiedPackError(certificate)
+
+    if not explicit_source_resolved(
+        pack.aliases,
+        source_pack_checksum,
+        parent_checksum=pack.parent_checksum,
+    ):
+        raise ValueError("unresolved source pack checksum")
 
     alias_terminals = resolve_alias_table(
         pack.alias_table(source_pack_checksum),
