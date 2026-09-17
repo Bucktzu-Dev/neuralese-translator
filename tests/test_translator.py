@@ -220,18 +220,28 @@ def test_live_alias_source_is_ambiguous():
 
 
 def test_python_api_stream_codes_match_cli():
+    import numpy as np
     import pytest
 
     pack = make_pack()
     with pytest.raises(ValueError, match="stream codes must be integers"):
         translate_stream(pack, [True])
     with pytest.raises(ValueError, match="stream codes must be integers"):
+        translate_stream(pack, [np.bool_(True)])
+    with pytest.raises(ValueError, match="stream codes must be integers"):
         translate_stream(pack, [0.9])
     with pytest.raises(ValueError, match="stream codes must be integers"):
         translate_stream(pack, ["1"])
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        translate_stream(pack, [np.array([1])])
     glosses = translate_stream(pack, [1.0])
     assert glosses[0].code == 1
     assert glosses[0].state == "ok"
+    glosses = translate_stream(pack, [np.int64(1)])
+    assert glosses[0].code == 1
+    assert glosses[0].state == "ok"
+    glosses = translate_stream(pack, [np.float64(1.0)])
+    assert glosses[0].code == 1
 
 
 def test_all_quarantined_pack_is_not_certified():
@@ -259,3 +269,18 @@ def test_all_quarantined_pack_is_not_certified():
 
     with pytest.raises(UncertifiedPackError):
         translate_stream(pack, [0])
+
+
+def test_certify_reuses_one_current_code_set():
+    from unittest.mock import patch
+
+    from neuralese.audit import certify
+    from neuralese.contracts import SymbolPack
+
+    aliases = {i: i + 1 for i in range(7, 12)}
+    aliases[12] = 0
+    pack = make_pack(aliases={"a" * 64: aliases, "b" * 64: {13: 0}})
+    with patch.object(SymbolPack, "current_codes", wraps=pack.current_codes) as spy:
+        cert = certify(pack)
+    assert cert.addressable, cert.failures
+    assert spy.call_count == 1
