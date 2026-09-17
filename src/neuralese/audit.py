@@ -6,7 +6,11 @@ import time
 from typing import Dict, List, Optional, Sequence, Set
 
 from neuralese.adapters import ensure_embedding
-from neuralese.aliases import has_alias_cycle, resolve_alias_table
+from neuralese.aliases import (
+    AMBIGUOUS_HISTORICAL_MAPPING,
+    has_alias_cycle,
+    resolve_alias_table,
+)
 from neuralese.contracts import (
     CERT_POLICIES,
     DECISIONS,
@@ -123,9 +127,15 @@ def certify(
         else:
             try:
                 cyclic = has_alias_cycle(
-                    pack.aliases, current_codes=current_symbol_codes
+                    pack.aliases, current_codes=pack.current_codes()
                 )
-            except (TypeError, ValueError, OverflowError):
+            except ValueError as copilot_exc:
+                addressable = False
+                if str(copilot_exc) == AMBIGUOUS_HISTORICAL_MAPPING:
+                    failures.append(AMBIGUOUS_HISTORICAL_MAPPING)
+                else:
+                    failures.append("aliases is not an object")
+            except (TypeError, OverflowError):
                 addressable = False
                 failures.append("aliases is not an object")
             else:
@@ -137,9 +147,16 @@ def certify(
                     for source, mapping in pack.aliases.items():
                         try:
                             terminals = resolve_alias_table(
-                                mapping, current_codes=current_symbol_codes
+                                mapping, current_codes=pack.current_codes()
                             )
-                        except (TypeError, ValueError, OverflowError):
+                        except ValueError as copilot_exc:
+                            addressable = False
+                            if str(copilot_exc) == AMBIGUOUS_HISTORICAL_MAPPING:
+                                failures.append(AMBIGUOUS_HISTORICAL_MAPPING)
+                            else:
+                                failures.append("aliases is not an object")
+                            break
+                        except (TypeError, OverflowError):
                             addressable = False
                             failures.append("aliases is not an object")
                             break
@@ -373,6 +390,9 @@ def certify(
         passed = integrity_valid and evidence_valid and admission_valid
 
     live = list(iter_live_symbols(pack))
+    if policy != "integrity" and not live:
+        failures.append("no admitted symbols")
+        passed = False
     return AuditCertificate(
         pack_id=pack.pack_id if isinstance(pack.pack_id, str) else "",
         pack_checksum=pack.checksum if isinstance(pack.checksum, str) else "",
