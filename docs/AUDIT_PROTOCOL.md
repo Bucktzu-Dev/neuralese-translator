@@ -81,7 +81,7 @@ Pass `--source-pack <checksum>` to select a parent table explicitly. An explicit
 | `accept_provisional` | admitted with notes | pass unless `--policy strict` or the latest `finalize` receipt has `ok` other than `true` |
 | `reject` | draft | **fail** |
 
-Learning rejection and certification now agree. A pack with `decision=accept`, `guards=None`, and no finalize receipt fails admission: missing artifacts are not a pass. `integrity` can still inspect that pack; it does not authorize translation. When a finalize receipt records `metadata.decision`, that value must match `pack.decision`; resealing `decision=accept` while finalize metadata still says `reject` fails admission.
+Learning rejection and certification now agree. An all-quarantined pack is `decision=reject` / `status=draft` (`learn` exits 2); `pass_compat` is false so `guards.pass_all` and the finalize receipt cannot mark it admitted. A pack with `decision=accept`, `guards=None`, and no finalize receipt fails admission: missing artifacts are not a pass. `integrity` can still inspect that pack; it does not authorize translation. When a finalize receipt records `metadata.decision`, that value must match `pack.decision`; resealing `decision=accept` while finalize metadata still says `reject` fails admission.
 
 ## Fail-closed
 
