@@ -126,8 +126,9 @@ def certify(
             failures.append("alias table is not an object")
         else:
             try:
+                live_codes = pack.current_codes()
                 cyclic = has_alias_cycle(
-                    pack.aliases, current_codes=pack.current_codes()
+                    pack.aliases, current_codes=live_codes
                 )
             except ValueError as copilot_exc:
                 addressable = False
@@ -147,7 +148,7 @@ def certify(
                     for source, mapping in pack.aliases.items():
                         try:
                             terminals = resolve_alias_table(
-                                mapping, current_codes=pack.current_codes()
+                                mapping, current_codes=live_codes
                             )
                         except ValueError as copilot_exc:
                             addressable = False
