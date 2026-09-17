@@ -270,6 +270,16 @@ def test_python_api_stream_codes_match_cli():
     assert glosses[0].state == "ok"
     glosses = translate_stream(pack, [np.float64(1.0)])
     assert glosses[0].code == 1
+    assert as_stream_code(np.longdouble(1.0)) == 1
+    assert pack.resolve_code(np.longdouble(1.0)) == (1, False)
+    fractional = np.longdouble("1.0000000000000000001")
+    if fractional != np.longdouble(1):
+        with pytest.raises(ValueError, match="stream codes must be integers"):
+            as_stream_code(fractional)
+        with pytest.raises(ValueError, match="stream codes must be integers"):
+            pack.resolve_code(fractional)
+        with pytest.raises(ValueError, match="stream codes must be integers"):
+            translate_stream(pack, [fractional])
 
 
 def test_all_quarantined_pack_is_not_certified():
