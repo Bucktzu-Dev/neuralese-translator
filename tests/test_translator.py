@@ -239,6 +239,24 @@ def test_python_api_stream_codes_match_cli():
         translate_stream(pack, [np.array([1])])
     with pytest.raises(ValueError, match="stream codes must be integers"):
         translate_stream(pack, [Fraction(9007199254740993, 2)])
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(True)
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(np.bool_(True))
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(0.9)
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code("1")
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(np.array([1]))
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(Fraction(9007199254740993, 2))
+    assert pack.resolve_code(1.0) == (1, False)
+    assert pack.resolve_code(Fraction(1, 1)) == (1, False)
+    assert pack.resolve_code(Fraction(9007199254740993, 1)) == (
+        9007199254740993,
+        False,
+    )
     assert as_stream_code(Fraction(1, 1)) == 1
     assert as_stream_code(Fraction(9007199254740993, 1)) == 9007199254740993
     glosses = translate_stream(pack, [Fraction(10**400, 1)])
