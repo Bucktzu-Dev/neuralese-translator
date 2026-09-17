@@ -391,9 +391,11 @@ def certify(
         passed = integrity_valid and evidence_valid and admission_valid
 
     live = list(iter_live_symbols(pack))
-    if policy != "integrity" and not live:
+    if not live:
+        admission_valid = False
         failures.append("no admitted symbols")
-        passed = False
+        if policy != "integrity":
+            passed = False
     return AuditCertificate(
         pack_id=pack.pack_id if isinstance(pack.pack_id, str) else "",
         pack_checksum=pack.checksum if isinstance(pack.checksum, str) else "",
