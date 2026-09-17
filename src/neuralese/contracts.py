@@ -44,13 +44,16 @@ def _integral_code(value: Any) -> bool:
 
 def as_stream_code(value: Any) -> int:
     """Integer stream codes; bools, strings, and truncated floats fail closed."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
+    if isinstance(value, bool):
         raise ValueError("stream codes must be integers")
-    if isinstance(value, float):
-        if not math.isfinite(value) or not value.is_integer():
-            raise ValueError("stream codes must be integers")
+    if isinstance(value, numbers.Integral):
         return int(value)
-    return int(value)
+    if isinstance(value, numbers.Real):
+        number = float(value)
+        if not math.isfinite(number) or not number.is_integer():
+            raise ValueError("stream codes must be integers")
+        return int(number)
+    raise ValueError("stream codes must be integers")
 
 
 def _alias_key(value: Any) -> Any:
@@ -297,16 +300,16 @@ def _embedding_values(values: Any) -> List[float]:
         raise TypeError("embedding must be an array or null")
     try:
         items = list(values)
-    except TypeError as exc:
-        raise TypeError("embedding must be an array or null") from exc
+    except TypeError as copilot_exc:
+        raise TypeError("embedding must be an array or null") from copilot_exc
     out: List[float] = []
     for x in items:
         if isinstance(x, bool) or not isinstance(x, numbers.Real):
             raise TypeError("embedding must contain numbers")
         try:
             value = float(x)
-        except OverflowError as exc:
-            raise ValueError("embedding must contain finite numbers") from exc
+        except OverflowError as copilot_exc:
+            raise ValueError("embedding must contain finite numbers") from copilot_exc
         if not math.isfinite(value):
             raise ValueError("embedding must contain finite numbers")
         out.append(value)
