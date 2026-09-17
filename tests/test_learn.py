@@ -447,8 +447,7 @@ def test_json_loaders_reject_recursive_payloads(tmp_path):
     from neuralese.adapters import load_observations_jsonl, load_pack, load_stream
 
     obs = tmp_path / "obs.jsonl"
-    obs.write_text("{}
-")
+    obs.write_text("{}\n")
     with patch("neuralese.adapters.json.loads", side_effect=RecursionError("nested")):
         with pytest.raises(ValueError, match="invalid JSON"):
             load_observations_jsonl(obs)
@@ -458,8 +457,7 @@ def test_json_loaders_reject_recursive_payloads(tmp_path):
         with pytest.raises(ValueError, match="stream file"):
             load_stream(stream)
     pack = tmp_path / "pack.json"
-    pack.write_text("{}
-")
+    pack.write_text("{}\n")
     with patch("neuralese.adapters.json.loads", side_effect=RecursionError("nested")):
         with pytest.raises(ValueError, match="invalid pack"):
             load_pack(pack)
