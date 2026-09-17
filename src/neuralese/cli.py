@@ -176,6 +176,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                 raise ValueError(
                     "output path must differ from the observations path"
                 )
+            if args.parent is not None and _same_output_path(
+                args.output, args.parent
+            ):
+                raise ValueError("output path must differ from the parent path")
             obs = load_observations_jsonl(args.observations)
             parent = load_pack(args.parent) if args.parent else None
             pack = learn_pack(
