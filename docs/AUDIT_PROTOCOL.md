@@ -76,7 +76,7 @@ Pass `--source-pack <checksum>` to select a parent table explicitly. An explicit
 ## Admission
 
 | `decision` | meaning | default certify |
-|---|---|
+|---|---|---|
 | `accept` | admitted lexicon | pass if a GuardSnapshot or finalize receipt is present and guards allow |
 | `accept_provisional` | admitted with notes | pass unless `--policy strict` or the latest `finalize` receipt has `ok` other than `true` |
 | `reject` | draft | **fail** |
