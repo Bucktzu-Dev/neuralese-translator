@@ -18,7 +18,7 @@ Activation ingest plus structural hardening. Pack schema and `decoder_version` s
 - Historical alias sources that collide with a current codebook code fail closed (`{0: 1}` is ambiguous without `(pack_checksum, code)` identity)
 - Python `translate_stream` / `resolve_code` reject the same non-integer stream codes as the CLI (`True`, `0.9`, `"1"`); NumPy integer scalars remain valid codes; exact rationals (`Fraction`) are checked by numerator/denominator before float conversion so a non-integral value cannot round to a code; overflowing non-rational reals fail as `ValueError`, not `OverflowError`
 - `learn`/`ingest` `-o` must differ from the evidence path, including hard links (`Path.samefile`)
-- Default/strict certification requires at least one admitted (non-quarantined) symbol; `admission_valid` is false for an empty live alphabet under every policy, including integrity; the activation demo uses `--n-symbols 2`
+- Default/strict certification requires at least one admitted (non-quarantined) symbol; `admission_valid` is false for an empty live alphabet under every policy, including integrity; `learn` records `decision=reject` / `status=draft` for that pack so it cannot admit a lexicon `certify` would refuse; the activation demo uses `--n-symbols 2`
 - JSONL/JSON loaders accept UTF-8 BOM and bare numeric arrays per row
 - No in-tree HuggingFace client. Dump recipe: `examples/activations/README.md`. Shipped demo: `examples/activations/states.jsonl`
 
