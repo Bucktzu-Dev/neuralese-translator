@@ -49,7 +49,10 @@ def as_stream_code(value: Any) -> int:
     if isinstance(value, numbers.Integral):
         return int(value)
     if isinstance(value, numbers.Real):
-        number = float(value)
+        try:
+            number = float(value)
+        except (OverflowError, ValueError, TypeError) as copilot_exc:
+            raise ValueError("stream codes must be integers") from copilot_exc
         if not math.isfinite(number) or not number.is_integer():
             raise ValueError("stream codes must be integers")
         return int(number)
