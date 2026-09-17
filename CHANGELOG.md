@@ -2,7 +2,7 @@
 
 ## 0.1.2
 
-Activation ingest. Pack schema and `decoder_version` stay `0.1.1`. Authority-gate semantics are unchanged.
+Activation ingest plus structural hardening. Pack schema and `decoder_version` stay `0.1.1`.
 
 - CLI: `neuralese ingest ACTIVATIONS -o observations.jsonl [--texts TEXTS] [--layer N] [--source LABEL]`
 - Inputs: `.npy` 2-D `(n, dim)` or a 1-D vector (one observation); `.npz` with `hidden_states` / `activations` / `embeddings` / `last_hidden_state` or exactly one matrix (optional 1-D `texts`/`prompts` and `observation_ids`/`ids`); activation JSONL; activation `.json` (array of objects/vectors, a single record, `{ "activations": ... }`, or a 2-D `hidden_states` matrix)
@@ -15,6 +15,10 @@ Activation ingest. Pack schema and `decoder_version` stay `0.1.1`. Authority-gat
 - `--texts` JSON objects use exclusive `texts`/`prompts`; a validated npy/npz matrix is not finite-scanned again
 - Observation JSONL save validates `observation_id`, `text`, and `embedding` against the loader schema before replacing the output
 - A named npz matrix plus another unrecognized array fails closed
+- Historical alias sources that collide with a current codebook code fail closed (`{0: 1}` is ambiguous without `(pack_checksum, code)` identity)
+- Python `translate_stream` / `resolve_code` reject the same non-integer stream codes as the CLI (`True`, `0.9`, `"1"`)
+- `learn -o` must differ from the observations path
+- Default/strict certification requires at least one admitted (non-quarantined) symbol; the activation demo uses `--n-symbols 2`
 - JSONL/JSON loaders accept UTF-8 BOM and bare numeric arrays per row
 - No in-tree HuggingFace client. Dump recipe: `examples/activations/README.md`. Shipped demo: `examples/activations/states.jsonl`
 
