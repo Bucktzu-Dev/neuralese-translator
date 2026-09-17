@@ -37,7 +37,7 @@ The CLI receipt prints `n_observations`, `dim`, `n_with_text`, `layer`, `source`
 ## Fail closed
 
 - Rank-3+ dumps, empty axes, bool/complex/object/unicode dtypes, non-finite values
-- Corrupt ZIP-backed `.npy` / `.npz`, pickle payloads (`allow_pickle=false`), mislabeled `.npz` bytes served as `.npy`
+- Corrupt ZIP-backed `.npy` / `.npz`, pickle payloads (`allow_pickle=False`), mislabeled `.npz` bytes served as `.npy`
 - Overflowing JSON numbers, recursive JSON, cyclic metadata, non-object metadata
 - Duplicate ids, blank ids, non-string ids (JSON `null` means missing and gets `obs-{line}`). Nonblank ids keep surrounding whitespace.
 - More than one of `hidden_states` / `activations` / `embeddings` / `last_hidden_state` in the same `.npz`
