@@ -525,6 +525,24 @@ def test_cli_learn_refuses_to_overwrite_observations(tmp_path, capsys):
     assert obs.read_text() == original
 
 
+def test_cli_learn_refuses_hardlinked_observations(tmp_path, capsys):
+    obs = tmp_path / "observations.jsonl"
+    alias = tmp_path / "pack.json"
+    obs.write_text(
+        '{"observation_id":"obs-1","text":"hello there friend","embedding":[1.0,0.0,0.0,0.0]}\n'
+        '{"observation_id":"obs-2","text":"audit the trail please","embedding":[0.0,1.0,0.0,0.0]}\n'
+    )
+    alias.hardlink_to(obs)
+    original = obs.read_text()
+    rc = main(["learn", str(obs), "-o", str(alias), "--n-symbols", "2"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "differ" in err
+    assert "Traceback" not in err
+    assert obs.read_text() == original
+    assert alias.read_text() == original
+
+
 def test_cli_activation_quickstart_needs_n_symbols(tmp_path, capsys):
     demo = Path(__file__).resolve().parents[1] / "examples" / "activations" / "states.jsonl"
     obs = tmp_path / "observations.jsonl"
