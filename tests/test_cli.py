@@ -550,6 +550,14 @@ def test_cli_activation_quickstart_needs_n_symbols(tmp_path, capsys):
     rc = main(["ingest", str(demo), "-o", str(obs)])
     assert rc == 0
     capsys.readouterr()
+    rc = main(["learn", str(obs), "-o", str(pack_path)])
+    assert rc == 2
+    rejected = json.loads(capsys.readouterr().out)
+    assert rejected["decision"] == "reject"
+    assert rejected["status"] == "draft"
+    rc = main(["certify", str(pack_path), "--fail-on-undecodable"])
+    assert rc == 1
+    capsys.readouterr()
     rc = main(["learn", str(obs), "-o", str(pack_path), "--n-symbols", "2"])
     assert rc == 0
     learned = json.loads(capsys.readouterr().out)
