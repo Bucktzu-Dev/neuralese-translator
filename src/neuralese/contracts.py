@@ -42,6 +42,17 @@ def _integral_code(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def as_stream_code(value: Any) -> int:
+    """Integer stream codes; bools, strings, and truncated floats fail closed."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("stream codes must be integers")
+    if isinstance(value, float):
+        if not math.isfinite(value) or not value.is_integer():
+            raise ValueError("stream codes must be integers")
+        return int(value)
+    return int(value)
+
+
 def _alias_key(value: Any) -> Any:
     if _integral_code(value):
         return value
@@ -800,18 +811,17 @@ class SymbolPack:
         *,
         terminals: Optional[Dict[int, int]] = None,
     ) -> Tuple[int, bool]:
-        from neuralese.aliases import follow_aliases
+        from neuralese.aliases import resolve_alias_table
 
-        code = int(code)
+        code = as_stream_code(code)
+        if terminals is None:
+            terminals = resolve_alias_table(
+                self.alias_table(source_pack_checksum),
+                current_codes=self.current_codes(),
+            )
         if isinstance(self.codebook, dict) and code in self.codebook:
             return code, False
-        if terminals is not None:
-            resolved = terminals.get(code, code)
-            return resolved, resolved != code
-        table = self.alias_table(source_pack_checksum)
-        resolved = follow_aliases(
-            code, table, current_codes=self.current_codes()
-        )
+        resolved = terminals.get(code, code)
         return resolved, resolved != code
 
 
