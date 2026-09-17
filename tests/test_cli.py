@@ -543,6 +543,63 @@ def test_cli_learn_refuses_hardlinked_observations(tmp_path, capsys):
     assert alias.read_text() == original
 
 
+def test_cli_learn_refuses_to_overwrite_parent(tmp_path, capsys):
+    obs = TOY_DIR / "observations.jsonl"
+    parent = tmp_path / "parent.json"
+    rc = main(["learn", str(obs), "-o", str(parent), "--n-symbols", "3"])
+    assert rc == 0
+    capsys.readouterr()
+    original = parent.read_text()
+    rc = main(
+        [
+            "learn",
+            str(obs),
+            "--parent",
+            str(parent),
+            "-o",
+            str(parent),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "differ" in err
+    assert "parent" in err
+    assert "Traceback" not in err
+    assert parent.read_text() == original
+
+
+def test_cli_learn_refuses_hardlinked_parent(tmp_path, capsys):
+    obs = TOY_DIR / "observations.jsonl"
+    parent = tmp_path / "parent.json"
+    alias = tmp_path / "child.json"
+    rc = main(["learn", str(obs), "-o", str(parent), "--n-symbols", "3"])
+    assert rc == 0
+    capsys.readouterr()
+    alias.hardlink_to(parent)
+    original = parent.read_text()
+    rc = main(
+        [
+            "learn",
+            str(obs),
+            "--parent",
+            str(parent),
+            "-o",
+            str(alias),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "differ" in err
+    assert "parent" in err
+    assert "Traceback" not in err
+    assert parent.read_text() == original
+    assert alias.read_text() == original
+
+
 def test_cli_learn_symlink_loop_is_clean_error(tmp_path, capsys):
     obs = tmp_path / "observations.jsonl"
     obs.write_text(
