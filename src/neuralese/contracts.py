@@ -48,6 +48,15 @@ def as_stream_code(value: Any) -> int:
         raise ValueError("stream codes must be integers")
     if isinstance(value, numbers.Integral):
         return int(value)
+    if isinstance(value, numbers.Rational):
+        try:
+            numer = int(value.numerator)
+            denom = int(value.denominator)
+        except (OverflowError, ValueError, TypeError, AttributeError) as copilot_exc:
+            raise ValueError("stream codes must be integers") from copilot_exc
+        if denom != 1:
+            raise ValueError("stream codes must be integers")
+        return numer
     if isinstance(value, numbers.Real):
         try:
             number = float(value)
