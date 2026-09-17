@@ -16,8 +16,8 @@ Activation ingest plus structural hardening. Pack schema and `decoder_version` s
 - Observation JSONL save validates `observation_id`, `text`, and `embedding` against the loader schema before replacing the output
 - A named npz matrix plus another unrecognized array fails closed
 - Historical alias sources that collide with a current codebook code fail closed (`{0: 1}` is ambiguous without `(pack_checksum, code)` identity)
-- Python `translate_stream` / `resolve_code` reject the same non-integer stream codes as the CLI (`True`, `0.9`, `"1"`)
-- `learn -o` must differ from the observations path
+- Python `translate_stream` / `resolve_code` reject the same non-integer stream codes as the CLI (`True`, `0.9`, `"1"`); NumPy integer scalars remain valid codes
+- `learn`/`ingest` `-o` must differ from the evidence path, including hard links (`Path.samefile`)
 - Default/strict certification requires at least one admitted (non-quarantined) symbol; the activation demo uses `--n-symbols 2`
 - JSONL/JSON loaders accept UTF-8 BOM and bare numeric arrays per row
 - No in-tree HuggingFace client. Dump recipe: `examples/activations/README.md`. Shipped demo: `examples/activations/states.jsonl`
