@@ -70,7 +70,7 @@ def test_alias_resolution_is_linear_and_reuses_shared_suffixes():
     assert resolved == {0: 4, 1: 4, 2: 4}
     assert shared.lookups <= 6
 
-    aliases = {i: i + 1 for i in range(1, n)}
+    aliases = {i: i + 1 for i in range(7, n)}
     aliases[n] = 0
     pack = make_pack(aliases={"legacy": aliases})
     cert = certify(pack)
@@ -141,17 +141,21 @@ def test_certify_alias_targets_use_precomputed_symbol_codes():
     assert cert.addressable, cert.failures
     assert calls["n"] == 0
 
-def test_historical_alias_stops_at_live_code():
+def test_historical_alias_refuses_live_source():
     pack = make_pack(aliases={7: 0, 0: 1})
     cert = certify(pack)
-    assert cert.addressable, cert.failures
-    assert cert.passed, cert.failures
-    glosses = translate_stream(pack, [7])
-    assert glosses[0].state == "aliased"
-    assert glosses[0].resolved_code == 0
+    assert cert.addressable is False
+    assert any("historical mapping is ambiguous" in f for f in cert.failures)
+    assert cert.passed is False
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [7])
     bounce = make_pack(aliases={7: 0, 0: 7})
-    assert certify(bounce).addressable
-    assert bounce.resolve_code(7) == (0, True)
+    assert certify(bounce).addressable is False
+    with pytest.raises(ValueError, match="historical mapping is ambiguous"):
+        bounce.resolve_code(7)
+    historical = make_pack(aliases={7: 0})
+    assert certify(historical).addressable, certify(historical).failures
+    assert historical.resolve_code(7) == (0, True)
 
 
 def test_numpy_decoder_version_and_decision_fail_closed():
