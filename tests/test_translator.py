@@ -222,6 +222,9 @@ def test_live_alias_source_is_ambiguous():
 def test_python_api_stream_codes_match_cli():
     import numpy as np
     import pytest
+    from fractions import Fraction
+
+    from neuralese.contracts import as_stream_code
 
     pack = make_pack()
     with pytest.raises(ValueError, match="stream codes must be integers"):
@@ -234,10 +237,13 @@ def test_python_api_stream_codes_match_cli():
         translate_stream(pack, ["1"])
     with pytest.raises(ValueError, match="stream codes must be integers"):
         translate_stream(pack, [np.array([1])])
-    from fractions import Fraction
-
     with pytest.raises(ValueError, match="stream codes must be integers"):
-        translate_stream(pack, [Fraction(10**400, 1)])
+        translate_stream(pack, [Fraction(9007199254740993, 2)])
+    assert as_stream_code(Fraction(1, 1)) == 1
+    assert as_stream_code(Fraction(9007199254740993, 1)) == 9007199254740993
+    glosses = translate_stream(pack, [Fraction(10**400, 1)])
+    assert glosses[0].code == 10**400
+    assert glosses[0].state == "unknown"
     glosses = translate_stream(pack, [1.0])
     assert glosses[0].code == 1
     assert glosses[0].state == "ok"
@@ -266,9 +272,12 @@ def test_all_quarantined_pack_is_not_certified():
     )
     cert = certify(pack)
     assert cert.passed is False
+    assert cert.admission_valid is False
     assert any("no admitted symbols" in f for f in cert.failures)
     integrity = certify(pack, policy="integrity")
     assert integrity.passed
+    assert integrity.admission_valid is False
+    assert any("no admitted symbols" in f for f in integrity.failures)
     import pytest
 
     with pytest.raises(UncertifiedPackError):
