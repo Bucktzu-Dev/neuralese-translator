@@ -166,7 +166,8 @@ def test_alias_collision_rejects_cycles_with_valid_targets():
     source = "c" * 64
     assert _alias_collision({source: {0: 1, 1: 0}}, codebook) is True
     assert _alias_collision({source: {0: 99}}, codebook) is True
-    assert _alias_collision({source: {0: 1}}, codebook) is False
+    assert _alias_collision({source: {0: 1}}, codebook) is True
+    assert _alias_collision({source: {7: 0}}, codebook) is False
     previous = make_pack(
         symbols=[
             Symbol(
@@ -315,5 +316,4 @@ def test_loaded_non_string_parent_pack_id_fails_schema_after_reseal():
     assert loaded.parent_pack_id is None
     loaded.seal()
     assert certify(loaded).passed
-
 
