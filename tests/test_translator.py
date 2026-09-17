@@ -234,6 +234,10 @@ def test_python_api_stream_codes_match_cli():
         translate_stream(pack, ["1"])
     with pytest.raises(ValueError, match="stream codes must be integers"):
         translate_stream(pack, [np.array([1])])
+    from fractions import Fraction
+
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        translate_stream(pack, [Fraction(10**400, 1)])
     glosses = translate_stream(pack, [1.0])
     assert glosses[0].code == 1
     assert glosses[0].state == "ok"
