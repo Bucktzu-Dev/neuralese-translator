@@ -10,7 +10,7 @@ neuralese learn observations.jsonl -o pack.json --n-symbols 2
 neuralese certify pack.json --observations observations.jsonl --fail-on-undecodable
 ```
 
-The four-row demo needs `--n-symbols 2`. Default `--n-symbols 8` quarantines every class (`min_cluster_size` 2), and default/strict `certify` refuses a pack with no admitted symbols.
+The four-row demo needs `--n-symbols 2`. Default `--n-symbols 8` quarantines every class (`min_cluster_size` 2). `learn` then records `decision=reject` (exit 2), and default/strict `certify` refuses a pack with no admitted symbols.
 
 ## CLI
 
