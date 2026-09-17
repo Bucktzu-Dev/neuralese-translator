@@ -13,7 +13,6 @@ from neuralese.translator import translate_stream
 
 from packutil import make_pack, passing_guards
 
-
 def test_translate_refuses_forged_definition_after_seal():
     pack = make_pack()
     pack.symbols[0].definition = "forged after seal"
@@ -98,8 +97,18 @@ def test_reject_decision_fails_admission_and_default_certify():
 def test_current_code_is_not_redirected_by_alias():
     pack = make_pack(aliases={0: 1})
     cert = certify(pack)
-    assert cert.passed
-    glosses = translate_stream(pack, [0])
+    assert cert.addressable is False
+    assert any("historical mapping is ambiguous" in f for f in cert.failures)
+    assert cert.passed is False
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    historical = make_pack(aliases={7: 0})
+    cert = certify(historical)
+    assert cert.passed, cert.failures
+    glosses = translate_stream(historical, [7])
+    assert glosses[0].state == "aliased"
+    assert glosses[0].resolved_code == 0
+    glosses = translate_stream(historical, [0])
     assert glosses[0].state == "ok"
     assert glosses[0].class_id == 0
     assert "hello" in glosses[0].english.lower()
@@ -208,12 +217,6 @@ def test_fabricated_digest_fails_when_observations_supplied():
     assert any("does not match content" in f for f in cert.failures)
 
 
-def test_unknown_source_pack_does_not_merge_unrelated_aliases():
-    pack = make_pack(aliases={"cccc" * 16: {7: 0}})
-    glosses = translate_stream(pack, [7], source_pack_checksum="dddd" * 16)
-    assert glosses[0].state == "unknown"
-    assert glosses[0].resolved_code is None
-
 
 def test_example_hashes_normalized_before_seal():
     symbol = Symbol(
@@ -266,11 +269,6 @@ def test_evidence_digest_with_trailing_newline_fails():
     assert any("not SHA-256" in f for f in cert.failures)
 
 
-def test_empty_source_pack_checksum_is_explicit():
-    pack = make_pack(aliases={"cccc" * 16: {7: 0}})
-    glosses = translate_stream(pack, [7], source_pack_checksum="")
-    assert glosses[0].state == "unknown"
-    assert glosses[0].resolved_code is None
 
 
 def test_versioned_aliases_without_source_do_not_merge():
@@ -326,6 +324,12 @@ def test_numpy_embedding_can_be_hashed():
     obs = Observation(observation_id="obs-1", embedding=vec, text="hello")
     assert obs.content_hash() == digest
     assert obs.embedding == [1.0, 0.0, 0.25]
+    scalars = Observation(
+        observation_id="obs-2",
+        embedding=[np.int64(1), np.float32(0.25)],
+        text="hello",
+    )
+    assert scalars.embedding == [1.0, 0.25]
 
 
 def test_text_only_content_hash_matches_learn_evidence():
@@ -595,13 +599,6 @@ def test_mixed_alias_shapes_fail_load():
         pack.from_dict(data)
 
 
-def test_legacy_source_pack_checksum_does_not_select_legacy_table():
-    pack = make_pack(aliases={7: 0})
-    glosses = translate_stream(pack, [7], source_pack_checksum="legacy")
-    assert glosses[0].state == "unknown"
-    assert pack.alias_table("legacy") == {}
-    assert pack.alias_table()[7] == 0
-
 
 def test_falsey_symbols_fail_from_dict():
     pack = make_pack()
@@ -752,18 +749,6 @@ def test_numeric_64_digit_example_hash_is_not_coerced():
     assert not cert.passed
     assert any("example_hashes" in f and "not SHA-256" in f for f in cert.failures)
 
-
-def test_empty_alias_source_key_is_not_selectable():
-    from neuralese.contracts import select_alias_table
-
-    pack = make_pack()
-    data = pack.to_dict()
-    data["aliases"] = {"": {"7": 0}}
-    with pytest.raises(ValueError, match="non-empty"):
-        pack.from_dict(data)
-    assert select_alias_table({"": {7: 0}}, "") == {}
-    glosses = translate_stream(pack, [7], source_pack_checksum="")
-    assert glosses[0].state == "unknown"
 
 
 def test_null_observation_ids_in_symbol_fail_from_dict():
@@ -1083,5 +1068,341 @@ def test_loaded_null_evidence_fails_when_all_quarantined():
     assert not cert.integrity_valid
     assert not cert.passed
     assert any("evidence is not an object" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_none_evidence_key_is_not_stringified():
+    pack = make_pack()
+    obs_id = pack.symbols[0].observation_ids[0]
+    digest = pack.evidence[obs_id]
+    data = pack.to_dict()
+    data["evidence"] = {None: digest, obs_id: digest}
+    loaded = pack.from_dict(data)
+    assert None in loaded.evidence
+    assert "None" not in loaded.evidence
+    cert = certify(loaded)
+    assert not cert.evidence_valid
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("not a non-blank string" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_non_mapping_evidence_survives_to_dict_round_trip():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["evidence"] = []
+    loaded = pack.from_dict(data)
+    dumped = loaded.to_dict()
+    assert dumped["evidence"] == []
+    again = pack.from_dict(dumped)
+    assert again.evidence == []
+    cert = certify(again)
+    assert not cert.passed
+    assert not cert.evidence_valid
+    data["evidence"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.to_dict()["evidence"] is None
+    cert = certify(loaded)
+    assert not cert.passed
+
+
+def test_non_numeric_guard_metric_fails_schema():
+    pack = make_pack()
+    pack.guards.kappa_avg = "0.8"
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("guards.kappa_avg is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_string_guard_metric_fails_schema():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["guards"]["min_survival"] = "1.0"
+    loaded = pack.from_dict(data)
+    assert loaded.guards.min_survival == "1.0"
+    loaded.seal()
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("guards.min_survival is not a number" in f for f in cert.failures)
+
+
+def test_translate_uses_caller_tau_residual_not_pack_metadata():
+    pack = make_pack(reconstruction_error=0.6)
+    pack.metadata["tau_residual"] = 0.9
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.passed
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    assert certify(pack, tau_residual=0.9).passed
+    glosses = translate_stream(pack, [0], tau_residual=0.9)
+    assert glosses[0].state == "ok"
+
+
+def test_none_alias_source_key_is_not_stringified(tmp_path):
+    from neuralese.adapters import save_pack
+
+    tables = normalize_aliases({None: {7: 0}})
+    assert None in tables
+    assert "None" not in tables
+    pack = make_pack()
+    pack.aliases = tables
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("alias source key is not a non-empty string" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [7])
+    with pytest.raises(TypeError, match="alias source keys must be non-empty strings"):
+        pack.to_dict()
+    with pytest.raises(TypeError, match="alias source keys must be non-empty strings"):
+        pack.seal()
+    with pytest.raises(TypeError, match="alias source keys must be non-empty strings"):
+        save_pack(pack, tmp_path / "pack.json")
+
+
+def test_none_proto_embedding_fails_schema_not_checksum():
+    pack = make_pack()
+    pack.symbols[0].proto_embedding = None
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("proto_embedding is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    pack.symbols[0].proto_embedding = [1.0, None]
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.passed
+    assert any("proto_embedding[1] is not a number" in f for f in cert.failures)
+
+
+def test_nan_mdl_bits_fails_schema():
+    pack = make_pack()
+    pack.mdl_bits = float("nan")
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("mdl_bits is not finite" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_string_mdl_bits_fails_schema():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["mdl_bits"] = str(data["mdl_bits"])
+    loaded = pack.from_dict(data)
+    assert loaded.mdl_bits == "12.0"
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("mdl_bits is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_loaded_string_proto_embedding_fails_schema():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["proto_embedding"] = [
+        str(x) for x in data["symbols"][0]["proto_embedding"]
+    ]
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].proto_embedding[0] == "1.0"
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("proto_embedding[0] is not a number" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+    data["symbols"][0]["proto_embedding"] = None
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].proto_embedding is None
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("proto_embedding is not an array" in f for f in cert.failures)
+
+
+def test_none_alias_table_fails_closed():
+    pack = make_pack()
+    pack.aliases = {"src": None}
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("alias table is not an object" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_constructed_private_none_examples_seal_returns_failed_certificate():
+    pack = make_pack(include_private=True)
+    pack.symbols[0].examples = None
+    pack.symbols[0].example_hashes = None
+    pack.seal()
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("examples is not an array" in f for f in cert.failures)
+    assert any("example_hashes is not an array" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_non_integer_alias_targets_fail_schema_not_checksum():
+    pack = make_pack()
+    pack.aliases = {"src": {1: "bad"}}
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("alias entries must be integer-to-integer" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_bool_and_float_alias_targets_are_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["aliases"] = {"c" * 64: {"1": False}}
+    loaded = pack.from_dict(data)
+    assert loaded.aliases["c" * 64][1] is False
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("alias entries must be integer-to-integer" in f for f in cert.failures)
+    data["aliases"] = {"c" * 64: {"1": 1.9}}
+    loaded = pack.from_dict(data)
+    assert loaded.aliases["c" * 64][1] == 1.9
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("alias entries must be integer-to-integer" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_oversized_confidence_fails_schema_not_overflow():
+    pack = make_pack()
+    pack.symbols[0].confidence = 10**1000
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("confidence" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_unhashable_class_id_fails_closed():
+    pack = make_pack()
+    pack.symbols[0].class_id = [0]
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any(
+        "class_id is not an integer" in f or "not hashable" in f for f in cert.failures
+    )
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_malformed_guards_object_fails_schema_not_attribute_error():
+    pack = make_pack()
+    pack.guards = {}
+    cert = certify(pack)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("guards is not a GuardSnapshot" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_loaded_float_and_bool_identities_are_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    data["symbols"][0]["class_id"] = 0.9
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].class_id == 0.9
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("class_id is not an integer" in f for f in cert.failures)
+    data = pack.to_dict()
+    data["symbols"][0]["code"] = True
+    loaded = pack.from_dict(data)
+    assert loaded.symbols[0].code is True
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("code is not an integer" in f for f in cert.failures)
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(loaded, [0])
+
+
+def test_overflowing_jsonl_embedding_is_clean_cli_failure(tmp_path, capsys):
+    import json
+
+    from neuralese.adapters import load_observations_jsonl
+    from neuralese.cli import main
+
+    path = tmp_path / "obs.jsonl"
+    path.write_text(
+        json.dumps({"observation_id": "o1", "embedding": [10**1000]}) + "\n"
+    )
+    with pytest.raises(ValueError, match="invalid observation record"):
+        load_observations_jsonl(path)
+    rc = main(["learn", str(path), "-o", str(tmp_path / "pack.json")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "invalid observation record" in err
+
+
+def test_overflowing_pack_timestamp_is_clean_cli_failure(tmp_path, capsys):
+    import json
+
+    from neuralese.adapters import load_pack
+    from neuralese.cli import main
+
+    pack = make_pack()
+    pack.seal()
+    data = pack.to_dict()
+    data["timestamp"] = 10**1000
+    path = tmp_path / "pack.json"
+    path.write_text(json.dumps(data) + "\n")
+    loaded = load_pack(path)
+    assert loaded.timestamp == 10**1000
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("timestamp is not finite" in f for f in cert.failures)
+    stream = tmp_path / "stream.json"
+    stream.write_text("[0]\n")
+    rc = main(["translate", str(path), str(stream)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    failed = json.loads(err)
+    assert failed["passed"] is False
+
+
+def test_loaded_float_and_bool_codebook_values_are_not_coerced():
+    pack = make_pack()
+    data = pack.to_dict()
+    key = next(iter(data["codebook"]))
+    data["codebook"][key] = 0.9
+    loaded = pack.from_dict(data)
+    assert loaded.codebook[int(key)] == 0.9
+    cert = certify(loaded)
+    assert not cert.integrity_valid
+    assert not cert.passed
+    assert any("codebook entries must be integer-to-integer" in f for f in cert.failures)
+    data["codebook"][key] = True
+    loaded = pack.from_dict(data)
+    assert loaded.codebook[int(key)] is True
+    cert = certify(loaded)
+    assert not cert.passed
+    assert any("codebook entries must be integer-to-integer" in f for f in cert.failures)
     with pytest.raises(UncertifiedPackError):
         translate_stream(loaded, [0])

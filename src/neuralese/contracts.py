@@ -42,6 +42,33 @@ def _integral_code(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def as_stream_code(value: Any) -> int:
+    """Integer stream codes; bools, strings, and truncated floats fail closed."""
+    if isinstance(value, bool):
+        raise ValueError("stream codes must be integers")
+    if isinstance(value, numbers.Integral):
+        return int(value)
+    if isinstance(value, numbers.Rational):
+        try:
+            numer = int(value.numerator)
+            denom = int(value.denominator)
+        except (OverflowError, ValueError, TypeError, AttributeError) as copilot_exc:
+            raise ValueError("stream codes must be integers") from copilot_exc
+        if denom != 1:
+            raise ValueError("stream codes must be integers")
+        return numer
+    if isinstance(value, numbers.Real):
+        try:
+            as_int = int(value)
+            restored = type(value)(as_int)
+        except (OverflowError, ValueError, TypeError) as copilot_exc:
+            raise ValueError("stream codes must be integers") from copilot_exc
+        if value != restored:
+            raise ValueError("stream codes must be integers")
+        return as_int
+    raise ValueError("stream codes must be integers")
+
+
 def _alias_key(value: Any) -> Any:
     if _integral_code(value):
         return value
@@ -286,16 +313,16 @@ def _embedding_values(values: Any) -> List[float]:
         raise TypeError("embedding must be an array or null")
     try:
         items = list(values)
-    except TypeError as exc:
-        raise TypeError("embedding must be an array or null") from exc
+    except TypeError as copilot_exc:
+        raise TypeError("embedding must be an array or null") from copilot_exc
     out: List[float] = []
     for x in items:
         if isinstance(x, bool) or not isinstance(x, numbers.Real):
             raise TypeError("embedding must contain numbers")
         try:
             value = float(x)
-        except OverflowError as exc:
-            raise ValueError("embedding must contain finite numbers") from exc
+        except OverflowError as copilot_exc:
+            raise ValueError("embedding must contain finite numbers") from copilot_exc
         if not math.isfinite(value):
             raise ValueError("embedding must contain finite numbers")
         out.append(value)
@@ -372,6 +399,29 @@ def select_alias_table(
     if LEGACY_ALIAS_KEY in aliases:
         return dict(aliases[LEGACY_ALIAS_KEY])
     return {}
+
+
+def explicit_source_resolved(
+    aliases: AliasTables,
+    source_pack_checksum: Optional[str] = None,
+    *,
+    parent_checksum: Optional[str] = None,
+) -> bool:
+    """True when no explicit source was given, or the source is a stored/parent checksum."""
+    if source_pack_checksum is None:
+        return True
+    if (
+        not isinstance(source_pack_checksum, str)
+        or not source_pack_checksum
+        or source_pack_checksum == LEGACY_ALIAS_KEY
+        or not SHA256_HEX.match(source_pack_checksum)
+    ):
+        return False
+    if source_pack_checksum in aliases:
+        return True
+    if parent_checksum is not None and source_pack_checksum == parent_checksum:
+        return True
+    return False
 
 
 def aliases_to_dict(aliases: AliasTables) -> Any:
@@ -800,18 +850,23 @@ class SymbolPack:
         *,
         terminals: Optional[Dict[int, int]] = None,
     ) -> Tuple[int, bool]:
-        from neuralese.aliases import follow_aliases
+        from neuralese.aliases import resolve_alias_table
 
-        code = int(code)
+        code = as_stream_code(code)
+        if not explicit_source_resolved(
+            self.aliases,
+            source_pack_checksum,
+            parent_checksum=self.parent_checksum,
+        ):
+            raise ValueError("unresolved source pack checksum")
+        if terminals is None:
+            terminals = resolve_alias_table(
+                self.alias_table(source_pack_checksum),
+                current_codes=self.current_codes(),
+            )
         if isinstance(self.codebook, dict) and code in self.codebook:
             return code, False
-        if terminals is not None:
-            resolved = terminals.get(code, code)
-            return resolved, resolved != code
-        table = self.alias_table(source_pack_checksum)
-        resolved = follow_aliases(
-            code, table, current_codes=self.current_codes()
-        )
+        resolved = terminals.get(code, code)
         return resolved, resolved != code
 
 

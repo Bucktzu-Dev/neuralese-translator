@@ -32,13 +32,25 @@ def _receipt_layer(rows):
     return first
 
 
+def _same_output_path(output: Path, other: Path) -> bool:
+    try:
+        return output.samefile(other)
+    except OSError:
+        try:
+            return output.resolve() == other.resolve()
+        except (OSError, RuntimeError) as copilot_exc:
+            raise ValueError(
+                "output path could not be compared to the evidence path"
+            ) from copilot_exc
+
+
 def _tau_residual_arg(raw: str) -> float:
     try:
         value = float(raw)
-    except ValueError as exc:
+    except ValueError as copilot_exc:
         raise argparse.ArgumentTypeError(
             "tau-residual must be a finite non-negative real"
-        ) from exc
+        ) from copilot_exc
     if not math.isfinite(value) or value < 0:
         raise argparse.ArgumentTypeError(
             "tau-residual must be a finite non-negative real"
@@ -160,6 +172,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "learn":
         try:
+            if _same_output_path(args.output, args.observations):
+                raise ValueError(
+                    "output path must differ from the observations path"
+                )
+            if args.parent is not None and _same_output_path(
+                args.output, args.parent
+            ):
+                raise ValueError("output path must differ from the parent path")
             obs = load_observations_jsonl(args.observations)
             parent = load_pack(args.parent) if args.parent else None
             pack = learn_pack(
@@ -173,8 +193,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 ),
                 previous=parent,
             )
-        except ValueError as exc:
-            print(str(exc), file=sys.stderr)
+        except ValueError as copilot_exc:
+            print(str(copilot_exc), file=sys.stderr)
             return 1
         save_pack(pack, args.output)
         print(
@@ -193,11 +213,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "ingest":
         try:
-            if args.output.resolve() == args.activations.resolve():
+            if _same_output_path(args.output, args.activations):
                 raise ValueError(
                     "output path must differ from the activations path"
                 )
-            if args.texts is not None and args.output.resolve() == args.texts.resolve():
+            if args.texts is not None and _same_output_path(args.output, args.texts):
                 raise ValueError("output path must differ from the --texts path")
             source_label = (
                 args.source if args.source is not None else args.activations.name
@@ -228,8 +248,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     source=source_label,
                 )
             save_observations_jsonl(rows, args.output)
-        except (TypeError, ValueError, OSError) as exc:
-            print(str(exc), file=sys.stderr)
+        except (TypeError, ValueError, OSError) as copilot_exc:
+            print(str(copilot_exc), file=sys.stderr)
             return 1
         print(
             json.dumps(
@@ -250,8 +270,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         try:
             pack = load_pack(args.pack)
             codes = load_stream(args.stream)
-        except (TypeError, ValueError) as exc:
-            print(str(exc), file=sys.stderr)
+        except (TypeError, ValueError) as copilot_exc:
+            print(str(copilot_exc), file=sys.stderr)
             return 1
         try:
             glosses = translate_stream(
@@ -269,23 +289,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                 file=sys.stderr,
             )
             return 1
-        except (TypeError, ValueError, OverflowError) as exc:
-            print(str(exc), file=sys.stderr)
+        except (TypeError, ValueError, OverflowError) as copilot_exc:
+            print(str(copilot_exc), file=sys.stderr)
             return 1
         print(json.dumps([g.to_dict() for g in glosses], indent=2))
         return 0
 
     try:
         pack = load_pack(args.pack)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
+    except ValueError as copilot_exc:
+        print(str(copilot_exc), file=sys.stderr)
         return 1
     try:
         observations = (
             load_observations_jsonl(args.observations) if args.observations else None
         )
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
+    except ValueError as copilot_exc:
+        print(str(copilot_exc), file=sys.stderr)
         return 1
     cert = certify(
         pack,

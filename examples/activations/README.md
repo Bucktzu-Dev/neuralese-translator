@@ -6,16 +6,18 @@ Shipped demo (no model required):
 
 ```bash
 neuralese ingest examples/activations/states.jsonl -o observations.jsonl
-neuralese learn observations.jsonl -o pack.json
+neuralese learn observations.jsonl -o pack.json --n-symbols 2
 neuralese certify pack.json --observations observations.jsonl --fail-on-undecodable
 ```
+
+The four-row demo needs `--n-symbols 2`. Default `--n-symbols 8` quarantines every class (`min_cluster_size` 2). `learn` then records `decision=reject` (exit 2), and default/strict `certify` refuses a pack with no admitted symbols.
 
 ## CLI
 
 ```bash
 neuralese ingest states.npy -o observations.jsonl --texts prompts.jsonl --layer 12
 neuralese ingest examples/activations/states.jsonl -o observations.jsonl --source gpt2-layer12
-neuralese learn observations.jsonl -o pack.json
+neuralese learn observations.jsonl -o pack.json --n-symbols 2
 neuralese certify pack.json --observations observations.jsonl --fail-on-undecodable
 ```
 

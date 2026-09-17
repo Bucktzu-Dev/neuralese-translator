@@ -11,6 +11,7 @@ from neuralese.contracts import (
 )
 
 _CYCLE = "alias map contains a cycle"
+AMBIGUOUS_HISTORICAL_MAPPING = "historical mapping is ambiguous"
 
 
 def resolve_alias_table(
@@ -24,25 +25,26 @@ def resolve_alias_table(
     on a valid acyclic table. Certification and translation consume untrusted
     packs, so a long chain would otherwise become a denial of service.
     Shared suffixes are reused; a cycle raises ValueError.
-    When `current_codes` is provided (pack codebook / live symbol codes), a
-    walk stops at the first current code so `{7: 0, 0: 1}` cannot steal live
-    `0` and `{7: 0, 0: 7}` is not a historical cycle. Standalone resolution
-    with `current_codes=None` still follows every table key.
+    When `current_codes` is provided (pack codebook / live symbol codes), an
+    alias source that is also a current code is ambiguous without
+    `(pack_checksum, code)` identity: `{0: 1}` is refused instead of silently
+    keeping live `0`. `{7: 0}` still rewrites historical `7`. Standalone
+    resolution with `current_codes=None` still follows every table key.
     """
     live = current_codes
+    if live is not None:
+        for start in aliases:
+            current = int(start)
+            if current in live:
+                raise ValueError(AMBIGUOUS_HISTORICAL_MAPPING)
     terminals: Dict[int, int] = {}
     for start in aliases:
         current = int(start)
         if current in terminals:
             continue
-        if live is not None and current in live:
-            terminals[current] = current
-            continue
         path: List[int] = []
         seen: Dict[int, int] = {}
         while current in aliases:
-            if live is not None and current in live:
-                break
             if current in terminals:
                 break
             if current in seen:
@@ -105,8 +107,8 @@ def has_alias_cycle(
     for mapping in tables.values():
         try:
             resolve_alias_table(mapping, current_codes=current_codes)
-        except ValueError as exc:
-            if str(exc) == _CYCLE:
+        except ValueError as copilot_exc:
+            if str(copilot_exc) == _CYCLE:
                 return True
             raise
     return False

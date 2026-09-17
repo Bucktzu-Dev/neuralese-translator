@@ -10,6 +10,8 @@ from neuralese.contracts import (
     Gloss,
     SymbolPack,
     UncertifiedPackError,
+    as_stream_code,
+    explicit_source_resolved,
 )
 from neuralese.energy import confidence_cap
 from neuralese.gloss import UNGLOSSED
@@ -52,25 +54,25 @@ def translate_stream(
         if not certificate.passed:
             raise UncertifiedPackError(certificate)
 
+    if not explicit_source_resolved(
+        pack.aliases,
+        source_pack_checksum,
+        parent_checksum=pack.parent_checksum,
+    ):
+        raise ValueError("unresolved source pack checksum")
+
+    alias_terminals = resolve_alias_table(
+        pack.alias_table(source_pack_checksum),
+        current_codes=pack.current_codes(),
+    )
     glosses: List[Gloss] = []
-    alias_terminals = None
     for raw in codes:
-        code = int(raw)
-        if isinstance(pack.codebook, dict) and code in pack.codebook:
-            resolved, aliased = pack.resolve_code(
-                code, source_pack_checksum=source_pack_checksum
-            )
-        else:
-            if alias_terminals is None:
-                alias_terminals = resolve_alias_table(
-                    pack.alias_table(source_pack_checksum),
-                    current_codes=pack.current_codes(),
-                )
-            resolved, aliased = pack.resolve_code(
-                code,
-                source_pack_checksum=source_pack_checksum,
-                terminals=alias_terminals,
-            )
+        code = as_stream_code(raw)
+        resolved, aliased = pack.resolve_code(
+            code,
+            source_pack_checksum=source_pack_checksum,
+            terminals=alias_terminals,
+        )
         symbol = pack.symbol_by_code(resolved)
         if symbol is None:
             glosses.append(

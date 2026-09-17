@@ -22,7 +22,7 @@ English here is a **receipt**, not a vibe. An LLM may help write a gloss; it can
 
 ```bash
 pip install -e .
-neuralese learn examples/toy_stream/observations.jsonl -o pack.json
+neuralese learn examples/toy_stream/observations.jsonl -o pack.json --n-symbols 3
 neuralese translate pack.json examples/toy_stream/stream.json
 neuralese audit pack.json
 neuralese certify pack.json --fail-on-undecodable
@@ -40,7 +40,7 @@ Dumped hidden states (`.npy` / `.npz` / activation JSON or JSONL) become that ob
 
 ```bash
 neuralese ingest examples/activations/states.jsonl -o observations.jsonl
-neuralese learn observations.jsonl -o pack.json
+neuralese learn observations.jsonl -o pack.json --n-symbols 2
 neuralese certify pack.json --observations observations.jsonl --fail-on-undecodable
 ```
 

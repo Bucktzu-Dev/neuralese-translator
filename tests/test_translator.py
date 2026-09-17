@@ -33,6 +33,10 @@ def test_explicit_source_pack_uses_only_that_table():
 
 
 def test_quarantined_state_does_not_use_definition_as_ok():
+    import pytest
+
+    from neuralese.contracts import UncertifiedPackError
+
     pack = make_pack(
         symbols=[
             Symbol(
@@ -45,7 +49,9 @@ def test_quarantined_state_does_not_use_definition_as_ok():
             )
         ]
     )
-    glosses = translate_stream(pack, [0])
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    glosses = translate_stream(pack, [0], require_certified=False)
     assert glosses[0].state == "quarantined"
     assert glosses[0].english.startswith("[quarantined:")
 
@@ -116,8 +122,11 @@ def test_rewrite_stream_rejects_alias_cycles():
         follow_aliases(0, {0: 1, 1: 0}, max_hops=2)
     with pytest.raises(ValueError, match="cycle"):
         rewrite_stream([7], {7: 0, 0: 7})
-    assert follow_aliases(7, {7: 0, 0: 1}, current_codes={0, 1}) == 0
-    assert follow_aliases(7, {7: 0, 0: 7}, current_codes={0}) == 0
+    with pytest.raises(ValueError, match="historical mapping is ambiguous"):
+        follow_aliases(7, {7: 0, 0: 1}, current_codes={0, 1})
+    with pytest.raises(ValueError, match="historical mapping is ambiguous"):
+        follow_aliases(7, {7: 0, 0: 7}, current_codes={0})
+    assert follow_aliases(7, {7: 0}, current_codes={0, 1}) == 0
 
 
 def test_rewrite_stream_versioned_requires_source():
@@ -187,3 +196,132 @@ def test_translate_stream_resolves_alias_table_once():
     assert spy.call_count == 1
     assert all(g.resolved_code == 0 for g in glosses)
     assert all(g.state == "aliased" for g in glosses)
+
+
+def test_live_alias_source_is_ambiguous():
+    import pytest
+
+    from neuralese.audit import certify
+    from neuralese.contracts import UncertifiedPackError
+
+    pack = make_pack(aliases={0: 1})
+    cert = certify(pack)
+    assert cert.addressable is False
+    assert any("historical mapping is ambiguous" in f for f in cert.failures)
+    assert cert.passed is False
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+    with pytest.raises(ValueError, match="historical mapping is ambiguous"):
+        pack.resolve_code(0)
+    chained = make_pack(aliases={7: 0, 0: 1})
+    assert certify(chained).addressable is False
+    with pytest.raises(ValueError, match="historical mapping is ambiguous"):
+        translate_stream(chained, [7], require_certified=False)
+
+
+def test_python_api_stream_codes_match_cli():
+    import numpy as np
+    import pytest
+    from fractions import Fraction
+
+    from neuralese.contracts import as_stream_code
+
+    pack = make_pack()
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        translate_stream(pack, [True])
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        translate_stream(pack, [np.bool_(True)])
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        translate_stream(pack, [0.9])
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        translate_stream(pack, ["1"])
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        translate_stream(pack, [np.array([1])])
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        translate_stream(pack, [Fraction(9007199254740993, 2)])
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(True)
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(np.bool_(True))
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(0.9)
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code("1")
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(np.array([1]))
+    with pytest.raises(ValueError, match="stream codes must be integers"):
+        pack.resolve_code(Fraction(9007199254740993, 2))
+    assert pack.resolve_code(1.0) == (1, False)
+    assert pack.resolve_code(Fraction(1, 1)) == (1, False)
+    assert pack.resolve_code(Fraction(9007199254740993, 1)) == (
+        9007199254740993,
+        False,
+    )
+    assert as_stream_code(Fraction(1, 1)) == 1
+    assert as_stream_code(Fraction(9007199254740993, 1)) == 9007199254740993
+    glosses = translate_stream(pack, [Fraction(10**400, 1)])
+    assert glosses[0].code == 10**400
+    assert glosses[0].state == "unknown"
+    glosses = translate_stream(pack, [1.0])
+    assert glosses[0].code == 1
+    assert glosses[0].state == "ok"
+    glosses = translate_stream(pack, [np.int64(1)])
+    assert glosses[0].code == 1
+    assert glosses[0].state == "ok"
+    glosses = translate_stream(pack, [np.float64(1.0)])
+    assert glosses[0].code == 1
+    assert as_stream_code(np.longdouble(1.0)) == 1
+    assert pack.resolve_code(np.longdouble(1.0)) == (1, False)
+    fractional = np.longdouble("1.0000000000000000001")
+    if fractional != np.longdouble(1):
+        with pytest.raises(ValueError, match="stream codes must be integers"):
+            as_stream_code(fractional)
+        with pytest.raises(ValueError, match="stream codes must be integers"):
+            pack.resolve_code(fractional)
+        with pytest.raises(ValueError, match="stream codes must be integers"):
+            translate_stream(pack, [fractional])
+
+
+def test_all_quarantined_pack_is_not_certified():
+    from neuralese.audit import certify
+    from neuralese.contracts import UncertifiedPackError
+
+    pack = make_pack(
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0],
+                observation_ids=["obs-1"],
+                definition="[quarantined class 0]",
+                quarantined=True,
+            )
+        ]
+    )
+    cert = certify(pack)
+    assert cert.passed is False
+    assert cert.admission_valid is False
+    assert any("no admitted symbols" in f for f in cert.failures)
+    integrity = certify(pack, policy="integrity")
+    assert integrity.passed
+    assert integrity.admission_valid is False
+    assert any("no admitted symbols" in f for f in integrity.failures)
+    import pytest
+
+    with pytest.raises(UncertifiedPackError):
+        translate_stream(pack, [0])
+
+
+def test_certify_reuses_one_current_code_set():
+    from unittest.mock import patch
+
+    from neuralese.audit import certify
+    from neuralese.contracts import SymbolPack
+
+    aliases = {i: i + 1 for i in range(7, 12)}
+    aliases[12] = 0
+    pack = make_pack(aliases={"a" * 64: aliases, "b" * 64: {13: 0}})
+    with patch.object(SymbolPack, "current_codes", wraps=pack.current_codes) as spy:
+        cert = certify(pack)
+    assert cert.addressable, cert.failures
+    assert spy.call_count == 1

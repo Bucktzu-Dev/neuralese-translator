@@ -24,7 +24,7 @@ Every live code must resolve to a class through the current codebook **or** a fi
 
 - Codes may move when the alphabet is rebuilt.
 - Old streams stay readable by rewriting `old_code → new_code`.
-- Alias cycles and dangling aliases fail closed.
+- Alias cycles, dangling aliases, and alias sources that collide with a current codebook code fail closed. `{0: 1}` while live `0` exists is ambiguous without `(pack_checksum, code)` identity; it is refused rather than keeping the current meaning.
 
 Deletion is not an inverse. If a class dies, either quarantine it or issue a new forward commit. Do not pretend the old code never existed.
 
