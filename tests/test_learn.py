@@ -12,6 +12,32 @@ from neuralese.translator import translate_stream
 TOY = Path(__file__).resolve().parents[1] / "examples" / "toy_stream" / "observations.jsonl"
 
 
+def test_all_quarantined_learn_is_a_draft():
+    obs = [
+        Observation(observation_id="obs-1", embedding=[1.0, 0.0, 0.0, 0.0]),
+        Observation(observation_id="obs-2", embedding=[0.95, 0.05, 0.0, 0.0]),
+        Observation(observation_id="obs-3", embedding=[0.0, 1.0, 0.0, 0.0]),
+        Observation(observation_id="obs-4", embedding=[0.05, 0.95, 0.0, 0.0]),
+    ]
+    pack = learn_pack(obs, config=LearnConfig(n_symbols=8, min_cluster_size=2, seed=0))
+    assert pack.decision == "reject"
+    assert pack.metadata.get("status") == "draft"
+    assert pack.guards is not None
+    assert pack.guards.pass_compat is False
+    assert pack.guards.pass_all is False
+    finalize = next(r for r in pack.receipts if r.step == "finalize")
+    assert finalize.ok is False
+    assert finalize.metadata.get("decision") == "reject"
+    assert all(symbol.quarantined is True for symbol in pack.symbols)
+    cert = certify(pack)
+    assert cert.passed is False
+    assert cert.admission_valid is False
+    assert any("no admitted symbols" in f for f in cert.failures)
+    integrity = certify(pack, policy="integrity")
+    assert integrity.passed
+    assert integrity.admission_valid is False
+
+
 def test_learn_toy_pack_certifies():
     obs = load_observations_jsonl(TOY)
     pack = learn_pack(obs, config=LearnConfig(n_symbols=3, min_cluster_size=2, seed=0))
@@ -421,7 +447,8 @@ def test_json_loaders_reject_recursive_payloads(tmp_path):
     from neuralese.adapters import load_observations_jsonl, load_pack, load_stream
 
     obs = tmp_path / "obs.jsonl"
-    obs.write_text("{}\n")
+    obs.write_text("{}
+")
     with patch("neuralese.adapters.json.loads", side_effect=RecursionError("nested")):
         with pytest.raises(ValueError, match="invalid JSON"):
             load_observations_jsonl(obs)
@@ -431,7 +458,8 @@ def test_json_loaders_reject_recursive_payloads(tmp_path):
         with pytest.raises(ValueError, match="stream file"):
             load_stream(stream)
     pack = tmp_path / "pack.json"
-    pack.write_text("{}\n")
+    pack.write_text("{}
+")
     with patch("neuralese.adapters.json.loads", side_effect=RecursionError("nested")):
         with pytest.raises(ValueError, match="invalid pack"):
             load_pack(pack)
@@ -603,4 +631,3 @@ def test_learn_pack_rejects_cyclic_observation_metadata():
     obs[0].metadata["self"] = obs[0].metadata
     with pytest.raises(ValueError, match="not learnable"):
         learn_pack(obs, config=LearnConfig(n_symbols=3, seed=0))
-
