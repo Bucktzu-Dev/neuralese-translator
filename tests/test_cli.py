@@ -508,3 +508,44 @@ def test_cli_translate_tau_residual_is_operator_gate(tmp_path, capsys):
     assert rc == 0
     glosses = json.loads(capsys.readouterr().out)
     assert glosses[0]["state"] in {"ok", "unknown", "aliased"}
+
+
+def test_cli_learn_refuses_to_overwrite_observations(tmp_path, capsys):
+    obs = tmp_path / "observations.jsonl"
+    obs.write_text(
+        '{"observation_id":"obs-1","text":"hello there friend","embedding":[1.0,0.0,0.0,0.0]}\n'
+        '{"observation_id":"obs-2","text":"audit the trail please","embedding":[0.0,1.0,0.0,0.0]}\n'
+    )
+    original = obs.read_text()
+    rc = main(["learn", str(obs), "-o", str(obs), "--n-symbols", "2"])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "differ" in err
+    assert "Traceback" not in err
+    assert obs.read_text() == original
+
+
+def test_cli_activation_quickstart_needs_n_symbols(tmp_path, capsys):
+    demo = Path(__file__).resolve().parents[1] / "examples" / "activations" / "states.jsonl"
+    obs = tmp_path / "observations.jsonl"
+    pack_path = tmp_path / "pack.json"
+    rc = main(["ingest", str(demo), "-o", str(obs)])
+    assert rc == 0
+    capsys.readouterr()
+    rc = main(["learn", str(obs), "-o", str(pack_path), "--n-symbols", "2"])
+    assert rc == 0
+    learned = json.loads(capsys.readouterr().out)
+    assert learned["n_symbols"] == 2
+    rc = main(
+        [
+            "certify",
+            str(pack_path),
+            "--observations",
+            str(obs),
+            "--fail-on-undecodable",
+        ]
+    )
+    assert rc == 0
+    cert = json.loads(capsys.readouterr().out)
+    assert cert["passed"] is True
+    assert cert["details"]["n_live"] == 2
