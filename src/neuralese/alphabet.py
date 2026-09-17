@@ -218,7 +218,9 @@ def learn_pack(
     pass_residual = residual <= cfg.tau_residual
     pass_mdl = delta_mdl <= 0.0
     pass_persist = min_survival >= cfg.tau_persist or previous is None
-    pass_compat = not _alias_collision(aliases, codebook)
+    pass_compat = not _alias_collision(aliases, codebook) and any(
+        symbol.quarantined is False for symbol in symbols
+    )
     pass_all = pass_kappa and pass_residual and pass_mdl and pass_persist and pass_compat
 
     if pass_all:
