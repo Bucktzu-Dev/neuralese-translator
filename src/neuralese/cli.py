@@ -32,6 +32,13 @@ def _receipt_layer(rows):
     return first
 
 
+def _same_output_path(output: Path, other: Path) -> bool:
+    try:
+        return output.samefile(other)
+    except OSError:
+        return output.resolve() == other.resolve()
+
+
 def _tau_residual_arg(raw: str) -> float:
     try:
         value = float(raw)
@@ -160,7 +167,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "learn":
         try:
-            if args.output.resolve() == args.observations.resolve():
+            if _same_output_path(args.output, args.observations):
                 raise ValueError(
                     "output path must differ from the observations path"
                 )
@@ -197,11 +204,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "ingest":
         try:
-            if args.output.resolve() == args.activations.resolve():
+            if _same_output_path(args.output, args.activations):
                 raise ValueError(
                     "output path must differ from the activations path"
                 )
-            if args.texts is not None and args.output.resolve() == args.texts.resolve():
+            if args.texts is not None and _same_output_path(args.output, args.texts):
                 raise ValueError("output path must differ from the --texts path")
             source_label = (
                 args.source if args.source is not None else args.activations.name
