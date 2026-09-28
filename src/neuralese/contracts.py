@@ -860,16 +860,16 @@ class SymbolPack:
             parent_checksum=self.parent_checksum,
         ):
             raise ValueError("unresolved source pack checksum")
+        live = self.current_codes() if current_codes is None else current_codes
         if terminals is None:
-            live = self.current_codes() if current_codes is None else current_codes
             terminals = resolve_alias_table(
                 self.alias_table(source_pack_checksum),
                 current_codes=live,
             )
-        elif current_codes is None:
+        else:
             refuse_live_alias_sources(
                 self.alias_table(source_pack_checksum),
-                self.current_codes(),
+                live,
             )
         if isinstance(self.codebook, dict) and code in self.codebook:
             return code, False
