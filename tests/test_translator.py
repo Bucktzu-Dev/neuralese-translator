@@ -126,7 +126,12 @@ def test_rewrite_stream_rejects_alias_cycles():
         follow_aliases(7, {7: 0, 0: 1}, current_codes={0, 1})
     with pytest.raises(ValueError, match="historical mapping is ambiguous"):
         follow_aliases(7, {7: 0, 0: 7}, current_codes={0})
+    with pytest.raises(ValueError, match="historical mapping is ambiguous"):
+        follow_aliases(
+            7, {7: 0, 0: 1}, terminals={7: 0, 0: 1}, current_codes={0, 1}
+        )
     assert follow_aliases(7, {7: 0}, current_codes={0, 1}) == 0
+    assert follow_aliases(7, {7: 0}, terminals={7: 0}, current_codes={0, 1}) == 0
 
 
 def test_rewrite_stream_versioned_requires_source():
