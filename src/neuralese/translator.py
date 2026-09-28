@@ -61,9 +61,10 @@ def translate_stream(
     ):
         raise ValueError("unresolved source pack checksum")
 
+    live = pack.current_codes()
     alias_terminals = resolve_alias_table(
         pack.alias_table(source_pack_checksum),
-        current_codes=pack.current_codes(),
+        current_codes=live,
     )
     glosses: List[Gloss] = []
     for raw in codes:
@@ -72,6 +73,7 @@ def translate_stream(
             code,
             source_pack_checksum=source_pack_checksum,
             terminals=alias_terminals,
+            current_codes=live,
         )
         symbol = pack.symbol_by_code(resolved)
         if symbol is None:
