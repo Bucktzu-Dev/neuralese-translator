@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import time
-from typing import List
+from typing import Any, Dict, List, Optional
 
 from neuralese.aliases import has_alias_cycle
 from neuralese.contracts import AuditCertificate, SymbolPack, iter_live_symbols
 from neuralese.unfold import unfold_failures
+
+_UNGLOSSED_PREFIX = "[unglossed:"
 
 
 def certify(
@@ -104,6 +106,47 @@ def certify(
             **reservoir_details,
         },
     )
+
+
+def decodability_report(pack: SymbolPack) -> Dict[str, Any]:
+    """Summarize a sealed pack without applying a pass/fail threshold.
+
+    ``gloss_coverage`` is the fraction of live symbols whose definition is
+    non-empty and is not an ``[unglossed: ...]`` marker. Quarantined symbols
+    are left out of that fraction. ``unfold_failures`` lists reservoir
+    mismatches from ``unfold_failures``; residual-threshold failures stay on
+    ``certify``. ``decision`` is the learn-time metadata value, or ``None``.
+    """
+    unfold, _residual_failures, _details = unfold_failures(pack)
+    live = list(iter_live_symbols(pack))
+    covered = sum(1 for symbol in live if _gloss_covered(symbol.definition))
+    coverage = float(covered / len(live)) if live else 0.0
+    decision = _learn_decision(pack)
+    return {
+        "n_live": len(live),
+        "n_quarantined": sum(1 for symbol in pack.symbols if symbol.quarantined),
+        "residual": float(pack.reconstruction_error),
+        "reservoir_size": len(pack.observations),
+        "unfold_failures": list(unfold),
+        "gloss_coverage": coverage,
+        "mdl_bits": float(pack.mdl_bits),
+        "decision": decision,
+    }
+
+
+def _gloss_covered(definition: Optional[str]) -> bool:
+    text = (definition or "").strip()
+    if not text:
+        return False
+    return not text.startswith(_UNGLOSSED_PREFIX)
+
+
+def _learn_decision(pack: SymbolPack) -> Optional[str]:
+    raw = pack.metadata.get("decision") if pack.metadata else None
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    return text or None
 
 
 def _finite(value: float) -> bool:

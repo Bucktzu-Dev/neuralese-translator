@@ -9,7 +9,7 @@ from neuralese.adapters import (
     save_pack,
 )
 from neuralese.alphabet import LearnConfig, learn_pack
-from neuralese.audit import certify
+from neuralese.audit import certify, decodability_report
 from neuralese.contracts import (
     AuditCertificate,
     Gloss,
@@ -22,7 +22,7 @@ from neuralese.dynamics import SubjectiveSymbolDynamics
 from neuralese.translator import translate_stream
 from neuralese.unfold import UnfoldReport, unfold_code
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "__version__",
@@ -38,6 +38,7 @@ __all__ = [
     "unfold_code",
     "UnfoldReport",
     "certify",
+    "decodability_report",
     "load_observations_jsonl",
     "save_observations_jsonl",
     "load_activation_dump",

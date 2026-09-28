@@ -1,4 +1,4 @@
-"""CLI: neuralese learn | translate | audit | certify."""
+"""CLI: neuralese learn | adapt | translate | unfold | audit | certify | report."""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +16,7 @@ from neuralese.adapters import (
     save_pack,
 )
 from neuralese.alphabet import LearnConfig, learn_pack
-from neuralese.audit import certify
+from neuralese.audit import certify, decodability_report
 from neuralese.translator import translate_stream
 from neuralese.unfold import recomputed_cluster_residual, unfold_code
 
@@ -78,6 +78,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="code to unfold; repeat for several. Default: every symbol code",
     )
 
+    report_p = sub.add_parser(
+        "report",
+        help="print a machine-readable decodability summary for a sealed pack",
+    )
+    report_p.add_argument("pack", type=Path)
+
     args = parser.parse_args(argv)
 
     if args.cmd == "learn":
@@ -132,6 +138,11 @@ def main(argv: Optional[List[str]] = None) -> int:
                 indent=2,
             )
         )
+        return 0
+
+    if args.cmd == "report":
+        pack = load_pack(args.pack)
+        print(json.dumps(decodability_report(pack), indent=2, sort_keys=True))
         return 0
 
     pack = load_pack(args.pack)

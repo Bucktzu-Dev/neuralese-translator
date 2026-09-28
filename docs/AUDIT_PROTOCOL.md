@@ -31,6 +31,12 @@ neuralese certify pack.json --fail-on-undecodable
 `audit` prints the certificate and exits 0 if the file was readable.
 `certify --fail-on-undecodable` exits 1 when `passed` is false.
 
+```bash
+neuralese report pack.json
+```
+
+`report` prints a decodability summary and exits 0 when the pack file loads. It does not apply `tau_residual` and it does not decide `passed`. Fields: `n_live`, `n_quarantined`, `residual`, `reservoir_size`, `unfold_failures`, `gloss_coverage`, `mdl_bits`, `decision` (null when learn did not record one). `gloss_coverage` is the fraction of live symbols whose definition is non-empty and is not an `[unglossed: ...]` marker.
+
 ## Gates
 
 ### Addressable

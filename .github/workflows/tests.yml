@@ -40,3 +40,21 @@ jobs:
           live_codes = {s["code"] for s in child["symbols"] if not s["quarantined"]}
           assert live_codes <= {s["code"] for s in parent["symbols"]}
           PY
+      - name: Prose pack
+        run: |
+          python -m neuralese learn examples/prose_corpus/observations.jsonl -o /tmp/prose-pack.json --n-symbols 8 --seed 0
+          python -m neuralese report /tmp/prose-pack.json > /tmp/prose-report.json
+          python -m neuralese certify /tmp/prose-pack.json --fail-on-undecodable
+          python - << 'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/prose-report.json").read_text())
+          assert report["n_live"] == 8
+          assert report["n_quarantined"] == 0
+          assert report["reservoir_size"] == 320
+          assert report["unfold_failures"] == []
+          assert report["gloss_coverage"] == 1.0
+          assert report["decision"] == "accept"
+          assert 0.40 < report["residual"] < 0.55
+          assert report["mdl_bits"] > 0
+          PY

@@ -79,6 +79,7 @@ When you mint or accept a pack:
 3. Every non-quarantined symbol has a bound English string **or** the explicit marker `[unglossed: class N]` stored in the pack at learn time.
 4. Checksum covers codebook, aliases, observation ids, definitions, residual.
 5. `certify(pack)` returns `passed=true` before you ship the pack to another team.
+6. `neuralese report` prints the measurement (`n_live`, residual, unfold failures, gloss coverage, and the rest). It is not a second gate.
 
 When you translate a stream:
 

@@ -4,7 +4,7 @@ Inner representations are not a mythical language. They are a **compact symbol s
 
 If a code cannot be unfolded to the observations that produced it, it is residue — not a symbol.
 
-Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what v0.1 does not claim.
+Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what this version does not claim, and [docs/ROADMAP.md](docs/ROADMAP.md) for the tracked plan.
 
 ## Why this exists
 
@@ -27,9 +27,12 @@ pip install -e .
 neuralese learn examples/toy_stream/observations.jsonl -o pack.json
 neuralese translate pack.json examples/toy_stream/stream.json
 neuralese unfold pack.json --code 0
+neuralese report pack.json
 neuralese audit pack.json
 neuralese certify pack.json --fail-on-undecodable
 ```
+
+`examples/toy_stream` is a toy fixture with hand-placed embeddings. The text path is [examples/prose_corpus](examples/prose_corpus): original sentences, hashed n-grams, and `neuralese report` for the decodability summary. CI learns that pack; it is not committed.
 
 JSONL observations:
 
@@ -84,7 +87,7 @@ neuralese learn observations.jsonl -o pack.json
 | `hf_layers` | `(layers, n, d)` | stacked pooled layers |
 | `hf_stack` | `(layers, n, seq, d)` | `numpy.stack` of a HuggingFace `hidden_states` tuple |
 
-A checked-in public dump lives in [examples/public_domain](examples/public_domain). Parent-pack compression examples live in [examples/mdl_delta](examples/mdl_delta).
+A checked-in toy dump lives in [examples/public_domain](examples/public_domain) (hand-placed 8-d vectors). Parent-pack compression fixtures live in [examples/mdl_delta](examples/mdl_delta). The text-learned corpus is [examples/prose_corpus](examples/prose_corpus).
 
 ## Library
 
@@ -102,7 +105,7 @@ assert cert.passed
 
 ## What this is not
 
-- Not a full mechanistic-interpretability suite (no logit lens, no SAE training zoo).
+- Not a full mechanistic-interpretability suite (no logit lens, no SAE training zoo). The order of that work is in [docs/ROADMAP.md](docs/ROADMAP.md).
 - Not a claim that every hidden state is a word.
 - Not permission to delete symbols. Replacement is a new forward commit; erasure is not an inverse.
 
