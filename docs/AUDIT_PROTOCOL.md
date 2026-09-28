@@ -35,7 +35,7 @@ neuralese certify pack.json --fail-on-undecodable
 neuralese report pack.json
 ```
 
-`report` prints a decodability summary and exits 0 when the pack file loads. It does not apply `tau_residual` and it does not decide `passed`. Fields: `n_live`, `n_quarantined`, `residual`, `reservoir_size`, `unfold_failures`, `gloss_coverage`, `mdl_bits`, `decision` (null when learn did not record one). `gloss_coverage` is the fraction of live symbols whose definition is non-empty and is not an `[unglossed: ...]` marker.
+`report` prints a decodability summary and exits 0 when the pack file loads. It does not apply `tau_residual` and it does not decide `passed`. Fields: `n_live`, `n_quarantined`, `residual`, `reservoir_size`, `unfold_failures`, `gloss_coverage`, `mdl_bits`, `decision` (null when learn did not record one). `gloss_coverage` is the fraction of live symbols whose definition is non-empty and is not an `[unglossed: ...]` marker. `--topics FILE` is optional. When it is passed, the JSON also contains `cluster_purity`. The file is JSONL observations with `metadata.topic`, or a JSON object of observation id to topic. A live cluster with majority purity under 0.5 has `label` `mixed`. `certify` does not read the file and does not grow a purity field.
 
 ## Gates
 

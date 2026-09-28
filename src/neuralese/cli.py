@@ -40,8 +40,9 @@ def main(argv: Optional[List[str]] = None) -> int:
         help=(
             "how to embed rows that have text and no vector. "
             "char_trigram is the hashed n-gram default. "
-            "word_sentence_svd is a deterministic local TF-IDF SVD of this file, "
-            "not a model hidden state. Its width is --n-symbols."
+            "word_sentence_svd is a deterministic local TF-IDF SVD of this file "
+            "after a fixed English stop list, not a model hidden state. "
+            "Its width is --n-symbols."
         ),
     )
     learn_p.add_argument("--parent", type=Path, default=None, help="previous SymbolPack for aliases/ΔMDL")
@@ -95,6 +96,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="print a machine-readable decodability summary for a sealed pack",
     )
     report_p.add_argument("pack", type=Path)
+    report_p.add_argument(
+        "--topics",
+        type=Path,
+        default=None,
+        help=(
+            "optional diagnostic file of corpus topic labels. "
+            "JSONL observations with metadata.topic, or a JSON object of "
+            "observation_id to topic. Not read by certify and not an input "
+            "to the embedding. Adds cluster_purity to the report."
+        ),
+    )
 
     args = parser.parse_args(argv)
 
@@ -155,7 +167,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "report":
         pack = load_pack(args.pack)
-        print(json.dumps(decodability_report(pack), indent=2, sort_keys=True))
+        topic_labels = None
+        if args.topics is not None:
+            if not args.topics.is_file():
+                print(f"topic label file not found: {args.topics}", file=sys.stderr)
+                return 2
+            topic_labels = _load_topic_labels(args.topics)
+        print(json.dumps(decodability_report(pack, topic_labels=topic_labels), indent=2, sort_keys=True))
         return 0
 
     pack = load_pack(args.pack)
@@ -168,6 +186,49 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.cmd == "certify" and args.fail_on_undecodable and not cert.passed:
         return 1
     return 0
+
+
+def _load_topic_labels(path: Path) -> dict:
+    """Read observation-id topic labels. Does not read filenames or cluster ids."""
+    raw = path.read_text(encoding="utf-8")
+    parsed = None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = None
+    if (
+        isinstance(parsed, dict)
+        and parsed
+        and "observation_id" not in parsed
+        and all(isinstance(value, str) for value in parsed.values())
+    ):
+        return {str(key): value.strip() for key, value in parsed.items() if value.strip()}
+    if isinstance(parsed, dict) and "observation_id" in parsed:
+        rows = [parsed]
+    elif isinstance(parsed, list):
+        rows = parsed
+    else:
+        rows = []
+        for line_no, line in enumerate(raw.splitlines(), start=1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{path}:{line_no} invalid JSON") from exc
+    labels = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        obs_id = row.get("observation_id")
+        topic = row.get("topic")
+        metadata = row.get("metadata")
+        if not isinstance(topic, str) and isinstance(metadata, dict):
+            topic = metadata.get("topic")
+        if isinstance(obs_id, str) and isinstance(topic, str) and topic.strip():
+            labels[obs_id] = topic.strip()
+    return labels
 
 
 if __name__ == "__main__":

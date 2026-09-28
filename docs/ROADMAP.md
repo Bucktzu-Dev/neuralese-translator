@@ -96,23 +96,40 @@ Must not be claimed:
 
 ### Varied prose without the repeated workplace sentence
 
-Status: **done** (v0.6).
+Status: **done** (v0.7).
 
 `examples/varied_prose` is `examples/prose_corpus` with the repeated workplace sentence removed from each row. No shared suffix was written back in. The checked-in rows are text and a topic label. They have no embeddings.
 
-`learn --encoder word_sentence_svd --n-symbols 8 --seed 0` embeds that file with a deterministic local encoder: TF-IDF of the words in the file (`ln(N / df) + 1` on raw counts), row L2 normalization, then a truncated SVD whose width is `n_symbols`. Coordinates are scaled by the singular values and L2-normalized again. Topic ids are not an input. Hashed character trigrams remain the default for text-only JSONL. Library `tau_residual` 0.55 and `tau_kappa` 0.35 were not changed.
+`learn --encoder word_sentence_svd --n-symbols 8 --seed 0` embeds that file with a deterministic local encoder: drop the fixed Glasgow Information Retrieval Group English stop list (`neuralese.encode.FUNCTION_WORDS`, the list scikit-learn ships, used whole, plus `did` and `does`), TF-IDF of the remaining words (`ln(N / df) + 1` on raw counts), row L2 normalization, then a truncated SVD whose width is `n_symbols`. Coordinates are scaled by the singular values and L2-normalized again. The stop list is language-general. It is not a list of the eight topic names and it was not fit by document frequency on this file. Topic ids are not an input. Hashed character trigrams remain the default for text-only JSONL. Library `tau_residual` 0.55 and `tau_kappa` 0.35 were not changed.
+
+v0.6 used a shorter closed-class list on the same SVD. That run certified (residual 0.5057, mean kappa 0.8713) with unweighted purity 0.7084 and size-weighted purity 0.6594. Its bakery-majority cluster was 22 of 55, purity 0.4000, which is mixed. v0.7 is the same encoder name with the Glasgow stop list.
 
 | knob | published value | measured on this run |
 |---|---|---|
-| `tau_residual` | 0.55 | residual 0.5057 |
-| `tau_kappa` | 0.35 | mean kappa 0.8713 |
+| `tau_residual` | 0.55 | residual 0.4394 |
+| `tau_kappa` | 0.35 | mean kappa 0.9044 |
 | `n_symbols` | 8 | 8 live, 0 quarantined |
 | SVD width | 8 | same as `n_symbols` |
 | seed | 0 | fixed |
 | decision | | `accept` |
 | `certify` | library defaults | pass |
 
-Majority-topic purity is a diagnostic, not a certify gate. On this run the unweighted mean is 0.7084 and the size-weighted mean is 0.6594 (211 of 320 rows sit in a cluster whose majority topic is their own). Every topic is the majority of one live cluster. The bakery-majority cluster is 22 of 55 rows, purity 0.4000. The geometry is decodable under the published thresholds and only partly topical. It is not eight pure topic classes.
+Majority-topic purity is a diagnostic, not a certify gate. `neuralese report --topics FILE` reads an optional label file and adds `cluster_purity` (`label` is `mixed` when majority purity is under 0.5). `certify` does not read that file and does not gain a purity field. On this run the unweighted mean is 0.7572 and the size-weighted mean is 0.7250 (232 of 320 rows sit in a cluster whose majority topic is their own). Every topic is the majority of one live cluster. Every live cluster has majority purity at least 0.5636.
+
+Per live cluster, in code order:
+
+| rows | majority | count | purity |
+|---|---|---|---|
+| 45 | orchard | 27 | 0.6000 |
+| 55 | pottery | 31 | 0.5636 |
+| 43 | joinery | 32 | 0.7442 |
+| 33 | ledger | 28 | 0.8485 |
+| 26 | apiary | 26 | 1.0000 |
+| 29 | harbor | 27 | 0.9310 |
+| 46 | bakery | 32 | 0.6957 |
+| 43 | weather | 29 | 0.6744 |
+
+The lowest cluster is pottery-majority, 31 of 55. The bakery-majority cluster is 32 of 46. Both are at or above 0.5, so neither is called mixed. The geometry is decodable under the published thresholds and still only partly topical. It is not eight pure topic classes. Codes are whatever k-means assigned.
 
 The character-trigram encoder on this same file still rejects at the library defaults: residual 0.7710, mean kappa 0.6357, majority-topic purity 0.3085, `decision=reject`, `residual_ok` false. That locked test stays.
 
@@ -120,13 +137,14 @@ Must not be claimed:
 
 - These coordinates are model hidden states, a logit lens, or an SAE.
 - Purity was a training target. Topic ids are not in the vector.
-- The bakery-majority symbol is the bakery, or any symbol is a pure workplace.
+- A live cluster with majority purity under 0.5 is that topic. Say mixed.
+- The pottery-majority symbol is the pottery, the bakery-majority symbol is the bakery, or any symbol is a pure workplace. Apiary's count on this file is 26 of 26. The code is still the integer k-means assigned.
 - Hashed character trigrams now certify the varied file.
-- `report` is a second, looser gate. `certify` still decides.
+- `report` is a second, looser gate. `certify` still decides. `cluster_purity` is absent unless `--topics` is passed.
 
 ## Now
 
-Nothing is in progress in the tree beyond the done varied-prose slice.
+Nothing is in progress. The varied-prose purity slice above is the tree.
 
 ## Next
 
@@ -134,7 +152,7 @@ Nothing is in progress in the tree beyond the done varied-prose slice.
 
 Status: **next**. Pick this up first.
 
-Acceptance: a certified pack's codes are compared to a checked-in next-token distribution that was exported offline. No HuggingFace hub runtime. `certify` remains fail-closed. Until that exists, do not claim a code predicts a token. Opening it still requires an update to `LIMITATIONS.md`. This milestone is not started.
+Acceptance: a certified pack's codes are compared to a checked-in next-token distribution that was exported offline. No HuggingFace hub runtime. `certify` remains fail-closed. Until that exists, do not claim a code predicts a token. Opening it still requires an update to `LIMITATIONS.md`. This milestone is not started. Majority purity at or above 0.5 on the lexical SVD does not start it: there is still no checked-in next-token distribution.
 
 ## Later
 

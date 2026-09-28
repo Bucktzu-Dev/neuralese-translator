@@ -30,7 +30,8 @@ class LearnConfig:
     seed: int = 0
     match_threshold: float = 0.55
     mdl_exception: Optional[str] = None
-    # char_trigram keeps the hashed default. word_sentence_svd is local TF-IDF SVD.
+    # char_trigram keeps the hashed default. word_sentence_svd is local TF-IDF SVD
+    # after the fixed English stop list in neuralese.encode.FUNCTION_WORDS.
     encoder: str = ENCODER_CHAR_TRIGRAM
 
 

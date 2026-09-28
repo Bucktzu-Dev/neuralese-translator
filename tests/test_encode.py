@@ -17,7 +17,7 @@ from neuralese.adapters import hashed_ngram_vector
 
 
 def test_version_and_default_encoder_thresholds():
-    assert __version__ == "0.6.0"
+    assert __version__ == "0.7.0"
     config = LearnConfig()
     assert config.encoder == ENCODER_CHAR_TRIGRAM
     assert config.tau_residual == 0.55
@@ -88,7 +88,12 @@ def test_char_trigram_default_still_hashes_text_only_rows():
 def test_function_words_are_not_topic_names():
     topics = {"harbor", "orchard", "ledger", "bakery", "joinery", "weather", "apiary", "pottery"}
     assert topics.isdisjoint(FUNCTION_WORDS)
+    assert "did" in FUNCTION_WORDS and "does" in FUNCTION_WORDS
+    # The Glasgow list is used whole, including content-like entries.
+    assert "fire" in FUNCTION_WORDS and "where" in FUNCTION_WORDS
+    assert "tide" not in FUNCTION_WORDS and "skiff" not in FUNCTION_WORDS
     assert content_tokens("The harbor skiff was at the wharf") == ["harbor", "skiff", "wharf"]
+    assert content_tokens("Where the tide could lift the skiff") == ["tide", "lift", "skiff"]
 
 
 def test_unknown_encoder_is_rejected():

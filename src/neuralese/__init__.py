@@ -23,7 +23,7 @@ from neuralese.encode import ENCODER_CHAR_TRIGRAM, ENCODER_WORD_SENTENCE_SVD, wo
 from neuralese.translator import translate_stream
 from neuralese.unfold import UnfoldReport, unfold_code
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "__version__",

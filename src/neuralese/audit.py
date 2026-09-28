@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 from neuralese.aliases import has_alias_cycle
 from neuralese.contracts import AuditCertificate, SymbolPack, iter_live_symbols
@@ -108,7 +108,10 @@ def certify(
     )
 
 
-def decodability_report(pack: SymbolPack) -> Dict[str, Any]:
+def decodability_report(
+    pack: SymbolPack,
+    topic_labels: Optional[Mapping[str, str]] = None,
+) -> Dict[str, Any]:
     """Summarize a sealed pack without applying a pass/fail threshold.
 
     ``gloss_coverage`` is the fraction of live symbols whose definition is
@@ -116,13 +119,17 @@ def decodability_report(pack: SymbolPack) -> Dict[str, Any]:
     are left out of that fraction. ``unfold_failures`` lists reservoir
     mismatches from ``unfold_failures``; residual-threshold failures stay on
     ``certify``. ``decision`` is the learn-time metadata value, or ``None``.
+
+    ``topic_labels`` is an optional diagnostic map from observation id to a
+    corpus topic. When it is passed, the report gains ``cluster_purity``.
+    Those labels are not a certify gate and were not an input to the embedding.
     """
     unfold, _residual_failures, _details = unfold_failures(pack)
     live = list(iter_live_symbols(pack))
     covered = sum(1 for symbol in live if _gloss_covered(symbol.definition))
     coverage = float(covered / len(live)) if live else 0.0
     decision = _learn_decision(pack)
-    return {
+    report: Dict[str, Any] = {
         "n_live": len(live),
         "n_quarantined": sum(1 for symbol in pack.symbols if symbol.quarantined),
         "residual": float(pack.reconstruction_error),
@@ -131,6 +138,74 @@ def decodability_report(pack: SymbolPack) -> Dict[str, Any]:
         "gloss_coverage": coverage,
         "mdl_bits": float(pack.mdl_bits),
         "decision": decision,
+    }
+    if topic_labels is not None:
+        report["cluster_purity"] = cluster_majority_diagnostic(pack, topic_labels)
+    return report
+
+
+def cluster_majority_diagnostic(pack: SymbolPack, labels: Mapping[str, str]) -> Dict[str, Any]:
+    """Majority-topic purity for live symbols, using an external label map.
+
+    Purity is ``majority_count / rows``. Rows with no label dilute the purity.
+    On a count tie, the lexicographically later topic name is the majority.
+    A purity under 0.5 sets ``mixed`` and sets ``label`` to ``mixed``. The
+    majority topic string stays on ``majority_topic`` so the count can be
+    checked, and it is not a claim that the cluster is that topic.
+    """
+    clusters: List[Dict[str, Any]] = []
+    labeled_rows = 0
+    unlabeled_rows = 0
+    for symbol in pack.symbols:
+        if symbol.quarantined or not symbol.observation_ids:
+            continue
+        counts: Dict[str, int] = {}
+        unlabeled = 0
+        for obs_id in symbol.observation_ids:
+            topic = labels.get(obs_id)
+            if not isinstance(topic, str) or not topic.strip():
+                unlabeled += 1
+                continue
+            name = topic.strip()
+            counts[name] = counts.get(name, 0) + 1
+        rows = len(symbol.observation_ids)
+        labeled_rows += rows - unlabeled
+        unlabeled_rows += unlabeled
+        if counts:
+            topic, count = max(counts.items(), key=lambda item: (item[1], item[0]))
+        else:
+            topic, count = None, 0
+        purity = float(count / rows) if rows else 0.0
+        mixed = purity < 0.5
+        clusters.append(
+            {
+                "code": int(symbol.code),
+                "rows": rows,
+                "majority_topic": topic,
+                "majority_count": int(count),
+                "purity": purity,
+                "mixed": mixed,
+                "label": "mixed" if mixed else topic,
+            }
+        )
+    clusters.sort(key=lambda item: item["code"])
+    if clusters:
+        unweighted = float(sum(item["purity"] for item in clusters) / len(clusters))
+        weight_rows = sum(item["rows"] for item in clusters)
+        weight_hits = sum(item["majority_count"] for item in clusters)
+        weighted = float(weight_hits / weight_rows) if weight_rows else 0.0
+        worst = min(item["purity"] for item in clusters)
+    else:
+        unweighted = 0.0
+        weighted = 0.0
+        worst = 0.0
+    return {
+        "n_labeled": labeled_rows,
+        "n_unlabeled": unlabeled_rows,
+        "unweighted_mean": unweighted,
+        "size_weighted": weighted,
+        "worst_purity": worst,
+        "clusters": clusters,
     }
 
 

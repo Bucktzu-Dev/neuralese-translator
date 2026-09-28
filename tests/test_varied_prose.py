@@ -8,7 +8,7 @@ import pytest
 
 from neuralese.adapters import hashed_ngram_vector, load_observations_jsonl
 from neuralese.alphabet import LearnConfig, learn_pack
-from neuralese.audit import certify, decodability_report
+from neuralese.audit import certify, cluster_majority_diagnostic, decodability_report
 from neuralese.cli import main
 from neuralese.encode import ENCODER_CHAR_TRIGRAM, ENCODER_WORD_SENTENCE_SVD, word_sentence_svd
 from neuralese.translator import translate_stream
@@ -29,12 +29,25 @@ UNANCHORED_RESIDUAL = 0.7710345351372891
 UNANCHORED_KAPPA = 0.6356755452944026
 UNANCHORED_PURITY = 0.30851062907298377
 
-# Sign-canonical word-sentence SVD, n_symbols 8, seed 0, library taus.
-SVD_RESIDUAL = 0.5057019350263128
-SVD_KAPPA = 0.8713099727751781
-SVD_PURITY = 0.7084142910229867
-SVD_WEIGHTED_PURITY = 0.659375
-SVD_MIN_PURITY = 0.4
+# Sign-canonical word-sentence SVD, Glasgow stop list, n_symbols 8, seed 0.
+SVD_RESIDUAL = 0.4393929761365217
+SVD_KAPPA = 0.9043805319085427
+SVD_PURITY = 0.7571765649944584
+SVD_WEIGHTED_PURITY = 0.725
+SVD_MIN_PURITY = 0.5636363636363636
+# v0.6 size-weighted purity. The new run has to clear it.
+PREVIOUS_WEIGHTED_PURITY = 0.6594
+# Live clusters in code order: rows, majority topic, majority count.
+SVD_CLUSTERS = (
+    (45, "orchard", 27),
+    (55, "pottery", 31),
+    (43, "joinery", 32),
+    (33, "ledger", 28),
+    (26, "apiary", 26),
+    (29, "harbor", 27),
+    (46, "bakery", 32),
+    (43, "weather", 29),
+)
 # Near-tie members can swap under a 1e-12 coordinate wobble. The certify
 # gates stay 0.55 and 0.35. These tolerances cover that swap, not a looser tau.
 METRIC_TOLERANCE = 1e-3
@@ -153,7 +166,7 @@ def test_word_sentence_svd_certifies_varied_prose_at_library_defaults():
     assert pack.guards.kappa_avg >= PUBLISHED_TAU_KAPPA
     assert pack.reconstruction_error == pytest.approx(SVD_RESIDUAL, abs=METRIC_TOLERANCE)
     assert pack.guards.kappa_avg == pytest.approx(SVD_KAPPA, abs=METRIC_TOLERANCE)
-    assert pack.reconstruction_error > 0.45
+    assert pack.reconstruction_error > 0.40
 
     live = [symbol for symbol in pack.symbols if not symbol.quarantined]
     assert len(live) == 8
@@ -177,7 +190,31 @@ def test_word_sentence_svd_certifies_varied_prose_at_library_defaults():
     assert weighted == pytest.approx(SVD_WEIGHTED_PURITY, abs=PURITY_TOLERANCE)
     assert low == pytest.approx(SVD_MIN_PURITY, abs=PURITY_TOLERANCE)
     assert mean > 0.55
+    assert low >= 0.5
     assert low < mean
+    assert weighted > PREVIOUS_WEIGHTED_PURITY
+    labels = {}
+    for line in VARIED.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        labels[row["observation_id"]] = row["metadata"]["topic"]
+    purity = cluster_majority_diagnostic(pack, labels)
+    assert purity["n_labeled"] == 320
+    assert purity["n_unlabeled"] == 0
+    assert purity["worst_purity"] == pytest.approx(SVD_MIN_PURITY, abs=PURITY_TOLERANCE)
+    assert purity["worst_purity"] >= 0.5
+    assert purity["size_weighted"] > PREVIOUS_WEIGHTED_PURITY
+    assert all(item["mixed"] is False for item in purity["clusters"])
+    assert [
+        (item["rows"], item["majority_topic"], item["majority_count"])
+        for item in purity["clusters"]
+    ] == list(SVD_CLUSTERS)
+    worst = min(purity["clusters"], key=lambda item: item["purity"])
+    assert worst["label"] == "pottery"
+    assert worst["majority_topic"] == "pottery"
+    assert worst["rows"] == 55
+    assert worst["majority_count"] == 31
     assert set(majors) == {
         "harbor",
         "orchard",
@@ -252,11 +289,25 @@ def test_cli_report_and_certify_varied_prose(tmp_path, capsys):
     assert report["unfold_failures"] == []
     assert report["gloss_coverage"] == 1.0
     assert report["decision"] == "accept"
+    assert "cluster_purity" not in report
     assert report["residual"] <= PUBLISHED_TAU_RESIDUAL
     assert report["residual"] == pytest.approx(SVD_RESIDUAL, abs=METRIC_TOLERANCE)
+
+    rc = main(["report", str(pack_path), "--topics", str(VARIED)])
+    assert rc == 0
+    labeled = json.loads(capsys.readouterr().out)
+    assert labeled["residual"] == report["residual"]
+    assert labeled["decision"] == "accept"
+    purity = labeled["cluster_purity"]
+    assert purity["n_labeled"] == 320
+    assert purity["size_weighted"] > PREVIOUS_WEIGHTED_PURITY
+    assert purity["worst_purity"] >= 0.5
+    assert all(item["mixed"] is False for item in purity["clusters"])
+    assert min(purity["clusters"], key=lambda item: item["purity"])["label"] == "pottery"
 
     rc = main(["certify", str(pack_path), "--fail-on-undecodable"])
     assert rc == 0
     cert = json.loads(capsys.readouterr().out)
+    assert "cluster_purity" not in cert
     assert cert["passed"] is True
     assert cert["details"]["tau_residual"] == PUBLISHED_TAU_RESIDUAL
