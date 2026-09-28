@@ -75,7 +75,7 @@ A fluent sentence with a large residual is not more true. It is more confident t
 When you mint or accept a pack:
 
 1. Every codebook entry points at a symbol object.
-2. Every non-quarantined symbol has ≥1 observation id.
+2. Every non-quarantined symbol has ≥1 observation id, and those ids resolve to embeddings stored on the pack. The member mean matches the prototype.
 3. Every non-quarantined symbol has a bound English string **or** an explicit unglossed marker recorded in the pack (not invented at read time).
 4. Checksum covers codebook, aliases, observation ids, definitions, residual.
 5. `certify(pack)` returns `passed=true` before you ship the pack to another team.

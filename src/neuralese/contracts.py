@@ -134,6 +134,7 @@ class SymbolPack:
     mdl_bits: float = 0.0
     timestamp: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
+    observations: Dict[str, Observation] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -141,6 +142,9 @@ class SymbolPack:
             "symbols": [s.to_dict() for s in self.symbols],
             "codebook": {str(k): int(v) for k, v in self.codebook.items()},
             "aliases": {str(k): int(v) for k, v in self.aliases.items()},
+            "observations": [
+                self.observations[key].to_dict() for key in sorted(self.observations)
+            ],
             "reconstruction_error": self.reconstruction_error,
             "checksum": self.checksum,
             "parent_pack_id": self.parent_pack_id,
@@ -167,6 +171,7 @@ class SymbolPack:
             mdl_bits=float(data.get("mdl_bits") or 0.0),
             timestamp=float(data.get("timestamp") or 0.0),
             metadata=dict(data.get("metadata") or {}),
+            observations=_load_observations(data.get("observations")),
         )
         return pack
 
@@ -180,6 +185,7 @@ class SymbolPack:
             "codebook": {str(k): int(v) for k, v in sorted(self.codebook.items())},
             "aliases": {str(k): int(v) for k, v in sorted(self.aliases.items())},
             "reconstruction_error": round(float(self.reconstruction_error), 8),
+            "reservoir": _reservoir_rows(self.observations),
             "symbols": [
                 {
                     "class_id": s.class_id,
@@ -283,6 +289,47 @@ class AuditCertificate:
             timestamp=float(data["timestamp"]),
             details=dict(data.get("details") or {}),
         )
+
+
+def _reservoir_rows(observations: Dict[str, Observation]) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for key in sorted(observations):
+        obs = observations[key]
+        rows.append(
+            {
+                "observation_id": obs.observation_id,
+                "text": obs.text,
+                "embedding": [round(float(x), 8) for x in obs.embedding],
+                "metadata": obs.metadata,
+            }
+        )
+    return rows
+
+
+def _load_observations(raw: Any) -> Dict[str, Observation]:
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        records = []
+        for key, value in raw.items():
+            if not isinstance(value, dict):
+                raise ValueError(f"observation {key!r} must be an object")
+            record = dict(value)
+            record.setdefault("observation_id", str(key))
+            records.append(record)
+    elif isinstance(raw, list):
+        records = raw
+    else:
+        raise ValueError("observations must be a list or object")
+    loaded: Dict[str, Observation] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError("each observation must be an object")
+        obs = Observation.from_dict(record)
+        if obs.observation_id in loaded:
+            raise ValueError(f"duplicate observation_id {obs.observation_id!r}")
+        loaded[obs.observation_id] = obs
+    return loaded
 
 
 def _opt_float(value: Any) -> Optional[float]:

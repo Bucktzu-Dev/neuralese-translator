@@ -18,8 +18,9 @@ from neuralese.contracts import (
 )
 from neuralese.dynamics import SubjectiveSymbolDynamics
 from neuralese.translator import translate_stream
+from neuralese.unfold import UnfoldReport, unfold_code
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "__version__",
@@ -32,6 +33,8 @@ __all__ = [
     "LearnConfig",
     "learn_pack",
     "translate_stream",
+    "unfold_code",
+    "UnfoldReport",
     "certify",
     "load_observations_jsonl",
     "load_pack",

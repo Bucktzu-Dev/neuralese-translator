@@ -24,6 +24,7 @@ English here is a **receipt**, not a vibe. An LLM may help write a gloss; it can
 pip install -e .
 neuralese learn examples/toy_stream/observations.jsonl -o pack.json
 neuralese translate pack.json examples/toy_stream/stream.json
+neuralese unfold pack.json --code 0
 neuralese audit pack.json
 neuralese certify pack.json --fail-on-undecodable
 ```
@@ -59,7 +60,7 @@ Each token becomes:
 A symbol is admitted only if it stays:
 
 1. **Addressable** — every code resolves through the codebook or an alias map.
-2. **Unfoldable** — every admitted code lists observation ids that produced it.
+2. **Unfoldable** — every admitted code lists observation ids, and those rows (text and embeddings) are sealed in the pack so an auditor can recompute the prototype.
 3. **Gloss-bound** — English is sealed into the pack checksum. Mutating prose without resealing fails certify.
 4. **Fail-closed** — unknown, quarantined, and aliased are explicit states. Merges that break guards do not silently rewrite history.
 5. **Residual-honest** — reconstruction error is reported; gloss confidence may not exceed what that residual allows.
@@ -69,12 +70,14 @@ Read [docs/DECODABILITY.md](docs/DECODABILITY.md) and [docs/AUDIT_PROTOCOL.md](d
 ## Library
 
 ```python
-from neuralese import load_observations_jsonl, learn_pack, translate_stream, certify
+from neuralese import load_observations_jsonl, learn_pack, translate_stream, unfold_code, certify
 
 obs = load_observations_jsonl("examples/toy_stream/observations.jsonl")
 pack = learn_pack(obs)
 glosses = translate_stream(pack, [0, 1, 99])
+report = unfold_code(pack, 0)
 cert = certify(pack)
+assert report.missing_ids == []
 assert cert.passed
 ```
 

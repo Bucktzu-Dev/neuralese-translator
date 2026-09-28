@@ -11,6 +11,7 @@ from neuralese.adapters import load_observations_jsonl, load_pack, load_stream, 
 from neuralese.alphabet import LearnConfig, learn_pack
 from neuralese.audit import certify
 from neuralese.translator import translate_stream
+from neuralese.unfold import recomputed_cluster_residual, unfold_code
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -44,6 +45,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     cert_p.add_argument("--tau-residual", type=float, default=0.55)
     cert_p.add_argument("--allow-unglossed", action="store_true")
 
+    unfold_p = sub.add_parser("unfold", help="unfold codes back to reservoir observations")
+    unfold_p.add_argument("pack", type=Path)
+    unfold_p.add_argument(
+        "--code",
+        type=int,
+        action="append",
+        dest="codes",
+        help="code to unfold; repeat for several. Default: every symbol code",
+    )
+
     args = parser.parse_args(argv)
 
     if args.cmd == "learn":
@@ -68,6 +79,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         codes = load_stream(args.stream)
         glosses = translate_stream(pack, codes)
         print(json.dumps([g.to_dict() for g in glosses], indent=2))
+        return 0
+
+    if args.cmd == "unfold":
+        pack = load_pack(args.pack)
+        codes = args.codes if args.codes else [symbol.code for symbol in pack.symbols]
+        reports = [unfold_code(pack, code).to_dict() for code in codes]
+        print(
+            json.dumps(
+                {
+                    "pack_id": pack.pack_id,
+                    "pack_checksum": pack.checksum,
+                    "reservoir_size": len(pack.observations),
+                    "recomputed_cluster_residual": recomputed_cluster_residual(pack),
+                    "symbols": reports,
+                },
+                indent=2,
+            )
+        )
         return 0
 
     pack = load_pack(args.pack)

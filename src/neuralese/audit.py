@@ -6,6 +6,7 @@ from typing import List
 
 from neuralese.aliases import has_alias_cycle
 from neuralese.contracts import AuditCertificate, SymbolPack, iter_live_symbols
+from neuralese.unfold import unfold_failures
 
 
 def certify(
@@ -69,6 +70,14 @@ def certify(
             f"reconstruction_error {pack.reconstruction_error:.6f} exceeds tau_residual {tau_residual}"
         )
 
+    reservoir_unfold, reservoir_residual, reservoir_details = unfold_failures(pack)
+    if reservoir_unfold:
+        unfoldable = False
+        failures.extend(reservoir_unfold)
+    if reservoir_residual:
+        residual_ok = False
+        failures.extend(reservoir_residual)
+
     passed = addressable and unfoldable and gloss_bound and residual_ok
     live = list(iter_live_symbols(pack))
     return AuditCertificate(
@@ -92,6 +101,7 @@ def certify(
             "tau_residual": tau_residual,
             "require_gloss": require_gloss,
             "mdl_bits": pack.mdl_bits,
+            **reservoir_details,
         },
     )
 

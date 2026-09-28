@@ -49,7 +49,15 @@ For each symbol with `quarantined=false`:
 
 - `observation_ids` must be a non-empty list of strings
 
-Quarantined symbols are allowed to lack a fold path; they must not appear as `state=ok` in translation.
+For every symbol that lists observation ids, including quarantined ones:
+
+- each id resolves to an observation stored on the pack
+- that observation has an embedding
+- the mean of those embeddings matches the stored prototype (L2 ≤ 1e-5)
+
+Quarantined symbols are allowed to lack a fold path; they must not appear as `state=ok` in translation. A listed id that does not resolve is still a failure.
+
+`neuralese unfold pack.json --code 0` prints the reservoir rows for a code.
 
 ### Gloss-bound
 
@@ -57,7 +65,7 @@ Quarantined symbols are allowed to lack a fold path; they must not appear as `st
 - Fail if it differs from `pack.checksum` (tamper / unsealed mutation).
 - Fail if a live symbol has an empty `definition` when `require_gloss=true` (default).
 
-Checksum covers: `pack_id`, codebook, aliases, each symbol’s `class_id`, `code`, `observation_ids`, `definition`, `quarantined`, and rounded `reconstruction_error`.
+Checksum covers: `pack_id`, codebook, aliases, each symbol’s `class_id`, `code`, `observation_ids`, `definition`, `quarantined`, rounded `reconstruction_error`, and the reservoir (observation id, text, rounded embedding, metadata).
 
 It does **not** cover wall-clock timestamps, so certification is deterministic.
 
@@ -70,6 +78,8 @@ Override:
 ```bash
 neuralese certify pack.json --tau-residual 0.4 --fail-on-undecodable
 ```
+
+The sealed residual must also be at least the cluster residual recomputed from reservoir embeddings and stored prototypes. A pack that reports a tighter error than its own rows support fails `residual_ok`.
 
 Confidence cap used by the translator:
 

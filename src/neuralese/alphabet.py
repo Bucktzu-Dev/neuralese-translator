@@ -48,6 +48,11 @@ def learn_pack(
     if not observations:
         raise ValueError("learn_pack requires at least one observation")
     rows = [ensure_embedding(Observation.from_dict(o.to_dict())) for o in observations]
+    seen_ids = set()
+    for obs in rows:
+        if obs.observation_id in seen_ids:
+            raise ValueError(f"duplicate observation_id {obs.observation_id!r}")
+        seen_ids.add(obs.observation_id)
     X = stack_embeddings(rows)
 
     rank = cfg.svd_rank or min(max(cfg.n_symbols, 1), X.shape[0], X.shape[1])
@@ -181,6 +186,7 @@ def learn_pack(
         receipts=receipts,
         guards=guards,
         mdl_bits=bits,
+        observations={obs.observation_id: Observation.from_dict(obs.to_dict()) for obs in rows},
         timestamp=time.time(),
         metadata={
             "n_observations": len(rows),

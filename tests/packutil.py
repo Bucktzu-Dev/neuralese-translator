@@ -1,7 +1,7 @@
 """Shared pack builders for tests."""
 from __future__ import annotations
 
-from neuralese.contracts import Symbol, SymbolPack
+from neuralese.contracts import Observation, Symbol, SymbolPack
 
 
 def make_pack(**overrides) -> SymbolPack:
@@ -32,6 +32,16 @@ def make_pack(**overrides) -> SymbolPack:
     pack_id = overrides.pop("pack_id", "pack-test")
     parent = overrides.pop("parent_pack_id", None)
     checksum = overrides.pop("checksum", "")
+    observations = overrides.pop("observations", None)
+    if observations is None:
+        observations = {}
+        for symbol in symbols:
+            for obs_id in symbol.observation_ids:
+                observations[obs_id] = Observation(
+                    observation_id=obs_id,
+                    embedding=list(symbol.proto_embedding),
+                    text=symbol.examples[0] if symbol.examples else None,
+                )
     pack = SymbolPack(
         pack_id=pack_id,
         symbols=symbols,
@@ -42,6 +52,7 @@ def make_pack(**overrides) -> SymbolPack:
         parent_pack_id=parent,
         mdl_bits=overrides.pop("mdl_bits", 12.0),
         metadata=overrides.pop("metadata", {}),
+        observations=observations,
     )
     if overrides:
         raise AssertionError(f"unexpected overrides {overrides}")
