@@ -611,7 +611,30 @@ def test_cli_learn_symlink_loop_is_clean_error(tmp_path, capsys):
     rc = main(["learn", str(obs), "-o", str(loop / "pack.json"), "--n-symbols", "2"])
     assert rc == 1
     err = capsys.readouterr().err
-    assert "could not be compared" in err
+    assert "could not be compared to the observations path" in err
+    assert "Traceback" not in err
+
+
+def test_cli_learn_symlink_loop_parent_names_parent_path(tmp_path, capsys):
+    obs = TOY_DIR / "observations.jsonl"
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    rc = main(
+        [
+            "learn",
+            str(obs),
+            "--parent",
+            str(loop),
+            "-o",
+            str(tmp_path / "pack.json"),
+            "--n-symbols",
+            "2",
+        ]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "could not be compared to the parent path" in err
+    assert "evidence path" not in err
     assert "Traceback" not in err
 
 
@@ -622,7 +645,19 @@ def test_cli_ingest_symlink_loop_is_clean_error(tmp_path, capsys):
     rc = main(["ingest", str(demo), "-o", str(loop / "observations.jsonl")])
     assert rc == 1
     err = capsys.readouterr().err
-    assert "could not be compared" in err
+    assert "could not be compared to the activations path" in err
+    assert "evidence path" not in err
+    assert "Traceback" not in err
+
+
+def test_cli_ingest_symlink_loop_activations_names_activations_path(tmp_path, capsys):
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    rc = main(["ingest", str(loop), "-o", str(tmp_path / "observations.jsonl")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "could not be compared to the activations path" in err
+    assert "evidence path" not in err
     assert "Traceback" not in err
 
 
