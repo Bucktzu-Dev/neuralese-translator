@@ -14,6 +14,18 @@ _CYCLE = "alias map contains a cycle"
 AMBIGUOUS_HISTORICAL_MAPPING = "historical mapping is ambiguous"
 
 
+def refuse_live_alias_sources(
+    aliases: Dict[int, int],
+    current_codes: Optional[Set[int]] = None,
+) -> None:
+    """Refuse `{0: 1}` when `0` is still a current codebook code."""
+    if current_codes is None:
+        return
+    for start in aliases:
+        if int(start) in current_codes:
+            raise ValueError(AMBIGUOUS_HISTORICAL_MAPPING)
+
+
 def resolve_alias_table(
     aliases: Dict[int, int],
     *,
@@ -30,13 +42,9 @@ def resolve_alias_table(
     `(pack_checksum, code)` identity: `{0: 1}` is refused instead of silently
     keeping live `0`. `{7: 0}` still rewrites historical `7`. Standalone
     resolution with `current_codes=None` still follows every table key.
+    Caller-supplied `terminals` caches still run this live-source check.
     """
-    live = current_codes
-    if live is not None:
-        for start in aliases:
-            current = int(start)
-            if current in live:
-                raise ValueError(AMBIGUOUS_HISTORICAL_MAPPING)
+    refuse_live_alias_sources(aliases, current_codes)
     terminals: Dict[int, int] = {}
     for start in aliases:
         current = int(start)
@@ -75,6 +83,8 @@ def follow_aliases(
         int(max_hops)
     if terminals is None:
         terminals = resolve_alias_table(aliases, current_codes=current_codes)
+    else:
+        refuse_live_alias_sources(aliases, current_codes)
     return terminals.get(int(code), int(code))
 
 
