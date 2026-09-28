@@ -32,7 +32,7 @@ neuralese audit pack.json
 neuralese certify pack.json --fail-on-undecodable
 ```
 
-`examples/toy_stream` is a toy fixture with hand-placed embeddings. The text path is [examples/prose_corpus](examples/prose_corpus): original sentences, hashed n-grams, and `neuralese report` for the decodability summary. CI learns that pack; it is not committed.
+`examples/toy_stream` is a toy fixture with hand-placed embeddings. The text path is [examples/prose_corpus](examples/prose_corpus): original sentences, hashed n-grams, and `neuralese report` for the decodability summary. CI learns that pack; it is not committed. The same sentences are exported as a checked-in `hf_layers` dump in [examples/activation_stack](examples/activation_stack).
 
 JSONL observations:
 
@@ -87,7 +87,7 @@ neuralese learn observations.jsonl -o pack.json
 | `hf_layers` | `(layers, n, d)` | stacked pooled layers |
 | `hf_stack` | `(layers, n, seq, d)` | `numpy.stack` of a HuggingFace `hidden_states` tuple |
 
-A checked-in toy dump lives in [examples/public_domain](examples/public_domain) (hand-placed 8-d vectors). Parent-pack compression fixtures live in [examples/mdl_delta](examples/mdl_delta). The text-learned corpus is [examples/prose_corpus](examples/prose_corpus).
+A checked-in toy dump lives in [examples/public_domain](examples/public_domain) (hand-placed 8-d vectors). Parent-pack compression fixtures live in [examples/mdl_delta](examples/mdl_delta). The text-learned corpus is [examples/prose_corpus](examples/prose_corpus). A non-toy dump of that corpus, hashed offline into layout `hf_layers`, is [examples/activation_stack](examples/activation_stack).
 
 ## Library
 

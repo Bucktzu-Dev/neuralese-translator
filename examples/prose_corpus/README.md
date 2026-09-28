@@ -4,7 +4,7 @@
 
 Each row is one varied sentence plus one repeated workplace sentence for that topic. The repeated sentences are listed in `anchors.json`. They are inside the row text, so they are inside the pack checksum. The classes on this run follow those repeated sentences. The varied sentences alone do not certify; see the measurements below and `docs/ROADMAP.md`.
 
-This is the text path. `examples/toy_stream`, `examples/public_domain`, and `examples/mdl_delta` are unit fixtures.
+This is the text path. `examples/toy_stream`, `examples/public_domain`, and `examples/mdl_delta` are unit fixtures. The same rows are exported, still without a model, as the `hf_layers` dump in [examples/activation_stack](../activation_stack).
 
 ## Published thresholds
 

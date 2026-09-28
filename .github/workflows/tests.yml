@@ -58,3 +58,22 @@ jobs:
           assert 0.40 < report["residual"] < 0.55
           assert report["mdl_bits"] > 0
           PY
+      - name: Activation stack
+        run: |
+          python -m neuralese adapt examples/activation_stack/hidden_states.npz -o /tmp/act-obs.jsonl --layout hf_layers --layer 0 --pool last
+          python -m neuralese learn /tmp/act-obs.jsonl -o /tmp/act-pack.json --n-symbols 8 --seed 0
+          python -m neuralese report /tmp/act-pack.json > /tmp/act-report.json
+          python -m neuralese certify /tmp/act-pack.json --fail-on-undecodable
+          python - << 'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/act-report.json").read_text())
+          assert report["n_live"] == 8
+          assert report["n_quarantined"] == 0
+          assert report["reservoir_size"] == 320
+          assert report["unfold_failures"] == []
+          assert report["gloss_coverage"] == 1.0
+          assert report["decision"] == "accept"
+          assert 0.40 < report["residual"] < 0.55
+          assert report["mdl_bits"] > 0
+          PY

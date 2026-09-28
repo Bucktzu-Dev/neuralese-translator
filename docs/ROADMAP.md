@@ -2,7 +2,7 @@
 
 Tracked plan for this repository. Statuses are `done`, `now`, `next`, and `later`. There are no calendar estimates.
 
-A milestone is `done` only when the tree matches it. `now` is empty after the prose slice below. `next` is what a follow-up should pick up. `later` stays out of scope until that follow-up opens it on purpose.
+A milestone is `done` only when the tree matches it. `now` is empty after the activation-stack slice below. `next` is what a follow-up should pick up. `later` stays out of scope until that follow-up opens it on purpose.
 
 The audit contract does not change with the status labels: `unknown` and `quarantined` stay required states, gloss text stays inside the pack checksum, and tests stay deterministic.
 
@@ -70,30 +70,39 @@ Must not be claimed:
 - `report` is a second, looser gate. `certify` still decides.
 - The toy fixtures above are this result.
 
+### Checked-in activation matrix
+
+Status: **done** (v0.5).
+
+`examples/activation_stack/hidden_states.npz` is a deterministic `(3, 320, 32)` `hf_layers` dump. `examples/activation_stack/export_hidden_states.py` builds it from the prose corpus text. There is no weight download and no hand-placed orthogonal center. The zip timestamp is fixed at 1980-01-01.
+
+| layer | contents |
+|---|---|
+| 0 `char_trigram` | hashed character trigrams, dim 32, order 3, full row text |
+| 1 `word_unigram` | hashed word unigrams, dim 32 |
+| 2 `sum_l2` | per-row L2-normalized sum of layers 0 and 1 |
+
+The published command is `adapt --layout hf_layers --layer 0 --pool last`, then `learn --n-symbols 8 --seed 0`. `hf_layers` has no sequence axis, so the pool does not change the vectors. Library defaults were not loosened: `tau_residual` 0.55, `tau_kappa` 0.35.
+
+Layer 0 measured residual 0.4223, mean kappa 0.9063, 8 live, 0 quarantined, `decision=accept`. `certify` passes. Those figures match the anchored prose hash because layer 0 is that hash stored in the dump. CI adapts, learns, reports, and certifies. The pack is not committed. An unknown code stays `unknown`.
+
+Layer 1 also meets the defaults (residual 0.4372, mean kappa 0.8952, 8 live) with majority-topic purity about 0.93. Layer 2 meets them for its live symbols (residual 0.3793, mean kappa 0.9380, 7 live, 1 quarantined) with purity about 0.92. Neither replaces the published layer 0 command.
+
+Must not be claimed:
+
+- These arrays are model hidden states, a logit lens, or an SAE.
+- This dump certifies the varied sentences with the workplace anchor removed.
+- `report` is a second, looser gate. `certify` still decides.
+
 ## Now
 
-Nothing is in progress in the tree beyond the done prose slice.
+Nothing is in progress in the tree beyond the done activation-stack slice.
 
 ## Next
 
-### Checked-in activation matrix that is not a toy
-
-Status: **next**. Pick this up first.
-
-Leave `examples/public_domain` as the hand-placed unit fixture. Add a checked-in matrix that was produced offline, without a weight download in CI, and without hand-placed orthogonal centers. Load it with `neuralese adapt`. Learn with a fixed seed. Run `neuralese report` and `neuralese certify`.
-
-Acceptance:
-
-- CI adapts and learns the matrix. It does not commit a pack whose `pack_id` is a random uuid.
-- Every live symbol unfolds to reservoir rows, prototypes match, and an unknown code stays `unknown`.
-- Thresholds actually used (`tau_residual`, `tau_kappa`, `n_symbols`, embedding width) are written in that example's README and, if they differ from the library defaults, in `LIMITATIONS.md`.
-- If an honest threshold cannot pass, the measured residual and kappa are locked in a test within a tight tolerance and this milestone stays open. Do not loosen `certify` inside the library to force a pass.
-
-Must not be claimed: live hub inference, a logit lens, or an SAE. Do not import Eris internals.
-
 ### Varied prose without the repeated workplace sentence
 
-Status: **next**, after the activation matrix if a follow-up has to choose one.
+Status: **next**. Pick this up first.
 
 The blocker is measured, not theoretical. Stripping `anchors.json` from `examples/prose_corpus` and learning at `--n-symbols 8 --seed 0` yields residual 0.7710 and mean kappa 0.6357. `certify` fails `residual_ok` at the default `tau_residual` 0.55. Mean majority-topic purity is about 0.31, so the classes are not the eight topics.
 
