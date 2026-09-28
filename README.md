@@ -4,7 +4,7 @@ Inner representations are not a mythical language. They are a **compact symbol s
 
 If a code cannot be unfolded to the observations that produced it, it is residue — not a symbol.
 
-Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what v0.1 does not claim.
+Public review repo: [Bucktzu-Dev/neuralese-translator](https://github.com/Bucktzu-Dev/neuralese-translator). See [LIMITATIONS.md](LIMITATIONS.md) for what this version does not claim, and [docs/ROADMAP.md](docs/ROADMAP.md) for the tracked plan.
 
 ## Why this exists
 
@@ -18,15 +18,21 @@ This package gives auditors, researchers, and other model operators a public fun
 
 English here is a **receipt**, not a vibe. An LLM may help write a gloss; it cannot replace the certificate.
 
+Hidden-state dumps become observations with `neuralese adapt`. The command reads arrays already on disk. It does not download or run a model.
+
 ## 5-minute start
 
 ```bash
 pip install -e .
 neuralese learn examples/toy_stream/observations.jsonl -o pack.json
 neuralese translate pack.json examples/toy_stream/stream.json
+neuralese unfold pack.json --code 0
+neuralese report pack.json
 neuralese audit pack.json
 neuralese certify pack.json --fail-on-undecodable
 ```
+
+`examples/toy_stream` is a toy fixture with hand-placed embeddings. The text path is [examples/prose_corpus](examples/prose_corpus): original sentences, hashed n-grams, and `neuralese report` for the decodability summary. CI learns that pack; it is not committed. The same sentences are exported as a checked-in `hf_layers` dump in [examples/activation_stack](examples/activation_stack). [examples/varied_prose](examples/varied_prose) is that corpus with the repeated workplace sentence removed. It certifies only with `--encoder word_sentence_svd`, a deterministic local TF-IDF SVD after a fixed English stop list. Hashed trigrams stay the default and still reject that file. `neuralese report pack.json --topics observations.jsonl` adds a `cluster_purity` diagnostic. `certify` does not read that file.
 
 JSONL observations:
 
@@ -34,7 +40,7 @@ JSONL observations:
 {"observation_id": "obs-1", "text": "hello there", "embedding": [1, 0, 0, 0]}
 ```
 
-If `embedding` is omitted, the tool builds a deterministic hashed n-gram vector from `text`.
+If `embedding` is omitted, the tool builds a deterministic hashed character-trigram vector from `text`. `--encoder word_sentence_svd` instead builds a deterministic local TF-IDF SVD from the texts in the file, after a fixed English stop list. That encoder is not a model hidden state. Rows that already carry an embedding are left unchanged.
 
 A stream file is `{"codes": [0, 1, 0]}` or a JSON list of integers.
 
@@ -59,28 +65,47 @@ Each token becomes:
 A symbol is admitted only if it stays:
 
 1. **Addressable** — every code resolves through the codebook or an alias map.
-2. **Unfoldable** — every admitted code lists observation ids that produced it.
+2. **Unfoldable** — every admitted code lists observation ids, and those rows (text and embeddings) are sealed in the pack so an auditor can recompute the prototype.
 3. **Gloss-bound** — English is sealed into the pack checksum. Mutating prose without resealing fails certify.
-4. **Fail-closed** — unknown, quarantined, and aliased are explicit states. Merges that break guards do not silently rewrite history.
+4. **Fail-closed** — unknown, quarantined, and aliased are explicit states. A child pack keeps every parent code: a match inherits it, and an unmatched code stays quarantined with its reservoir rows. The integer is not reused for a new cluster.
 5. **Residual-honest** — reconstruction error is reported; gloss confidence may not exceed what that residual allows.
 
 Read [docs/DECODABILITY.md](docs/DECODABILITY.md) and [docs/AUDIT_PROTOCOL.md](docs/AUDIT_PROTOCOL.md).
 
+## Activation dumps
+
+```bash
+neuralese adapt dump.npz -o observations.jsonl --layout hf_stack --layer -1 --pool last
+neuralese learn observations.jsonl -o pack.json
+```
+
+| layout | shape | meaning |
+|---|---|---|
+| `vectors` | `(n, d)` | one vector per observation |
+| `tokens` | `(n, seq, d)` | pool the sequence (`last` or `mean`) |
+| `layers` | `(n, layers, d)` | pick `--layer` |
+| `hf_layers` | `(layers, n, d)` | stacked pooled layers |
+| `hf_stack` | `(layers, n, seq, d)` | `numpy.stack` of a HuggingFace `hidden_states` tuple |
+
+A checked-in toy dump lives in [examples/public_domain](examples/public_domain) (hand-placed 8-d vectors). Parent-pack compression fixtures live in [examples/mdl_delta](examples/mdl_delta). The text-learned corpus is [examples/prose_corpus](examples/prose_corpus). A non-toy dump of that corpus, hashed offline into layout `hf_layers`, is [examples/activation_stack](examples/activation_stack).
+
 ## Library
 
 ```python
-from neuralese import load_observations_jsonl, learn_pack, translate_stream, certify
+from neuralese import load_observations_jsonl, learn_pack, translate_stream, unfold_code, certify
 
 obs = load_observations_jsonl("examples/toy_stream/observations.jsonl")
 pack = learn_pack(obs)
 glosses = translate_stream(pack, [0, 1, 99])
+report = unfold_code(pack, 0)
 cert = certify(pack)
+assert report.missing_ids == []
 assert cert.passed
 ```
 
 ## What this is not
 
-- Not a full mechanistic-interpretability suite (no logit lens, no SAE training zoo).
+- Not a full mechanistic-interpretability suite (no logit lens, no SAE training zoo). The order of that work is in [docs/ROADMAP.md](docs/ROADMAP.md).
 - Not a claim that every hidden state is a word.
 - Not permission to delete symbols. Replacement is a new forward commit; erasure is not an inverse.
 

@@ -17,3 +17,111 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Test
         run: python -m pytest -q
+      - name: Public pack
+        run: |
+          python -m neuralese adapt examples/public_domain/hidden_states.jsonl -o /tmp/public-obs.jsonl --layout vectors
+          python -m neuralese learn /tmp/public-obs.jsonl -o /tmp/public-pack.json --n-symbols 3 --seed 0
+          python -m neuralese certify /tmp/public-pack.json --fail-on-undecodable
+          python -m neuralese unfold /tmp/public-pack.json --code 0
+          python -m neuralese learn examples/mdl_delta/observations.jsonl -o /tmp/mdl-parent.json --n-symbols 4 --min-cluster-size 1 --seed 0
+          python -m neuralese learn examples/mdl_delta/observations.jsonl -o /tmp/mdl-child.json --parent /tmp/mdl-parent.json --n-symbols 2 --seed 0
+          python - << 'PY'
+          import json
+          from pathlib import Path
+          child = json.loads(Path("/tmp/mdl-child.json").read_text())
+          parent = json.loads(Path("/tmp/mdl-parent.json").read_text())
+          finalize = next(r for r in child["receipts"] if r["step"] == "finalize")
+          delta = child["mdl_bits"] - parent["mdl_bits"]
+          assert abs(finalize["delta_mdl_bits"] - delta) < 1e-6
+          assert delta > 0
+          assert child["metadata"]["decision"] == "reject"
+          retired = [s for s in child["symbols"] if s["quarantined"]]
+          assert retired
+          live_codes = {s["code"] for s in child["symbols"] if not s["quarantined"]}
+          assert live_codes <= {s["code"] for s in parent["symbols"]}
+          PY
+      - name: Prose pack
+        run: |
+          python -m neuralese learn examples/prose_corpus/observations.jsonl -o /tmp/prose-pack.json --n-symbols 8 --seed 0
+          python -m neuralese report /tmp/prose-pack.json > /tmp/prose-report.json
+          python -m neuralese certify /tmp/prose-pack.json --fail-on-undecodable
+          python - << 'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/prose-report.json").read_text())
+          assert report["n_live"] == 8
+          assert report["n_quarantined"] == 0
+          assert report["reservoir_size"] == 320
+          assert report["unfold_failures"] == []
+          assert report["gloss_coverage"] == 1.0
+          assert report["decision"] == "accept"
+          assert 0.40 < report["residual"] < 0.55
+          assert report["mdl_bits"] > 0
+          PY
+      - name: Varied prose
+        run: |
+          python -m neuralese learn examples/varied_prose/observations.jsonl -o /tmp/varied-pack.json --encoder word_sentence_svd --n-symbols 8 --seed 0
+          python -m neuralese report /tmp/varied-pack.json > /tmp/varied-report.json
+          python -m neuralese report /tmp/varied-pack.json --topics examples/varied_prose/observations.jsonl > /tmp/varied-purity.json
+          python -m neuralese certify /tmp/varied-pack.json --fail-on-undecodable
+          python - << 'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          from neuralese import load_pack
+          report = json.loads(Path("/tmp/varied-report.json").read_text())
+          assert report["n_live"] == 8
+          assert report["n_quarantined"] == 0
+          assert report["reservoir_size"] == 320
+          assert report["unfold_failures"] == []
+          assert report["gloss_coverage"] == 1.0
+          assert report["decision"] == "accept"
+          assert "cluster_purity" not in report
+          assert 0.40 < report["residual"] <= 0.55
+          assert report["mdl_bits"] > 0
+          pack = load_pack("/tmp/varied-pack.json")
+          assert pack.metadata["config"]["encoder"] == "word_sentence_svd"
+          assert pack.metadata["config"]["tau_residual"] == 0.55
+          assert pack.metadata["config"]["tau_kappa"] == 0.35
+          assert pack.guards.kappa_avg >= 0.35
+          scores = []
+          hits = 0
+          for symbol in pack.symbols:
+              if symbol.quarantined or not symbol.observation_ids:
+                  continue
+              counts = Counter(obs_id.rsplit("-", 1)[0] for obs_id in symbol.observation_ids)
+              count = counts.most_common(1)[0][1]
+              scores.append(count / len(symbol.observation_ids))
+              hits += count
+          purity = sum(scores) / len(scores)
+          # Diagnostic only. The character-trigram path on this file is about 0.31.
+          assert purity > 0.55, purity
+          assert min(scores) >= 0.5, min(scores)
+          assert min(scores) < purity
+          assert hits / 320 > 0.6594
+          labeled = json.loads(Path("/tmp/varied-purity.json").read_text())
+          diagnostic = labeled["cluster_purity"]
+          assert diagnostic["worst_purity"] >= 0.5
+          assert diagnostic["size_weighted"] > 0.6594
+          assert all(item["mixed"] is False for item in diagnostic["clusters"])
+          assert all(item["label"] != "mixed" for item in diagnostic["clusters"])
+          PY
+      - name: Activation stack
+        run: |
+          python -m neuralese adapt examples/activation_stack/hidden_states.npz -o /tmp/act-obs.jsonl --layout hf_layers --layer 0 --pool last
+          python -m neuralese learn /tmp/act-obs.jsonl -o /tmp/act-pack.json --n-symbols 8 --seed 0
+          python -m neuralese report /tmp/act-pack.json > /tmp/act-report.json
+          python -m neuralese certify /tmp/act-pack.json --fail-on-undecodable
+          python - << 'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/act-report.json").read_text())
+          assert report["n_live"] == 8
+          assert report["n_quarantined"] == 0
+          assert report["reservoir_size"] == 320
+          assert report["unfold_failures"] == []
+          assert report["gloss_coverage"] == 1.0
+          assert report["decision"] == "accept"
+          assert 0.40 < report["residual"] < 0.55
+          assert report["mdl_bits"] > 0
+          PY

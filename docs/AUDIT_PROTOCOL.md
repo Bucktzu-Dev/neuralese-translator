@@ -31,6 +31,12 @@ neuralese certify pack.json --fail-on-undecodable
 `audit` prints the certificate and exits 0 if the file was readable.
 `certify --fail-on-undecodable` exits 1 when `passed` is false.
 
+```bash
+neuralese report pack.json
+```
+
+`report` prints a decodability summary and exits 0 when the pack file loads. It does not apply `tau_residual` and it does not decide `passed`. Fields: `n_live`, `n_quarantined`, `residual`, `reservoir_size`, `unfold_failures`, `gloss_coverage`, `mdl_bits`, `decision` (null when learn did not record one). `gloss_coverage` is the fraction of live symbols whose definition is non-empty and is not an `[unglossed: ...]` marker. `--topics FILE` is optional. When it is passed, the JSON also contains `cluster_purity`. The file is JSONL observations with `metadata.topic`, or a JSON object of observation id to topic. A live cluster with majority purity under 0.5 has `label` `mixed`. `certify` does not read the file and does not grow a purity field.
+
 ## Gates
 
 ### Addressable
@@ -49,7 +55,15 @@ For each symbol with `quarantined=false`:
 
 - `observation_ids` must be a non-empty list of strings
 
-Quarantined symbols are allowed to lack a fold path; they must not appear as `state=ok` in translation.
+For every symbol that lists observation ids, including quarantined ones:
+
+- each id resolves to an observation stored on the pack
+- that observation has an embedding
+- the mean of those embeddings matches the stored prototype (L2 ≤ 1e-5)
+
+Quarantined symbols are allowed to lack a fold path; they must not appear as `state=ok` in translation. A listed id that does not resolve is still a failure.
+
+`neuralese unfold pack.json --code 0` prints the reservoir rows for a code.
 
 ### Gloss-bound
 
@@ -57,7 +71,7 @@ Quarantined symbols are allowed to lack a fold path; they must not appear as `st
 - Fail if it differs from `pack.checksum` (tamper / unsealed mutation).
 - Fail if a live symbol has an empty `definition` when `require_gloss=true` (default).
 
-Checksum covers: `pack_id`, codebook, aliases, each symbol’s `class_id`, `code`, `observation_ids`, `definition`, `quarantined`, and rounded `reconstruction_error`.
+Checksum covers: `pack_id`, codebook, aliases, each symbol’s `class_id`, `code`, `observation_ids`, `definition`, `quarantined`, rounded `reconstruction_error`, and the reservoir (observation id, text, rounded embedding, metadata).
 
 It does **not** cover wall-clock timestamps, so certification is deterministic.
 
@@ -71,6 +85,8 @@ Override:
 neuralese certify pack.json --tau-residual 0.4 --fail-on-undecodable
 ```
 
+The sealed residual must also be at least the cluster residual recomputed from reservoir embeddings and stored prototypes. A pack that reports a tighter error than its own rows support fails `residual_ok`.
+
 Confidence cap used by the translator:
 
 ```text
@@ -79,13 +95,28 @@ confidence := min(symbol.confidence, 1 - clip(residual, 0, 1))
 
 ### Parent packs (evolution)
 
-If `parent_pack_id` is set, the new pack should record:
+If `parent_pack_id` is set, the new pack records:
 
 - `aliases` from previous codes to current codes
 - `delta_mdl_bits` on the finalize receipt (`new_mdl - parent_mdl`)
-- a reject when `delta_mdl_bits > 0` unless metadata marks an explicit exception
+- `decision=reject` when `delta_mdl_bits > 0`, unless `metadata.mdl_exception` is a non-empty reason
 
-This leaf implements ΔMDL against the previous pack’s `mdl_bits`. It does not silently inherit stubbed deltas from any origin engine.
+```bash
+neuralese learn obs.jsonl -o child.json --parent parent.json --mdl-exception "split for a new domain"
+```
+
+The exception admits `accept_provisional`. It does not flip `pass_mdl` to true. A first pack has no parent and records `delta_mdl_bits = 0`.
+
+### Retired codes
+
+`learn --parent` does not drop a parent code.
+
+- A parent symbol whose prototype matches a child cluster keeps its code on that cluster.
+- A parent symbol with no match is appended as `quarantined=true`. Its observation rows are copied into the child reservoir when the id is not already there.
+- Alias keys from the parent are flattened onto the surviving code.
+- Integers used by parent codes or alias keys are not given to a new cluster.
+
+Translating a retired code yields `state=quarantined`. It does not yield `unknown`, and it does not yield the gloss of whichever new cluster happened to receive that integer.
 
 ## Translation states
 

@@ -8,4 +8,4 @@ This tree is a public audit tool. Please keep it honest.
 - Tests should be deterministic (fixed seeds). Label heuristic glosses as heuristic.
 - Docs that widen a capability claim must also update LIMITATIONS.md.
 
-Useful work: HuggingFace/activation adapters, parent-pack ΔMDL fixtures, stronger unfold round-trips, and CI examples on real (non-secret) packs.
+Adapters must stay deterministic and must not invent English for a missing code. Tests that need a model dump should use a checked-in array, not a weight download.
