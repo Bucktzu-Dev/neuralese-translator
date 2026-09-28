@@ -12,8 +12,15 @@ def test_supplied_terminals_cannot_skip_live_alias_source_refusal():
     pack = make_pack(aliases={0: 1})
     with pytest.raises(ValueError, match="historical mapping is ambiguous"):
         pack.resolve_code(0, terminals={0: 1})
+    with pytest.raises(ValueError, match="historical mapping is ambiguous"):
+        pack.resolve_code(0, terminals={0: 1}, current_codes={0, 1})
     historical = make_pack(aliases={7: 0})
+    live = historical.current_codes()
     assert historical.resolve_code(7, terminals={7: 0}) == (0, True)
+    assert historical.resolve_code(7, terminals={7: 0}, current_codes=live) == (
+        0,
+        True,
+    )
 
 
 def test_unknown_source_pack_does_not_merge_unrelated_aliases():
