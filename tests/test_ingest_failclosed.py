@@ -345,6 +345,21 @@ def test_ingest_refuses_to_overwrite_texts(tmp_path, capsys):
     assert texts.read_text() == '{"text":"hello there friend"}\n'
 
 
+def test_ingest_symlink_loop_texts_names_texts_path(tmp_path, capsys):
+    src = tmp_path / "states.npy"
+    np.save(src, np.array([[1.0, 0.0]]))
+    loop = tmp_path / "loop"
+    loop.symlink_to(loop)
+    rc = main(
+        ["ingest", str(src), "-o", str(tmp_path / "obs.jsonl"), "--texts", str(loop)]
+    )
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "could not be compared to the --texts path" in err
+    assert "evidence path" not in err
+    assert "Traceback" not in err
+
+
 def test_npz_nan_ids_fail_closed(tmp_path, capsys):
     path = tmp_path / "bundle.npz"
     np.savez(

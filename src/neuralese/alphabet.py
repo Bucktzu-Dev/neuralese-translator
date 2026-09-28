@@ -89,8 +89,8 @@ def learn_pack(
             rows.append(
                 ensure_embedding(Observation.from_dict(observation.to_dict()))
             )
-        except (TypeError, ValueError, OverflowError, RecursionError) as exc:
-            raise ValueError("observation is not learnable") from exc
+        except (TypeError, ValueError, OverflowError, RecursionError) as copilot_exc:
+            raise ValueError("observation is not learnable") from copilot_exc
     X = stack_embeddings(rows)
 
     parent_checksum = None
@@ -130,10 +130,10 @@ def learn_pack(
             old_protos = np.asarray(
                 [s.proto_embedding for s in previous.symbols], dtype=np.float64
             )
-        except (TypeError, ValueError, OverflowError) as exc:
+        except (TypeError, ValueError, OverflowError) as copilot_exc:
             raise ValueError(
                 "previous pack checksum does not match its semantic manifest"
-            ) from exc
+            ) from copilot_exc
         if old_protos.ndim != 2 or old_protos.shape[1] != X.shape[1]:
             raise ValueError(
                 "previous pack prototypes do not match observation dimensionality"
@@ -218,7 +218,9 @@ def learn_pack(
     pass_residual = residual <= cfg.tau_residual
     pass_mdl = delta_mdl <= 0.0
     pass_persist = min_survival >= cfg.tau_persist or previous is None
-    pass_compat = not _alias_collision(aliases, codebook)
+    pass_compat = not _alias_collision(aliases, codebook) and any(
+        symbol.quarantined is False for symbol in symbols
+    )
     pass_all = pass_kappa and pass_residual and pass_mdl and pass_persist and pass_compat
 
     if pass_all:
@@ -323,7 +325,10 @@ def _match_aliases(
 def _alias_collision(aliases: Dict[str, Dict[int, int]], codebook: Dict[int, int]) -> bool:
     if has_alias_cycle(aliases):
         return True
+    live = set(codebook)
     for mapping in aliases.values():
         if any(t not in codebook for t in mapping.values()):
+            return True
+        if any(source in live for source in mapping):
             return True
     return False

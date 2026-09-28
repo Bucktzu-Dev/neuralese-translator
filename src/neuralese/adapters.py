@@ -18,6 +18,7 @@ from neuralese.contracts import (
     SymbolPack,
     _copy_mapping,
     _require_json_object_keys,
+    as_stream_code,
 )
 
 PathLike = Union[str, Path]
@@ -144,20 +145,13 @@ def load_stream(path: PathLike) -> List[int]:
     if not isinstance(codes, (list, tuple)):
         raise ValueError("stream codes must be an array")
     try:
-        return [_as_stream_code(c) for c in codes]
+        return [as_stream_code(c) for c in codes]
     except (TypeError, ValueError) as copilot_exc:
         raise ValueError("stream codes must be integers") from copilot_exc
 
 
 def _as_stream_code(value: object) -> int:
-    # bool is a subclass of int; JSON true/false must not become 1/0.
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError("stream codes must be integers")
-    if isinstance(value, float):
-        if not value.is_integer():
-            raise ValueError("stream codes must be integers")
-        return int(value)
-    return int(value)
+    return as_stream_code(value)
 
 
 def _loads_json(raw: str, *, label: str) -> object:
