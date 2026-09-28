@@ -850,6 +850,7 @@ class SymbolPack:
         *,
         terminals: Optional[Dict[int, int]] = None,
         current_codes: Optional[Set[int]] = None,
+        table: Optional[Dict[int, int]] = None,
     ) -> Tuple[int, bool]:
         from neuralese.aliases import refuse_live_alias_sources, resolve_alias_table
 
@@ -861,16 +862,11 @@ class SymbolPack:
         ):
             raise ValueError("unresolved source pack checksum")
         live = self.current_codes() if current_codes is None else current_codes
+        mapping = self.alias_table(source_pack_checksum) if table is None else table
         if terminals is None:
-            terminals = resolve_alias_table(
-                self.alias_table(source_pack_checksum),
-                current_codes=live,
-            )
+            terminals = resolve_alias_table(mapping, current_codes=live)
         else:
-            refuse_live_alias_sources(
-                self.alias_table(source_pack_checksum),
-                live,
-            )
+            refuse_live_alias_sources(mapping, live)
         if isinstance(self.codebook, dict) and code in self.codebook:
             return code, False
         resolved = terminals.get(code, code)
