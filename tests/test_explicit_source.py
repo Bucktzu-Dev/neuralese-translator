@@ -8,6 +8,14 @@ from neuralese.translator import translate_stream
 from packutil import make_pack
 
 
+def test_supplied_terminals_cannot_skip_live_alias_source_refusal():
+    pack = make_pack(aliases={0: 1})
+    with pytest.raises(ValueError, match="historical mapping is ambiguous"):
+        pack.resolve_code(0, terminals={0: 1})
+    historical = make_pack(aliases={7: 0})
+    assert historical.resolve_code(7, terminals={7: 0}) == (0, True)
+
+
 def test_unknown_source_pack_does_not_merge_unrelated_aliases():
     pack = make_pack(aliases={"cccc" * 16: {7: 0}})
     with pytest.raises(ValueError, match="unresolved source pack checksum"):
