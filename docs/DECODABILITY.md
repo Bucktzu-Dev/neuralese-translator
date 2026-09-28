@@ -26,7 +26,7 @@ Every live code must resolve to a class through the current codebook **or** a fi
 - Old streams stay readable by rewriting `old_code → new_code`.
 - Alias cycles and dangling aliases fail closed.
 
-Deletion is not an inverse. If a class dies, either quarantine it or issue a new forward commit. Do not pretend the old code never existed.
+Deletion is not an inverse. A child pack keeps every parent code. A matched prototype inherits that code. An unmatched code is carried forward as a quarantined symbol, including the reservoir rows that minted it. A new cluster takes a fresh integer. Old alias keys are copied onto the surviving code.
 
 ### 2. Unfoldable
 
@@ -76,7 +76,7 @@ When you mint or accept a pack:
 
 1. Every codebook entry points at a symbol object.
 2. Every non-quarantined symbol has ≥1 observation id, and those ids resolve to embeddings stored on the pack. The member mean matches the prototype.
-3. Every non-quarantined symbol has a bound English string **or** an explicit unglossed marker recorded in the pack (not invented at read time).
+3. Every non-quarantined symbol has a bound English string **or** the explicit marker `[unglossed: class N]` stored in the pack at learn time.
 4. Checksum covers codebook, aliases, observation ids, definitions, residual.
 5. `certify(pack)` returns `passed=true` before you ship the pack to another team.
 

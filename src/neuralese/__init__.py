@@ -22,7 +22,7 @@ from neuralese.dynamics import SubjectiveSymbolDynamics
 from neuralese.translator import translate_stream
 from neuralese.unfold import UnfoldReport, unfold_code
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "__version__",

@@ -101,7 +101,16 @@ neuralese learn obs.jsonl -o child.json --parent parent.json --mdl-exception "sp
 
 The exception admits `accept_provisional`. It does not flip `pass_mdl` to true. A first pack has no parent and records `delta_mdl_bits = 0`.
 
-The fixture in `examples/mdl_delta/` has a negative delta when the alphabet shrinks from 4 symbols to 2, and a positive delta in the other direction.
+### Retired codes
+
+`learn --parent` does not drop a parent code.
+
+- A parent symbol whose prototype matches a child cluster keeps its code on that cluster.
+- A parent symbol with no match is appended as `quarantined=true`. Its observation rows are copied into the child reservoir when the id is not already there.
+- Alias keys from the parent are flattened onto the surviving code.
+- Integers used by parent codes or alias keys are not given to a new cluster.
+
+Translating a retired code yields `state=quarantined`. It does not yield `unknown`, and it does not yield the gloss of whichever new cluster happened to receive that integer.
 
 ## Translation states
 

@@ -7,7 +7,6 @@ from typing import Dict, List, Optional, Sequence
 import numpy as np
 
 from neuralese.contracts import Observation, Symbol, SymbolPack
-from neuralese.factorization import reconstruction_error
 
 PROTO_ATOL = 1e-5
 RESIDUAL_ATOL = 1e-4
@@ -70,27 +69,35 @@ def unfold_code(pack: SymbolPack, code: int) -> UnfoldReport:
 
 
 def recomputed_cluster_residual(pack: SymbolPack) -> Optional[float]:
-    """Centroid residual from stored embeddings. None when the reservoir is incomplete."""
-    rows: List[Sequence[float]] = []
-    hats: List[Sequence[float]] = []
+    """Centroid residual from stored embeddings. None when the reservoir is incomplete.
+
+    Symbols may use different embedding widths (a retired parent class can). The
+    score is the Frobenius ratio over each symbol's own rows, which matches a
+    single stacked residual when every row has the same width.
+    """
+    numerator = 0.0
+    denominator = 0.0
+    saw_row = False
     for symbol in pack.symbols:
         if not symbol.observation_ids:
             continue
         if not symbol.proto_embedding:
             return None
+        proto = np.asarray(symbol.proto_embedding, dtype=np.float64)
         for obs_id in symbol.observation_ids:
             obs = pack.observations.get(obs_id)
             if obs is None or not obs.embedding:
                 return None
-            if len(obs.embedding) != len(symbol.proto_embedding):
+            if len(obs.embedding) != proto.shape[0]:
                 return None
-            rows.append(obs.embedding)
-            hats.append(symbol.proto_embedding)
-    if not rows:
+            vector = np.asarray(obs.embedding, dtype=np.float64)
+            delta = vector - proto
+            numerator += float(np.dot(delta, delta))
+            denominator += float(np.dot(vector, vector))
+            saw_row = True
+    if not saw_row or denominator <= 1e-12:
         return 0.0
-    observed = np.asarray(rows, dtype=np.float64)
-    reconstructed = np.asarray(hats, dtype=np.float64)
-    return reconstruction_error(observed, reconstructed)
+    return float(np.sqrt(numerator / denominator))
 
 
 def unfold_failures(pack: SymbolPack) -> tuple[List[str], List[str], Dict[str, object]]:

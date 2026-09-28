@@ -64,7 +64,7 @@ A symbol is admitted only if it stays:
 1. **Addressable** — every code resolves through the codebook or an alias map.
 2. **Unfoldable** — every admitted code lists observation ids, and those rows (text and embeddings) are sealed in the pack so an auditor can recompute the prototype.
 3. **Gloss-bound** — English is sealed into the pack checksum. Mutating prose without resealing fails certify.
-4. **Fail-closed** — unknown, quarantined, and aliased are explicit states. Merges that break guards do not silently rewrite history.
+4. **Fail-closed** — unknown, quarantined, and aliased are explicit states. A child pack keeps every parent code: a match inherits it, and an unmatched code stays quarantined with its reservoir rows. The integer is not reused for a new cluster.
 5. **Residual-honest** — reconstruction error is reported; gloss confidence may not exceed what that residual allows.
 
 Read [docs/DECODABILITY.md](docs/DECODABILITY.md) and [docs/AUDIT_PROTOCOL.md](docs/AUDIT_PROTOCOL.md).

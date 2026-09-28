@@ -33,6 +33,10 @@ jobs:
           finalize = next(r for r in child["receipts"] if r["step"] == "finalize")
           delta = child["mdl_bits"] - parent["mdl_bits"]
           assert abs(finalize["delta_mdl_bits"] - delta) < 1e-6
-          assert delta < 0
-          assert child["metadata"]["decision"] == "accept"
+          assert delta > 0
+          assert child["metadata"]["decision"] == "reject"
+          retired = [s for s in child["symbols"] if s["quarantined"]]
+          assert retired
+          live_codes = {s["code"] for s in child["symbols"] if not s["quarantined"]}
+          assert live_codes <= {s["code"] for s in parent["symbols"]}
           PY

@@ -90,6 +90,8 @@ def learn_pack(
         gloss = learn_definition(member_obs, llm_client=llm_client)
         quarantined = member_idx.size < cfg.min_cluster_size or kappa < cfg.tau_kappa
         definition = gloss["definition"] or None
+        if not definition and not quarantined:
+            definition = f"[unglossed: class {class_id}]"
         if quarantined and not definition:
             definition = f"[quarantined class {class_id}]"
         symbol = Symbol(
@@ -114,9 +116,18 @@ def learn_pack(
     cluster_residual = reconstruction_error(X, X_hat)
     residual = max(float(cluster_residual), float(svd_residual) * 0.25)
 
+    learned = list(symbols)
+    reservoir = {obs.observation_id: Observation.from_dict(obs.to_dict()) for obs in rows}
     aliases: Dict[int, int] = {}
     if previous is not None:
-        aliases = _match_aliases(previous, symbols, threshold=cfg.match_threshold)
+        aliases, retired = _rebind_parent(
+            previous,
+            symbols,
+            reservoir,
+            threshold=cfg.match_threshold,
+        )
+        symbols.extend(retired)
+    codebook = {symbol.code: symbol.class_id for symbol in symbols}
 
     gloss_chars = sum(len(s.definition or "") for s in symbols)
     bits = mdl_bits(len(symbols), residual, X.shape[1], X.shape[0], gloss_chars)
@@ -125,13 +136,15 @@ def learn_pack(
     else:
         delta_mdl = bits - float(previous.mdl_bits)
 
-    kappa_avg = float(np.mean([s.metadata.get("kappa", 0.0) for s in symbols])) if symbols else 0.0
-    min_survival = float(min((s.survival for s in symbols), default=1.0))
+    kappa_avg = float(np.mean([s.metadata.get("kappa", 0.0) for s in learned])) if learned else 0.0
+    min_survival = float(min((s.survival for s in learned), default=1.0))
     pass_kappa = kappa_avg >= cfg.tau_kappa
     pass_residual = residual <= cfg.tau_residual
     pass_mdl = delta_mdl <= 0.0
     pass_persist = min_survival >= cfg.tau_persist or previous is None
-    pass_compat = not _alias_collision(aliases, codebook)
+    pass_compat = not _alias_collision(aliases, codebook) and _parent_codes_kept(
+        previous, aliases, codebook
+    )
     pass_all = pass_kappa and pass_residual and pass_mdl and pass_persist and pass_compat
     mdl_exception = (cfg.mdl_exception or "").strip() or None
     # An increase stays visible on the guard. A recorded exception waives only the reject.
@@ -190,7 +203,7 @@ def learn_pack(
         receipts=receipts,
         guards=guards,
         mdl_bits=bits,
-        observations={obs.observation_id: Observation.from_dict(obs.to_dict()) for obs in rows},
+        observations=reservoir,
         timestamp=time.time(),
         metadata={
             "n_observations": len(rows),
@@ -207,31 +220,145 @@ def learn_pack(
     return pack.seal()
 
 
-def _match_aliases(
+def _match_successors(
     previous: SymbolPack,
     symbols: Sequence[Symbol],
-    *,
     threshold: float,
-) -> Dict[int, int]:
-    aliases: Dict[int, int] = {}
+) -> Dict[int, Symbol]:
+    """Greedy one-to-one match from parent symbol identity to a child symbol."""
     used: set[int] = set()
+    matched: Dict[int, Symbol] = {}
     for old in previous.symbols:
-        best_code = None
+        best: Optional[Symbol] = None
         best_sim = threshold
         for new in symbols:
-            if new.class_id in used:
+            if id(new) in used:
+                continue
+            if len(old.proto_embedding) != len(new.proto_embedding) or not old.proto_embedding:
                 continue
             sim = cosine_similarity(old.proto_embedding, new.proto_embedding)
             if sim > best_sim:
                 best_sim = sim
-                best_code = new.code
-        if best_code is not None:
-            used.add(next(s.class_id for s in symbols if s.code == best_code))
-            if old.code != best_code:
-                aliases[int(old.code)] = int(best_code)
-    return aliases
+                best = new
+        if best is not None:
+            used.add(id(best))
+            matched[id(old)] = best
+    return matched
+
+
+def _rebind_parent(
+    previous: SymbolPack,
+    symbols: List[Symbol],
+    reservoir: Dict[str, Observation],
+    *,
+    threshold: float,
+) -> tuple[Dict[int, int], List[Symbol]]:
+    """Keep every parent code. Matched prototypes inherit it; the rest stay quarantined.
+
+    New clusters take a fresh integer rather than a code that already names a
+    parent symbol or an alias. Deleting the integer is not an inverse.
+    """
+    matched = _match_successors(previous, symbols, threshold)
+    reserved = {int(code) for code in previous.codebook}
+    reserved.update(int(key) for key in previous.aliases)
+    reserved.update(int(value) for value in previous.aliases.values())
+
+    inherited: Dict[int, int] = {}
+    for old in previous.symbols:
+        successor = matched.get(id(old))
+        if successor is not None:
+            inherited[id(successor)] = int(old.code)
+
+    used = set(inherited.values())
+
+    def fresh_code() -> int:
+        code = 0
+        while code in used or code in reserved:
+            code += 1
+        used.add(code)
+        return code
+
+    for symbol in symbols:
+        if id(symbol) in inherited:
+            symbol.code = inherited[id(symbol)]
+        else:
+            symbol.code = fresh_code()
+
+    retired: List[Symbol] = []
+    next_class = max((symbol.class_id for symbol in symbols), default=-1) + 1
+    live_codes = {symbol.code for symbol in symbols}
+    for old in previous.symbols:
+        if id(old) in matched:
+            continue
+        if int(old.code) in live_codes:
+            continue
+        for obs_id in old.observation_ids:
+            if obs_id in reservoir:
+                continue
+            parent_obs = previous.observations.get(obs_id)
+            if parent_obs is not None:
+                reservoir[obs_id] = Observation.from_dict(parent_obs.to_dict())
+        retired.append(
+            Symbol(
+                class_id=next_class,
+                code=int(old.code),
+                proto_embedding=list(old.proto_embedding),
+                observation_ids=list(old.observation_ids),
+                definition=old.definition,
+                examples=list(old.examples),
+                confidence=0.0,
+                quarantined=True,
+                survival=0.0,
+                metadata={
+                    "retired_from": previous.pack_id,
+                    "prior_class_id": old.class_id,
+                },
+            )
+        )
+        live_codes.add(int(old.code))
+        next_class += 1
+
+    aliases: Dict[int, int] = {}
+    for src in previous.aliases:
+        src_code = int(src)
+        if src_code in live_codes:
+            continue
+        final, _ = previous.resolve_code(src_code)
+        if int(final) not in live_codes or int(final) == src_code:
+            continue
+        aliases[src_code] = int(final)
+    return aliases, retired
 
 
 def _alias_collision(aliases: Dict[int, int], codebook: Dict[int, int]) -> bool:
-    targets = list(aliases.values())
-    return any(t not in codebook for t in targets)
+    if any(int(key) in codebook for key in aliases):
+        return True
+    return any(int(target) not in codebook for target in aliases.values())
+
+
+def _parent_codes_kept(
+    previous: Optional[SymbolPack],
+    aliases: Dict[int, int],
+    codebook: Dict[int, int],
+) -> bool:
+    if previous is None:
+        return True
+
+    def resolve(code: int) -> int:
+        seen: set[int] = set()
+        current = int(code)
+        while current in aliases:
+            if current in seen:
+                return current
+            seen.add(current)
+            current = int(aliases[current])
+        return current
+
+    codes = set(codebook)
+    for old in previous.symbols:
+        if resolve(old.code) not in codes:
+            return False
+    for src in previous.aliases:
+        if resolve(int(src)) not in codes:
+            return False
+    return True
