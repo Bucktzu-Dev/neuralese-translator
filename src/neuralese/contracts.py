@@ -850,7 +850,7 @@ class SymbolPack:
         *,
         terminals: Optional[Dict[int, int]] = None,
     ) -> Tuple[int, bool]:
-        from neuralese.aliases import resolve_alias_table
+        from neuralese.aliases import refuse_live_alias_sources, resolve_alias_table
 
         code = as_stream_code(code)
         if not explicit_source_resolved(
@@ -859,11 +859,12 @@ class SymbolPack:
             parent_checksum=self.parent_checksum,
         ):
             raise ValueError("unresolved source pack checksum")
+        table = self.alias_table(source_pack_checksum)
+        live = self.current_codes()
         if terminals is None:
-            terminals = resolve_alias_table(
-                self.alias_table(source_pack_checksum),
-                current_codes=self.current_codes(),
-            )
+            terminals = resolve_alias_table(table, current_codes=live)
+        else:
+            refuse_live_alias_sources(table, live)
         if isinstance(self.codebook, dict) and code in self.codebook:
             return code, False
         resolved = terminals.get(code, code)
