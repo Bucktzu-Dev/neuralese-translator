@@ -7,7 +7,14 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from neuralese.adapters import load_observations_jsonl, load_pack, load_stream, save_pack
+from neuralese.activations import load_activation_dump
+from neuralese.adapters import (
+    load_observations_jsonl,
+    load_pack,
+    load_stream,
+    save_observations_jsonl,
+    save_pack,
+)
 from neuralese.alphabet import LearnConfig, learn_pack
 from neuralese.audit import certify
 from neuralese.translator import translate_stream
@@ -29,6 +36,22 @@ def main(argv: Optional[List[str]] = None) -> int:
     learn_p.add_argument("--min-cluster-size", type=int, default=2)
     learn_p.add_argument("--tau-residual", type=float, default=0.55)
     learn_p.add_argument("--seed", type=int, default=0)
+    learn_p.add_argument(
+        "--mdl-exception",
+        default=None,
+        help="why a description-length increase vs the parent pack is admitted",
+    )
+
+    adapt_p = sub.add_parser("adapt", help="convert a hidden-state dump into observation JSONL")
+    adapt_p.add_argument("dump", type=Path)
+    adapt_p.add_argument("-o", "--output", type=Path, required=True)
+    adapt_p.add_argument(
+        "--layout",
+        choices=["vectors", "tokens", "layers", "hf_layers", "hf_stack"],
+        default=None,
+    )
+    adapt_p.add_argument("--layer", type=int, default=-1)
+    adapt_p.add_argument("--pool", choices=["last", "mean"], default="last")
 
     tr_p = sub.add_parser("translate", help="gloss a code stream using a sealed pack")
     tr_p.add_argument("pack", type=Path)
@@ -67,11 +90,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                 min_cluster_size=args.min_cluster_size,
                 tau_residual=args.tau_residual,
                 seed=args.seed,
+                mdl_exception=args.mdl_exception,
             ),
             previous=parent,
         )
         save_pack(pack, args.output)
         print(json.dumps({"pack_id": pack.pack_id, "checksum": pack.checksum, "n_symbols": len(pack.symbols)}, indent=2))
+        return 0
+
+    if args.cmd == "adapt":
+        rows = load_activation_dump(
+            args.dump,
+            layout=args.layout,
+            layer=args.layer,
+            pool=args.pool,
+        )
+        save_observations_jsonl(rows, args.output)
+        print(json.dumps({"n_observations": len(rows), "output": str(args.output)}, indent=2))
         return 0
 
     if args.cmd == "translate":

@@ -17,3 +17,22 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Test
         run: python -m pytest -q
+      - name: Public pack
+        run: |
+          python -m neuralese adapt examples/public_domain/hidden_states.jsonl -o /tmp/public-obs.jsonl --layout vectors
+          python -m neuralese learn /tmp/public-obs.jsonl -o /tmp/public-pack.json --n-symbols 3 --seed 0
+          python -m neuralese certify /tmp/public-pack.json --fail-on-undecodable
+          python -m neuralese unfold /tmp/public-pack.json --code 0
+          python -m neuralese learn examples/mdl_delta/observations.jsonl -o /tmp/mdl-parent.json --n-symbols 4 --min-cluster-size 1 --seed 0
+          python -m neuralese learn examples/mdl_delta/observations.jsonl -o /tmp/mdl-child.json --parent /tmp/mdl-parent.json --n-symbols 2 --seed 0
+          python - << 'PY'
+          import json
+          from pathlib import Path
+          child = json.loads(Path("/tmp/mdl-child.json").read_text())
+          parent = json.loads(Path("/tmp/mdl-parent.json").read_text())
+          finalize = next(r for r in child["receipts"] if r["step"] == "finalize")
+          delta = child["mdl_bits"] - parent["mdl_bits"]
+          assert abs(finalize["delta_mdl_bits"] - delta) < 1e-6
+          assert delta < 0
+          assert child["metadata"]["decision"] == "accept"
+          PY

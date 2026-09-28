@@ -28,6 +28,7 @@ class LearnConfig:
     svd_rank: Optional[int] = None
     seed: int = 0
     match_threshold: float = 0.55
+    mdl_exception: Optional[str] = None
 
 
 def mdl_bits(n_symbols: int, residual: float, dim: int, n_obs: int, gloss_chars: int) -> float:
@@ -132,13 +133,16 @@ def learn_pack(
     pass_persist = min_survival >= cfg.tau_persist or previous is None
     pass_compat = not _alias_collision(aliases, codebook)
     pass_all = pass_kappa and pass_residual and pass_mdl and pass_persist and pass_compat
+    mdl_exception = (cfg.mdl_exception or "").strip() or None
+    # An increase stays visible on the guard. A recorded exception waives only the reject.
+    mdl_blocked = delta_mdl > 0.0 and mdl_exception is None
 
     if pass_all:
         decision = "accept"
-    elif pass_residual and pass_compat:
-        decision = "accept_provisional"
-    else:
+    elif mdl_blocked or not pass_residual or not pass_compat:
         decision = "reject"
+    else:
+        decision = "accept_provisional"
 
     receipts: List[Receipt] = [
         create_receipt(
@@ -159,7 +163,7 @@ def learn_pack(
             kappa=kappa_avg,
             reconstruction_error=residual,
             delta_mdl_bits=float(delta_mdl),
-            metadata={"decision": decision},
+            metadata={"decision": decision, **({"mdl_exception": mdl_exception} if mdl_exception else {})},
         ),
     ]
 
@@ -191,6 +195,7 @@ def learn_pack(
         metadata={
             "n_observations": len(rows),
             "decision": decision,
+            **({"mdl_exception": mdl_exception} if mdl_exception else {}),
             "config": {
                 "n_symbols": cfg.n_symbols,
                 "tau_kappa": cfg.tau_kappa,

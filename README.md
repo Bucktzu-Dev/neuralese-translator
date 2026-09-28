@@ -18,6 +18,8 @@ This package gives auditors, researchers, and other model operators a public fun
 
 English here is a **receipt**, not a vibe. An LLM may help write a gloss; it cannot replace the certificate.
 
+Hidden-state dumps become observations with `neuralese adapt`. The command reads arrays already on disk. It does not download or run a model.
+
 ## 5-minute start
 
 ```bash
@@ -66,6 +68,23 @@ A symbol is admitted only if it stays:
 5. **Residual-honest** — reconstruction error is reported; gloss confidence may not exceed what that residual allows.
 
 Read [docs/DECODABILITY.md](docs/DECODABILITY.md) and [docs/AUDIT_PROTOCOL.md](docs/AUDIT_PROTOCOL.md).
+
+## Activation dumps
+
+```bash
+neuralese adapt dump.npz -o observations.jsonl --layout hf_stack --layer -1 --pool last
+neuralese learn observations.jsonl -o pack.json
+```
+
+| layout | shape | meaning |
+|---|---|---|
+| `vectors` | `(n, d)` | one vector per observation |
+| `tokens` | `(n, seq, d)` | pool the sequence (`last` or `mean`) |
+| `layers` | `(n, layers, d)` | pick `--layer` |
+| `hf_layers` | `(layers, n, d)` | stacked pooled layers |
+| `hf_stack` | `(layers, n, seq, d)` | `numpy.stack` of a HuggingFace `hidden_states` tuple |
+
+A checked-in public dump lives in [examples/public_domain](examples/public_domain). Parent-pack compression examples live in [examples/mdl_delta](examples/mdl_delta).
 
 ## Library
 

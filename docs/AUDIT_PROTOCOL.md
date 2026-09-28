@@ -89,13 +89,19 @@ confidence := min(symbol.confidence, 1 - clip(residual, 0, 1))
 
 ### Parent packs (evolution)
 
-If `parent_pack_id` is set, the new pack should record:
+If `parent_pack_id` is set, the new pack records:
 
 - `aliases` from previous codes to current codes
 - `delta_mdl_bits` on the finalize receipt (`new_mdl - parent_mdl`)
-- a reject when `delta_mdl_bits > 0` unless metadata marks an explicit exception
+- `decision=reject` when `delta_mdl_bits > 0`, unless `metadata.mdl_exception` is a non-empty reason
 
-This leaf implements ΔMDL against the previous pack’s `mdl_bits`. It does not silently inherit stubbed deltas from any origin engine.
+```bash
+neuralese learn obs.jsonl -o child.json --parent parent.json --mdl-exception "split for a new domain"
+```
+
+The exception admits `accept_provisional`. It does not flip `pass_mdl` to true. A first pack has no parent and records `delta_mdl_bits = 0`.
+
+The fixture in `examples/mdl_delta/` has a negative delta when the alphabet shrinks from 4 symbols to 2, and a positive delta in the other direction.
 
 ## Translation states
 
