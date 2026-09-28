@@ -19,10 +19,11 @@ from neuralese.contracts import (
     SymbolPack,
 )
 from neuralese.dynamics import SubjectiveSymbolDynamics
+from neuralese.encode import ENCODER_CHAR_TRIGRAM, ENCODER_WORD_SENTENCE_SVD, word_sentence_svd
 from neuralese.translator import translate_stream
 from neuralese.unfold import UnfoldReport, unfold_code
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "__version__",
@@ -47,4 +48,7 @@ __all__ = [
     "load_stream",
     "save_pack",
     "SubjectiveSymbolDynamics",
+    "ENCODER_CHAR_TRIGRAM",
+    "ENCODER_WORD_SENTENCE_SVD",
+    "word_sentence_svd",
 ]

@@ -2,7 +2,7 @@
 
 Tracked plan for this repository. Statuses are `done`, `now`, `next`, and `later`. There are no calendar estimates.
 
-A milestone is `done` only when the tree matches it. `now` is empty after the activation-stack slice below. `next` is what a follow-up should pick up. `later` stays out of scope until that follow-up opens it on purpose.
+A milestone is `done` only when the tree matches it. `now` is empty after the varied-prose slice below. `next` is what a follow-up should pick up. `later` stays out of scope until that follow-up opens it on purpose.
 
 The audit contract does not change with the status labels: `unknown` and `quarantined` stay required states, gloss text stays inside the pack checksum, and tests stay deterministic.
 
@@ -91,39 +91,54 @@ Layer 1 also meets the defaults (residual 0.4372, mean kappa 0.8952, 8 live) wit
 Must not be claimed:
 
 - These arrays are model hidden states, a logit lens, or an SAE.
-- This dump certifies the varied sentences with the workplace anchor removed.
+- This dump certifies the varied sentences with the workplace anchor removed. That file is [examples/varied_prose](../examples/varied_prose), and the hash stack is not its encoder.
+- `report` is a second, looser gate. `certify` still decides.
+
+### Varied prose without the repeated workplace sentence
+
+Status: **done** (v0.6).
+
+`examples/varied_prose` is `examples/prose_corpus` with the repeated workplace sentence removed from each row. No shared suffix was written back in. The checked-in rows are text and a topic label. They have no embeddings.
+
+`learn --encoder word_sentence_svd --n-symbols 8 --seed 0` embeds that file with a deterministic local encoder: TF-IDF of the words in the file (`ln(N / df) + 1` on raw counts), row L2 normalization, then a truncated SVD whose width is `n_symbols`. Coordinates are scaled by the singular values and L2-normalized again. Topic ids are not an input. Hashed character trigrams remain the default for text-only JSONL. Library `tau_residual` 0.55 and `tau_kappa` 0.35 were not changed.
+
+| knob | published value | measured on this run |
+|---|---|---|
+| `tau_residual` | 0.55 | residual 0.5057 |
+| `tau_kappa` | 0.35 | mean kappa 0.8713 |
+| `n_symbols` | 8 | 8 live, 0 quarantined |
+| SVD width | 8 | same as `n_symbols` |
+| seed | 0 | fixed |
+| decision | | `accept` |
+| `certify` | library defaults | pass |
+
+Majority-topic purity is a diagnostic, not a certify gate. On this run the unweighted mean is 0.7084 and the size-weighted mean is 0.6594 (211 of 320 rows sit in a cluster whose majority topic is their own). Every topic is the majority of one live cluster. The bakery-majority cluster is 22 of 55 rows, purity 0.4000. The geometry is decodable under the published thresholds and only partly topical. It is not eight pure topic classes.
+
+The character-trigram encoder on this same file still rejects at the library defaults: residual 0.7710, mean kappa 0.6357, majority-topic purity 0.3085, `decision=reject`, `residual_ok` false. That locked test stays.
+
+Must not be claimed:
+
+- These coordinates are model hidden states, a logit lens, or an SAE.
+- Purity was a training target. Topic ids are not in the vector.
+- The bakery-majority symbol is the bakery, or any symbol is a pure workplace.
+- Hashed character trigrams now certify the varied file.
 - `report` is a second, looser gate. `certify` still decides.
 
 ## Now
 
-Nothing is in progress in the tree beyond the done activation-stack slice.
+Nothing is in progress in the tree beyond the done varied-prose slice.
 
 ## Next
 
-### Varied prose without the repeated workplace sentence
+### Logit lens
 
 Status: **next**. Pick this up first.
 
-The blocker is measured, not theoretical. Stripping `anchors.json` from `examples/prose_corpus` and learning at `--n-symbols 8 --seed 0` yields residual 0.7710 and mean kappa 0.6357. `certify` fails `residual_ok` at the default `tau_residual` 0.55. Mean majority-topic purity is about 0.31, so the classes are not the eight topics.
-
-Acceptance:
-
-- A deterministic embedder already in the repo, or a checked-in text-only change, learns the varied sentences with a fixed seed.
-- `certify` passes at a published threshold that is still the library default, or the example README records a tighter explicit call-site threshold that the run actually meets.
-- Cluster membership is reported. A pass that keeps purity near 0.31 is not this milestone.
-- The anchored prose test still passes. Unknown codes stay unknown.
-
-Must not be claimed: raising `tau_residual` in the library, or calling the current unanchored reject a certification.
+Acceptance: a certified pack's codes are compared to a checked-in next-token distribution that was exported offline. No HuggingFace hub runtime. `certify` remains fail-closed. Until that exists, do not claim a code predicts a token. Opening it still requires an update to `LIMITATIONS.md`. This milestone is not started.
 
 ## Later
 
-These stay out of scope. The prose pack now certifies under the published defaults, which was the precondition for even considering them. Opening one still requires an update to `LIMITATIONS.md`. None of them are started.
-
-### Logit lens
-
-Status: **later**.
-
-Acceptance: a certified pack's codes are compared to a checked-in next-token distribution that was exported offline. No HuggingFace hub runtime. `certify` remains fail-closed. Until that exists, do not claim a code predicts a token.
+These stay out of scope. Varied prose now certifies under the published defaults with the local word-sentence SVD encoder, which was the precondition for even considering them. Opening one still requires an update to `LIMITATIONS.md`. None of them are started. Logit lens is the next slice, above.
 
 ### SAE zoo
 

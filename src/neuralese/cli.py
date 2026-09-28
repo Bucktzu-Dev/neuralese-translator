@@ -16,6 +16,7 @@ from neuralese.adapters import (
     save_pack,
 )
 from neuralese.alphabet import LearnConfig, learn_pack
+from neuralese.encode import ENCODER_CHAR_TRIGRAM, ENCODERS
 from neuralese.audit import certify, decodability_report
 from neuralese.translator import translate_stream
 from neuralese.unfold import recomputed_cluster_residual, unfold_code
@@ -32,6 +33,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     learn_p.add_argument("observations", type=Path)
     learn_p.add_argument("-o", "--output", type=Path, required=True)
     learn_p.add_argument("--n-symbols", type=int, default=8)
+    learn_p.add_argument(
+        "--encoder",
+        choices=list(ENCODERS),
+        default=ENCODER_CHAR_TRIGRAM,
+        help=(
+            "how to embed rows that have text and no vector. "
+            "char_trigram is the hashed n-gram default. "
+            "word_sentence_svd is a deterministic local TF-IDF SVD of this file, "
+            "not a model hidden state. Its width is --n-symbols."
+        ),
+    )
     learn_p.add_argument("--parent", type=Path, default=None, help="previous SymbolPack for aliases/ΔMDL")
     learn_p.add_argument("--min-cluster-size", type=int, default=2)
     learn_p.add_argument("--tau-residual", type=float, default=0.55)
@@ -97,6 +109,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 tau_residual=args.tau_residual,
                 seed=args.seed,
                 mdl_exception=args.mdl_exception,
+                encoder=args.encoder,
             ),
             previous=parent,
         )

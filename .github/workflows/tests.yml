@@ -58,6 +58,45 @@ jobs:
           assert 0.40 < report["residual"] < 0.55
           assert report["mdl_bits"] > 0
           PY
+      - name: Varied prose
+        run: |
+          python -m neuralese learn examples/varied_prose/observations.jsonl -o /tmp/varied-pack.json --encoder word_sentence_svd --n-symbols 8 --seed 0
+          python -m neuralese report /tmp/varied-pack.json > /tmp/varied-report.json
+          python -m neuralese certify /tmp/varied-pack.json --fail-on-undecodable
+          python - << 'PY'
+          import json
+          from collections import Counter
+          from pathlib import Path
+          from neuralese import load_pack
+          report = json.loads(Path("/tmp/varied-report.json").read_text())
+          assert report["n_live"] == 8
+          assert report["n_quarantined"] == 0
+          assert report["reservoir_size"] == 320
+          assert report["unfold_failures"] == []
+          assert report["gloss_coverage"] == 1.0
+          assert report["decision"] == "accept"
+          assert 0.45 < report["residual"] <= 0.55
+          assert report["mdl_bits"] > 0
+          pack = load_pack("/tmp/varied-pack.json")
+          assert pack.metadata["config"]["encoder"] == "word_sentence_svd"
+          assert pack.metadata["config"]["tau_residual"] == 0.55
+          assert pack.metadata["config"]["tau_kappa"] == 0.35
+          assert pack.guards.kappa_avg >= 0.35
+          scores = []
+          hits = 0
+          for symbol in pack.symbols:
+              if symbol.quarantined or not symbol.observation_ids:
+                  continue
+              counts = Counter(obs_id.rsplit("-", 1)[0] for obs_id in symbol.observation_ids)
+              count = counts.most_common(1)[0][1]
+              scores.append(count / len(symbol.observation_ids))
+              hits += count
+          purity = sum(scores) / len(scores)
+          # Diagnostic only. The character-trigram path on this file is about 0.31.
+          assert purity > 0.55, purity
+          assert min(scores) < purity
+          assert hits / 320 > 0.55
+          PY
       - name: Activation stack
         run: |
           python -m neuralese adapt examples/activation_stack/hidden_states.npz -o /tmp/act-obs.jsonl --layout hf_layers --layer 0 --pool last

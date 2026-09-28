@@ -1,6 +1,6 @@
 [project]
 name = "neuralese"
-version = "0.5.0"
+version = "0.6.0"
 description = "Neuralese to English Translator — audit inner symbols so they stay decodable."
 readme = "README.md"
 license = { text = "MIT" }

@@ -42,7 +42,7 @@ Varied sentences only (anchor suffix removed), same config:
 | decision | `reject` |
 | mean majority-topic purity | about 0.31 |
 
-Do not raise the library residual to make the second table pass.
+Do not raise the library residual to make the second table pass. The same stripped rows are checked in as [examples/varied_prose](../varied_prose). Character trigrams still reject that file at the numbers above. `learn --encoder word_sentence_svd` is a deterministic local TF-IDF SVD, not a hidden state, and that path certifies at these same library thresholds. Majority-topic purity on that run is about 0.71 unweighted and about 0.66 size-weighted, with one cluster at 0.40. Purity is a diagnostic. See that README.
 
 Glosses are the heuristic keyword receipt (`Symbol for ...`). They are sealed. They are not a claim that the class is a dictionary definition.
 

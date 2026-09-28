@@ -12,6 +12,7 @@ import numpy as np
 from neuralese.adapters import ensure_embedding, stack_embeddings
 from neuralese.clustering import cluster_survival, kmeans
 from neuralese.contracts import GuardSnapshot, Observation, Receipt, Symbol, SymbolPack
+from neuralese.encode import ENCODER_CHAR_TRIGRAM, ENCODER_WORD_SENTENCE_SVD, word_sentence_svd
 from neuralese.energy import cosine_similarity
 from neuralese.factorization import reconstruction_error, svd_factors
 from neuralese.gloss import learn_definition
@@ -29,6 +30,40 @@ class LearnConfig:
     seed: int = 0
     match_threshold: float = 0.55
     mdl_exception: Optional[str] = None
+    # char_trigram keeps the hashed default. word_sentence_svd is local TF-IDF SVD.
+    encoder: str = ENCODER_CHAR_TRIGRAM
+
+
+def _embed_rows(observations: Sequence[Observation], cfg: LearnConfig) -> List[Observation]:
+    """Copy observations and fill missing embeddings.
+
+    ``char_trigram`` is the per-row hash. ``word_sentence_svd`` is fit only to
+    the texts that still need a vector, in file order. Rows that already carry
+    an embedding are left unchanged, so toy fixtures keep their vectors.
+    """
+    rows = [Observation.from_dict(obs.to_dict()) for obs in observations]
+    if cfg.encoder == ENCODER_CHAR_TRIGRAM:
+        return [ensure_embedding(obs) for obs in rows]
+    if cfg.encoder != ENCODER_WORD_SENTENCE_SVD:
+        raise ValueError(
+            f"unknown encoder {cfg.encoder!r}; expected {ENCODER_CHAR_TRIGRAM!r} "
+            f"or {ENCODER_WORD_SENTENCE_SVD!r}"
+        )
+    missing = [index for index, obs in enumerate(rows) if not obs.embedding]
+    if not missing:
+        return rows
+    texts: List[str] = []
+    for index in missing:
+        text = rows[index].text
+        if not text:
+            raise ValueError(
+                f"observation {rows[index].observation_id!r} has neither embedding nor text"
+            )
+        texts.append(text)
+    vectors = word_sentence_svd(texts, rank=max(1, cfg.n_symbols))
+    for index, vector in zip(missing, vectors):
+        rows[index].embedding = vector
+    return rows
 
 
 def mdl_bits(n_symbols: int, residual: float, dim: int, n_obs: int, gloss_chars: int) -> float:
@@ -48,7 +83,7 @@ def learn_pack(
     cfg = config or LearnConfig()
     if not observations:
         raise ValueError("learn_pack requires at least one observation")
-    rows = [ensure_embedding(Observation.from_dict(o.to_dict())) for o in observations]
+    rows = _embed_rows(observations, cfg)
     seen_ids = set()
     for obs in rows:
         if obs.observation_id in seen_ids:
@@ -214,6 +249,7 @@ def learn_pack(
                 "tau_kappa": cfg.tau_kappa,
                 "tau_residual": cfg.tau_residual,
                 "tau_persist": cfg.tau_persist,
+                "encoder": cfg.encoder,
             },
         },
     )

@@ -32,7 +32,7 @@ neuralese audit pack.json
 neuralese certify pack.json --fail-on-undecodable
 ```
 
-`examples/toy_stream` is a toy fixture with hand-placed embeddings. The text path is [examples/prose_corpus](examples/prose_corpus): original sentences, hashed n-grams, and `neuralese report` for the decodability summary. CI learns that pack; it is not committed. The same sentences are exported as a checked-in `hf_layers` dump in [examples/activation_stack](examples/activation_stack).
+`examples/toy_stream` is a toy fixture with hand-placed embeddings. The text path is [examples/prose_corpus](examples/prose_corpus): original sentences, hashed n-grams, and `neuralese report` for the decodability summary. CI learns that pack; it is not committed. The same sentences are exported as a checked-in `hf_layers` dump in [examples/activation_stack](examples/activation_stack). [examples/varied_prose](examples/varied_prose) is that corpus with the repeated workplace sentence removed. It certifies only with `--encoder word_sentence_svd`, a deterministic local TF-IDF SVD. Hashed trigrams stay the default and still reject that file.
 
 JSONL observations:
 
@@ -40,7 +40,7 @@ JSONL observations:
 {"observation_id": "obs-1", "text": "hello there", "embedding": [1, 0, 0, 0]}
 ```
 
-If `embedding` is omitted, the tool builds a deterministic hashed n-gram vector from `text`.
+If `embedding` is omitted, the tool builds a deterministic hashed character-trigram vector from `text`. `--encoder word_sentence_svd` instead builds a deterministic local TF-IDF SVD from the texts in the file. That encoder is not a model hidden state. Rows that already carry an embedding are left unchanged.
 
 A stream file is `{"codes": [0, 1, 0]}` or a JSON list of integers.
 

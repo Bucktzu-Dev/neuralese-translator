@@ -44,7 +44,7 @@ Layer 0 after `adapt`, then `LearnConfig(n_symbols=8, seed=0)`:
 | `certify` at the defaults | pass |
 | majority-topic purity | 1.0 |
 
-Layer 0 is the same character-trigram hash the prose `learn` path builds, written out so `adapt` can load it. The repeated workplace sentence in the prose rows is still inside that hash. This file does not certify the varied sentences with that sentence removed.
+Layer 0 is the same character-trigram hash the prose `learn` path builds, written out so `adapt` can load it. The repeated workplace sentence in the prose rows is still inside that hash. This file does not certify the varied sentences with that sentence removed. Those sentences live in [examples/varied_prose](../varied_prose) and are embedded there with `word_sentence_svd`, a deterministic local TF-IDF SVD. This dump is not that encoder.
 
 The other layers also meet the default residual and kappa, and they are not the published command:
 
