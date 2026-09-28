@@ -216,6 +216,19 @@ def test_translate_stream_reuses_current_codes_with_terminals_cache():
     assert all(g.state == "aliased" for g in glosses)
 
 
+def test_translate_stream_reuses_alias_table_with_terminals_cache():
+    from unittest.mock import patch
+
+    from neuralese.contracts import SymbolPack
+
+    pack = make_pack(aliases={7: 0})
+    with patch.object(SymbolPack, "alias_table", wraps=pack.alias_table) as spy:
+        glosses = translate_stream(pack, [7] * 25, require_certified=False)
+    assert spy.call_count == 1
+    assert all(g.resolved_code == 0 for g in glosses)
+    assert all(g.state == "aliased" for g in glosses)
+
+
 def test_live_alias_source_is_ambiguous():
     import pytest
 
