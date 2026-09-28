@@ -32,7 +32,7 @@ def _receipt_layer(rows):
     return first
 
 
-def _same_output_path(output: Path, other: Path) -> bool:
+def _same_output_path(output: Path, other: Path, *, other_label: str) -> bool:
     try:
         return output.samefile(other)
     except OSError:
@@ -40,7 +40,7 @@ def _same_output_path(output: Path, other: Path) -> bool:
             return output.resolve() == other.resolve()
         except (OSError, RuntimeError) as copilot_exc:
             raise ValueError(
-                "output path could not be compared to the evidence path"
+                f"output path could not be compared to the {other_label}"
             ) from copilot_exc
 
 
@@ -172,12 +172,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "learn":
         try:
-            if _same_output_path(args.output, args.observations):
+            if _same_output_path(
+                args.output, args.observations, other_label="observations path"
+            ):
                 raise ValueError(
                     "output path must differ from the observations path"
                 )
             if args.parent is not None and _same_output_path(
-                args.output, args.parent
+                args.output, args.parent, other_label="parent path"
             ):
                 raise ValueError("output path must differ from the parent path")
             obs = load_observations_jsonl(args.observations)
@@ -213,11 +215,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "ingest":
         try:
-            if _same_output_path(args.output, args.activations):
+            if _same_output_path(
+                args.output, args.activations, other_label="activations path"
+            ):
                 raise ValueError(
                     "output path must differ from the activations path"
                 )
-            if args.texts is not None and _same_output_path(args.output, args.texts):
+            if args.texts is not None and _same_output_path(
+                args.output, args.texts, other_label="--texts path"
+            ):
                 raise ValueError("output path must differ from the --texts path")
             source_label = (
                 args.source if args.source is not None else args.activations.name
