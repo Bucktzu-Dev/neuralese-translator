@@ -1,0 +1,48 @@
+{"observation_id": "ambiguous-001", "topic": "archive"}
+{"observation_id": "ambiguous-002", "topic": "archive"}
+{"observation_id": "ambiguous-003", "topic": "archive"}
+{"observation_id": "ambiguous-004", "topic": "archive"}
+{"observation_id": "ambiguous-005", "topic": "archive"}
+{"observation_id": "ambiguous-006", "topic": "archive"}
+{"observation_id": "ambiguous-007", "topic": "archive"}
+{"observation_id": "ambiguous-008", "topic": "archive"}
+{"observation_id": "ambiguous-009", "topic": "clinic"}
+{"observation_id": "ambiguous-010", "topic": "clinic"}
+{"observation_id": "ambiguous-011", "topic": "clinic"}
+{"observation_id": "ambiguous-012", "topic": "clinic"}
+{"observation_id": "ambiguous-013", "topic": "clinic"}
+{"observation_id": "ambiguous-014", "topic": "clinic"}
+{"observation_id": "ambiguous-015", "topic": "clinic"}
+{"observation_id": "ambiguous-016", "topic": "clinic"}
+{"observation_id": "ambiguous-017", "topic": "radio"}
+{"observation_id": "ambiguous-018", "topic": "radio"}
+{"observation_id": "ambiguous-019", "topic": "radio"}
+{"observation_id": "ambiguous-020", "topic": "radio"}
+{"observation_id": "ambiguous-021", "topic": "radio"}
+{"observation_id": "ambiguous-022", "topic": "radio"}
+{"observation_id": "ambiguous-023", "topic": "radio"}
+{"observation_id": "ambiguous-024", "topic": "radio"}
+{"observation_id": "ambiguous-025", "topic": "kitchen"}
+{"observation_id": "ambiguous-026", "topic": "kitchen"}
+{"observation_id": "ambiguous-027", "topic": "kitchen"}
+{"observation_id": "ambiguous-028", "topic": "kitchen"}
+{"observation_id": "ambiguous-029", "topic": "kitchen"}
+{"observation_id": "ambiguous-030", "topic": "kitchen"}
+{"observation_id": "ambiguous-031", "topic": "kitchen"}
+{"observation_id": "ambiguous-032", "topic": "kitchen"}
+{"observation_id": "ambiguous-033", "secondary_topic": "clinic", "topic": "archive"}
+{"observation_id": "ambiguous-034", "secondary_topic": "kitchen", "topic": "clinic"}
+{"observation_id": "ambiguous-035", "secondary_topic": "kitchen", "topic": "radio"}
+{"observation_id": "ambiguous-036", "secondary_topic": "radio", "topic": "archive"}
+{"observation_id": "ambiguous-037", "secondary_topic": "archive", "topic": "clinic"}
+{"observation_id": "ambiguous-038", "secondary_topic": "clinic", "topic": "kitchen"}
+{"observation_id": "ambiguous-039", "secondary_topic": "archive", "topic": "radio"}
+{"observation_id": "ambiguous-040", "secondary_topic": "radio", "topic": "kitchen"}
+{"observation_id": "ambiguous-041", "secondary_topic": "kitchen", "topic": "archive"}
+{"observation_id": "ambiguous-042", "secondary_topic": "radio", "topic": "clinic"}
+{"observation_id": "ambiguous-043", "secondary_topic": "archive", "topic": "kitchen"}
+{"observation_id": "ambiguous-044", "secondary_topic": "clinic", "topic": "radio"}
+{"observation_id": "ambiguous-045", "secondary_topic": "clinic", "topic": "archive"}
+{"observation_id": "ambiguous-046", "secondary_topic": "kitchen", "topic": "clinic"}
+{"observation_id": "ambiguous-047", "secondary_topic": "kitchen", "topic": "radio"}
+{"observation_id": "ambiguous-048", "secondary_topic": "radio", "topic": "kitchen"}
