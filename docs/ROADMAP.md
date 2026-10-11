@@ -108,32 +108,33 @@ Status: **done** (v0.7).
 
 v0.6 used a shorter closed-class list on the same SVD. That run certified (residual 0.5057, mean kappa 0.8713) with unweighted purity 0.7084 and size-weighted purity 0.6594. Its bakery-majority cluster was 22 of 55, purity 0.4000, which is mixed. v0.7 is the same encoder name with the Glasgow stop list.
 
+The factorization pins BLAS, OpenMP, and MKL to one thread. The table is the reference BLAS/LAPACK 3.12 measurement. Commit 5527cdc, on another BLAS, measured residual 0.4394, mean kappa 0.9044, 8 live and 0 quarantined, unweighted purity 0.7572, size-weighted purity 0.7250 (232 of 320), worst cluster pottery-majority 31 of 55 at 0.5636. Singular values 8 and 9 of this file differ by about 0.022.
+
 | knob | published value | measured on this run |
 |---|---|---|
-| `tau_residual` | 0.55 | residual 0.4394 |
-| `tau_kappa` | 0.35 | mean kappa 0.9044 |
-| `n_symbols` | 8 | 8 live, 0 quarantined |
+| `tau_residual` | 0.55 | residual 0.5239 |
+| `tau_kappa` | 0.35 | mean kappa 0.8814 |
+| `n_symbols` | 8 | 7 live, 1 quarantined |
 | SVD width | 8 | same as `n_symbols` |
 | seed | 0 | fixed |
 | decision | | `accept` |
 | `certify` | library defaults | pass |
 
-Majority-topic purity is a diagnostic, not a certify gate. `neuralese report --topics FILE` reads an optional label file and adds `cluster_purity` (`label` is `mixed` when majority purity is under 0.5). `certify` does not read that file and does not gain a purity field. On this run the unweighted mean is 0.7572 and the size-weighted mean is 0.7250 (232 of 320 rows sit in a cluster whose majority topic is their own). Every topic is the majority of one live cluster. Every live cluster has majority purity at least 0.5636.
+Majority-topic purity is a diagnostic, not a certify gate. `neuralese report --topics FILE` reads an optional label file and adds `cluster_purity` (`label` is `mixed` when majority purity is under 0.5). `certify` does not read that file and does not gain a purity field. On this run the unweighted mean is 0.6837 and the size-weighted mean is 0.6395 (204 of 319 live rows sit in a cluster whose majority topic is their own). The quarantined cluster is a single orchard row and is omitted from that average. Ledger is not a live majority.
 
 Per live cluster, in code order:
 
 | rows | majority | count | purity |
 |---|---|---|---|
-| 45 | orchard | 27 | 0.6000 |
-| 55 | pottery | 31 | 0.5636 |
-| 43 | joinery | 32 | 0.7442 |
-| 33 | ledger | 28 | 0.8485 |
-| 26 | apiary | 26 | 1.0000 |
-| 29 | harbor | 27 | 0.9310 |
-| 46 | bakery | 32 | 0.6957 |
-| 43 | weather | 29 | 0.6744 |
+| 50 | bakery | 32 | 0.6400 |
+| 59 | pottery | 31 | 0.5254 |
+| 42 | joinery | 31 | 0.7381 |
+| 45 | orchard | 28 | 0.6222 |
+| 32 | harbor | 27 | 0.8438 |
+| 64 | weather | 29 | 0.4531 |
+| 27 | apiary | 26 | 0.9630 |
 
-The lowest cluster is pottery-majority, 31 of 55. The bakery-majority cluster is 32 of 46. Both are at or above 0.5, so neither is called mixed. The geometry is decodable under the published thresholds and still only partly topical. It is not eight pure topic classes. Codes are whatever k-means assigned.
+The lowest cluster is weather-majority, 29 of 64, purity 0.4531, so the diagnostic calls it mixed. The geometry is decodable under the published thresholds and still only partly topical. It is not seven pure topic classes. Codes are whatever k-means assigned.
 
 The character-trigram encoder on this same file still rejects at the library defaults: residual 0.7710, mean kappa 0.6357, majority-topic purity 0.3085, `decision=reject`, `residual_ok` false. That locked test stays.
 
@@ -142,7 +143,7 @@ Must not be claimed:
 - These coordinates are model hidden states, a logit lens, or an SAE.
 - Purity was a training target. Topic ids are not in the vector.
 - A live cluster with majority purity under 0.5 is that topic. Say mixed.
-- The pottery-majority symbol is the pottery, the bakery-majority symbol is the bakery, or any symbol is a pure workplace. Apiary's count on this file is 26 of 26. The code is still the integer k-means assigned.
+- The pottery-majority symbol is the pottery, the bakery-majority symbol is the bakery, or any symbol is a pure workplace. Apiary's count on this file is 26 of 27. The weather-majority cluster is mixed. The code is still the integer k-means assigned.
 - Hashed character trigrams now certify the varied file.
 - `report` is a second, looser gate. `certify` still decides. `cluster_purity` is absent unless `--topics` is passed.
 

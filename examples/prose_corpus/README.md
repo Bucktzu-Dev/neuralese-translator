@@ -42,7 +42,7 @@ Varied sentences only (anchor suffix removed), same config:
 | decision | `reject` |
 | mean majority-topic purity | about 0.31 |
 
-Do not raise the library residual to make the second table pass. The same stripped rows are checked in as [examples/varied_prose](../varied_prose). Character trigrams still reject that file at the numbers above. `learn --encoder word_sentence_svd` is a deterministic local TF-IDF SVD, not a hidden state, and that path certifies at these same library thresholds. Majority-topic purity on that run is about 0.757 unweighted and about 0.725 size-weighted. The lowest cluster is pottery-majority, about 0.564. Purity is a diagnostic. See that README.
+Do not raise the library residual to make the second table pass. The same stripped rows are checked in as [examples/varied_prose](../varied_prose). Character trigrams still reject that file at the numbers above. `learn --encoder word_sentence_svd` is a local TF-IDF SVD with BLAS pinned to one thread, not a hidden state, and that path certifies at these same library thresholds. On reference BLAS the live-cluster purity is about 0.684 unweighted and about 0.639 size-weighted, with 7 live symbols. The lowest live cluster is weather-majority, about 0.453, and is called mixed. An earlier BLAS measured about 0.757 unweighted, about 0.725 size-weighted, and 8 live symbols. Purity is a diagnostic. See that README.
 
 Glosses are the heuristic keyword receipt (`Symbol for ...`). They are sealed. They are not a claim that the class is a dictionary definition.
 

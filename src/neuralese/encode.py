@@ -14,6 +14,7 @@ from typing import List, Sequence
 import numpy as np
 
 from neuralese.adapters import hashed_ngram_vector
+from neuralese.factorization import pin_blas_threads
 
 ENCODER_CHAR_TRIGRAM = "char_trigram"
 ENCODER_WORD_SENTENCE_SVD = "word_sentence_svd"
@@ -370,7 +371,10 @@ def word_sentence_svd(texts: Sequence[str], *, rank: int = 8) -> List[List[float
     raw count. IDF is ``ln(N / df) + 1`` with document frequency ``df``.
     Rows are L2-normalized, factored with a truncated SVD of width ``rank``,
     scaled by the singular values, and L2-normalized again. Each left singular
-    vector is signed so its largest-magnitude coordinate is positive.
+    vector is signed so its largest-magnitude coordinate is positive. A tie
+    keeps the lowest index. Flipping a whole column does not change squared
+    Euclidean k-means. BLAS/OpenMP/MKL are pinned to one thread before the
+    factorization so the thread count cannot move the subspace.
 
     This is a deterministic local encoder. It is not a hidden state.
     """
@@ -401,6 +405,7 @@ def word_sentence_svd(texts: Sequence[str], *, rank: int = 8) -> List[List[float
     matrix = np.divide(matrix, norms, out=np.zeros_like(matrix), where=norms > 0.0)
 
     width = min(rank, matrix.shape[0], matrix.shape[1])
+    pin_blas_threads(1)
     left, singular, _right = np.linalg.svd(matrix, full_matrices=False)
     left = np.array(left[:, :width], dtype=np.float64, copy=True)
     singular = np.asarray(singular[:width], dtype=np.float64)
