@@ -12,6 +12,8 @@ PR-1 is plan-only. The discrepancy report and regression-test proposal are in [P
 
 The rank-boundary fixture is [PR1_RANK_BOUNDARY.md](PR1_RANK_BOUNDARY.md). On the frozen rank-8 word-sentence SVD it labels the weather mixture `CLUSTERING_LOSS`. `certify` stays the structural contract. The audit decision remains `RESEARCH_FAIL`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
 
+The clustering-isolation trial on those same frozen vectors is [PR1_CLUSTERING_ISOLATION.md](PR1_CLUSTERING_ISOLATION.md). Production k-means is unchanged. The trial's isolated cause is `UNRESOLVED`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
+
 ## Done
 
 ### Reservoir, unfold, and certify
