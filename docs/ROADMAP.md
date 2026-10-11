@@ -16,6 +16,8 @@ The clustering-isolation trial on those same frozen vectors is [PR1_CLUSTERING_I
 
 The generalization trial of those four frozen candidates on new fixtures is [PR1_CLUSTERING_GENERALIZATION.md](PR1_CLUSTERING_GENERALIZATION.md). Production k-means is unchanged. The trial verdict is `UNRESOLVED`. The recommendation is `NONE`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
 
+The evaluation-control integrity audit of that trial is [PR1_EVAL_CONTROL_INTEGRITY.md](PR1_EVAL_CONTROL_INTEGRITY.md). Production k-means is unchanged. The audit verdict is `UNRESOLVED`. The recommendation is `NONE`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
+
 ## Done
 
 ### Reservoir, unfold, and certify
