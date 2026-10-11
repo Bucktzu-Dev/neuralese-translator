@@ -363,6 +363,67 @@ def content_tokens(text: str) -> List[str]:
     ]
 
 
+def word_sentence_tfidf(texts: Sequence[str]) -> np.ndarray:
+    """Row-L2-normalized TF-IDF matrix for ``texts``, in order.
+
+    Tokens in ``FUNCTION_WORDS`` are dropped. Term frequency is the raw
+    count. IDF is ``ln(N / df) + 1``. An empty input has shape ``(0, 0)``.
+    Texts with no remaining tokens have shape ``(n, 0)``. Topic labels are
+    not an argument. ``word_sentence_svd`` factors this matrix.
+    """
+    rows = [content_tokens(text or "") for text in texts]
+    n_rows = len(rows)
+    if n_rows == 0:
+        return np.zeros((0, 0), dtype=np.float64)
+    document_frequency: dict[str, int] = {}
+    for tokens in rows:
+        for token in set(tokens):
+            document_frequency[token] = document_frequency.get(token, 0) + 1
+    if not document_frequency:
+        return np.zeros((n_rows, 0), dtype=np.float64)
+
+    vocabulary = sorted(document_frequency)
+    index = {token: position for position, token in enumerate(vocabulary)}
+    matrix = np.zeros((n_rows, len(vocabulary)), dtype=np.float64)
+    for row_index, tokens in enumerate(rows):
+        counts: dict[str, int] = {}
+        for token in tokens:
+            counts[token] = counts.get(token, 0) + 1
+        for token, count in counts.items():
+            idf = math.log(n_rows / document_frequency[token]) + 1.0
+            matrix[row_index, index[token]] = float(count) * idf
+    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+    return np.divide(matrix, norms, out=np.zeros_like(matrix), where=norms > 0.0)
+
+
+def _embed_tfidf_svd(matrix: np.ndarray, rank: int) -> np.ndarray:
+    """Truncate ``matrix`` the way ``word_sentence_svd`` does.
+
+    Leading left singular vectors are signed so the largest-magnitude
+    coordinate is positive, scaled by the singular values, and the rows are
+    L2-normalized. BLAS/OpenMP/MKL are pinned to one thread first.
+    """
+    width = min(rank, matrix.shape[0], matrix.shape[1])
+    pin_blas_threads(1)
+    left, singular, _right = np.linalg.svd(matrix, full_matrices=False)
+    left = np.array(left[:, :width], dtype=np.float64, copy=True)
+    singular = np.asarray(singular[:width], dtype=np.float64)
+    for column in range(width):
+        pivot = int(np.argmax(np.abs(left[:, column])))
+        if left[pivot, column] < 0.0:
+            left[:, column] *= -1.0
+    embedded = left * singular
+    if width < rank:
+        embedded = np.pad(embedded, ((0, 0), (0, rank - width)))
+    row_norms = np.linalg.norm(embedded, axis=1, keepdims=True)
+    return np.divide(
+        embedded,
+        row_norms,
+        out=np.zeros_like(embedded),
+        where=row_norms > 0.0,
+    )
+
+
 def word_sentence_svd(texts: Sequence[str], *, rank: int = 8) -> List[List[float]]:
     """TF-IDF word-sentence SVD.
 
@@ -380,50 +441,12 @@ def word_sentence_svd(texts: Sequence[str], *, rank: int = 8) -> List[List[float
     """
     if rank < 1:
         raise ValueError(f"rank must be positive, got {rank}")
-    rows = [content_tokens(text or "") for text in texts]
-    n_rows = len(rows)
-    if n_rows == 0:
+    matrix = word_sentence_tfidf(texts)
+    if matrix.shape[0] == 0:
         return []
-    document_frequency: dict[str, int] = {}
-    for tokens in rows:
-        for token in set(tokens):
-            document_frequency[token] = document_frequency.get(token, 0) + 1
-    if not document_frequency:
-        return [[0.0] * rank for _ in rows]
-
-    vocabulary = sorted(document_frequency)
-    index = {token: position for position, token in enumerate(vocabulary)}
-    matrix = np.zeros((n_rows, len(vocabulary)), dtype=np.float64)
-    for row_index, tokens in enumerate(rows):
-        counts: dict[str, int] = {}
-        for token in tokens:
-            counts[token] = counts.get(token, 0) + 1
-        for token, count in counts.items():
-            idf = math.log(n_rows / document_frequency[token]) + 1.0
-            matrix[row_index, index[token]] = float(count) * idf
-    norms = np.linalg.norm(matrix, axis=1, keepdims=True)
-    matrix = np.divide(matrix, norms, out=np.zeros_like(matrix), where=norms > 0.0)
-
-    width = min(rank, matrix.shape[0], matrix.shape[1])
-    pin_blas_threads(1)
-    left, singular, _right = np.linalg.svd(matrix, full_matrices=False)
-    left = np.array(left[:, :width], dtype=np.float64, copy=True)
-    singular = np.asarray(singular[:width], dtype=np.float64)
-    for column in range(width):
-        pivot = int(np.argmax(np.abs(left[:, column])))
-        if left[pivot, column] < 0.0:
-            left[:, column] *= -1.0
-    embedded = left * singular
-    if width < rank:
-        embedded = np.pad(embedded, ((0, 0), (0, rank - width)))
-    row_norms = np.linalg.norm(embedded, axis=1, keepdims=True)
-    embedded = np.divide(
-        embedded,
-        row_norms,
-        out=np.zeros_like(embedded),
-        where=row_norms > 0.0,
-    )
-    return embedded.tolist()
+    if matrix.shape[1] == 0:
+        return [[0.0] * rank for _ in range(matrix.shape[0])]
+    return _embed_tfidf_svd(matrix, rank).tolist()
 
 
 def embed_texts(

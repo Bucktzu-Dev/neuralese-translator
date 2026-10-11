@@ -10,6 +10,8 @@ The audit contract does not change with the status labels: `unknown` and `quaran
 
 PR-1 is plan-only. The discrepancy report and regression-test proposal are in [PR1_CERTIFICATION_DISCREPANCY.md](PR1_CERTIFICATION_DISCREPANCY.md). That note leaves `certify` as it is. Authority for a schema change, a text-to-activation reconstructor, an eval fixture, a logit lens, an SAE, a hub runtime, or a learned model stays `RUNTIME_NOT_AUTHORIZED`.
 
+The rank-boundary fixture is [PR1_RANK_BOUNDARY.md](PR1_RANK_BOUNDARY.md). On the frozen rank-8 word-sentence SVD it labels the weather mixture `CLUSTERING_LOSS`. `certify` stays the structural contract. The audit decision remains `RESEARCH_FAIL`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
+
 ## Done
 
 ### Reservoir, unfold, and certify
