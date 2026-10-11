@@ -6,6 +6,10 @@ A milestone is `done` only when the tree matches it. `now` is empty after the va
 
 The audit contract does not change with the status labels: `unknown` and `quarantined` stay required states, gloss text stays inside the pack checksum, and tests stay deterministic.
 
+## v0.2 directive
+
+PR-1 is plan-only. The discrepancy report and regression-test proposal are in [PR1_CERTIFICATION_DISCREPANCY.md](PR1_CERTIFICATION_DISCREPANCY.md). That note leaves `certify` as it is. Authority for a schema change, a text-to-activation reconstructor, an eval fixture, a logit lens, an SAE, a hub runtime, or a learned model stays `RUNTIME_NOT_AUTHORIZED`.
+
 ## Done
 
 ### Reservoir, unfold, and certify
