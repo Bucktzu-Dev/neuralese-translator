@@ -185,14 +185,15 @@ def test_production_encoder_and_taus_are_unchanged():
 
 def test_tests_do_not_download_weights():
     research = SOURCE.read_text(encoding="utf-8")
-    test_source = Path(__file__).read_text(encoding="utf-8")
     workflow = WORKFLOW.read_text(encoding="utf-8")
+    capture = CAPTURE.read_text(encoding="utf-8")
     for banned in ("from_pretrained", "import torch", "urlretrieve", "import urllib", "requests.get"):
         assert banned not in research
-        assert banned not in test_source
+        assert banned not in workflow
     assert "capture_once" not in workflow
     assert "pythia" not in workflow
-    assert "import torch" in CAPTURE.read_text(encoding="utf-8")
+    assert "import torch" in capture
+    assert "urlretrieve" in capture
 
 
 def test_missing_fixture_stays_unresolved(tmp_path):
