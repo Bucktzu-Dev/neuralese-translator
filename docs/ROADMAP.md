@@ -22,6 +22,8 @@ The train-only encoder isolation trial is [PR1_ENCODER_ISOLATION.md](PR1_ENCODER
 
 The OOV coverage trial of train-independent hashed features on that same frozen split is [PR1_OOV_COVERAGE.md](PR1_OOV_COVERAGE.md). Production SVD and k-means are unchanged. The trial decision is `UNRESOLVED`. The recommendation is `NONE`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
 
+The activation-source trial is [PR1_ACTIVATION_SOURCE.md](PR1_ACTIVATION_SOURCE.md). It runs the existing `learn_pack` and `certify` on hidden states captured once from EleutherAI/pythia-14m at revision `cf967c0a9a04383db6f7b1108d86b2962634b4ac`. The text-encoder trials stay frozen: the rank-boundary, clustering-isolation, clustering-generalization, evaluation-control, encoder-isolation, and OOV notes are not reopened, and `word_sentence_svd` stays the production text encoder. The trial verdict is `PASS_FOR_LATER_PR`. The recommendation is `LATER_ISOLATED_PR`. That recommendation is not production admission. `RUNTIME_NOT_AUTHORIZED` is unchanged.
+
 ## Done
 
 ### Reservoir, unfold, and certify
@@ -169,7 +171,7 @@ Nothing is in progress. The varied-prose purity slice above is the tree.
 
 Status: **next**. Pick this up first.
 
-Acceptance: a certified pack's codes are compared to a checked-in next-token distribution that was exported offline. No HuggingFace hub runtime. `certify` remains fail-closed. Until that exists, do not claim a code predicts a token. Opening it still requires an update to `LIMITATIONS.md`. This milestone is not started. Majority purity at or above 0.5 on the lexical SVD does not start it: there is still no checked-in next-token distribution.
+Acceptance: a certified pack's codes are compared to a checked-in next-token distribution that was exported offline. No HuggingFace hub runtime. `certify` remains fail-closed. Until that product comparison exists, do not claim a production code predicts a token. Opening it still requires an update to `LIMITATIONS.md`. This milestone is not started. Majority purity at or above 0.5 on the lexical SVD does not start it. The activation-source note committed an offline next-token logit matrix for one pinned checkpoint and scored it only inside that research trial. `certify` does not read those logits, and that trial's verdict does not start this milestone.
 
 ## Later
 
