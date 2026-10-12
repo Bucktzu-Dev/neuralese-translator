@@ -1,10 +1,10 @@
 # PR-1 certification discrepancy report
 
-Status: **PLAN_ONLY**. Tracking: ECHO-NLA-001 / GitHub issue #6.
+Status: **SECTIONS 4 AND 5 IMPLEMENTED**. Tracking: ECHO-NLA-001 / GitHub issue #6.
 
-Audit decision: **RESEARCH_FAIL**. This is a reading of the tree at package version **0.7.0**. It is not a pass for a v0.2 certificate, and it does not authorize runtime integration.
+Sections 1–3 are the reading of the certificate before schema 0.2. Section 8 records what was implemented from sections 4 and 5, and what was left unspecified. Package version stays **0.7.0** (`pyproject.toml`, `src/neuralese/__init__.py`). That number is the package. Certificate `schema_version` `"0.2"` is a different number.
 
-`certify`, `SymbolPack.compute_checksum`, `learn_pack`, `translate_stream`, and the adapters are unchanged. No regression test from section 5 is added here. Package version stays 0.7.0 (`pyproject.toml`, `src/neuralese/__init__.py`). That number is the package. There is no certificate schema version.
+The pre-implementation audit decision stays **RESEARCH_FAIL**. Schema 0.2 does not emit `RESEARCH_PASS`. Authority stays **RUNTIME_NOT_AUTHORIZED**. Numerical and semantic gates stay **NOT IMPLEMENTED**. `SymbolPack.compute_checksum` is unchanged. `learn_pack`, the translator's four gloss states, and the adapters are unchanged.
 
 ## External context
 
@@ -12,7 +12,9 @@ Anthropic, *Natural Language Autoencoders* (7 May 2026), reconstructs an activat
 
 ## 1. Current certificate fields and what `passed` means
 
-`AuditCertificate` (`src/neuralese/contracts.py`) has twelve fields and no schema, evidence-class, or authority field:
+This section describes the twelve fields as they were before schema 0.2. The fields added in section 8 sit beside them. `passed` is still the same four-gate conjunction.
+
+`AuditCertificate` (`src/neuralese/contracts.py`) had twelve fields and no schema, evidence-class, or authority field:
 
 | field | what it stores today |
 |---|---|
@@ -157,7 +159,7 @@ Unsupported certificate content is absent rather than labeled:
 
 ## 4. Proposed v0.2 certificate schema
 
-Not implemented. Package version stays 0.7.0 until a later change that is outside this plan. Schema version and package version are different numbers.
+The field list below is what section 8 implemented. Package version stays 0.7.0. Schema version and package version are different numbers. The sentences in this section that say the fields are absent describe the tree before that implementation.
 
 A v0.2 certificate would add, beside the current twelve fields:
 
@@ -195,7 +197,7 @@ A fully certified symbol, under this proposal, would need a structural pass that
 
 ## 5. Regression-test proposal
 
-Do not add these tests in PR-1. Proposed new tests live in `tests/test_pr1_certification.py` and use `make_pack` from `tests/packutil.py`. Expectations below were checked against current `certify` / `translate_stream`; they describe today's behavior so a later patch can lock it.
+The tests proposed below are now in `tests/test_pr1_certification.py` and use `make_pack` from `tests/packutil.py`. Expectations were checked against `certify` / `translate_stream` before schema 0.2 and still describe the digest and the four structural gates. Section 8 notes the one assertion that changed because `certify` now writes `schema_version`.
 
 | test | file today | setup and mutation | expected result | status |
 |---|---|---|---|---|
@@ -229,3 +231,27 @@ Numerical and semantic gates stay **NOT IMPLEMENTED**.
 ## 7. Recommended next action
 
 After this report is accepted, implement only the PR-1 tests in section 5 and the versioned certificate fields in section 4. Keep numerical and semantic gates `NOT IMPLEMENTED` and `UNRESOLVED`. Keep `authority` at `RUNTIME_NOT_AUTHORIZED`. Leave the public gloss states as they are. Do not start PR-3.
+
+That action is what section 8 records. It is not a wider certificate.
+
+## 8. Implementation note
+
+Schema 0.2 is what `certify()` writes. `passed` is still true only when `addressable`, `unfoldable`, `gloss_bound`, and `residual_ok` are all true. A structural miss sets `decision` to `RESEARCH_FAIL`. A structural pass sets `decision` to `UNRESOLVED`, because numerical and semantic gates are unimplemented. `decision` is never `RESEARCH_PASS`. `authority` is `RUNTIME_NOT_AUTHORIZED`. `package_version` is an informational copy of `neuralese.__version__` (`0.7.0`) and is not a gate.
+
+`evidence.structural` records the four booleans, the failure list, and `digest_does_not_bind`: `proto_embedding`, `confidence`, `examples`, `survival`, `symbol.metadata`, `kappa`, `guards`, `receipts`, `parent_pack_id`, `mdl_bits`, `pack.metadata`. Those fields were not added to `compute_checksum`. `evidence.numerical` and `evidence.semantic` are `status: NOT IMPLEMENTED`, `decision: UNRESOLVED`, with the forbidden reading and the forbidden inputs from section 4.
+
+Legacy certificate JSON that omits `schema_version` loads as `unversioned`. `AuditCertificate.from_dict` still accepts the original twelve fields. An omitted `decision` stays `UNRESOLVED` and is not recomputed into a pass. An omitted `authority` loads as `RUNTIME_NOT_AUTHORIZED`. An omitted `package_version` stays null. A stored `RESEARCH_PASS`, any other authority, or a schema label other than `0.2` or `unversioned` is rejected. There is no v0.1 mode. A pack sealed with an empty reservoir still fails unfold (`missing reservoir observation …`) with `passed` false and `decision` `RESEARCH_FAIL`. Resealing that empty reservoir does not make `passed` true.
+
+Section 5 tests that were absent are in `tests/test_pr1_certification.py`. They lock the published fail/pass results, including the prototype nudge inside `PROTO_ATOL` `1e-5` (`passed` true) and the confidence edit (`passed` true, digest unchanged, translate confidence 0.92). `tests/test_unfold.py::test_certify_fails_when_prototype_drifts_from_reservoir` now also asserts `gloss_bound` stays true after reseal, because the prototype is outside the digest. The expected unfold failure did not become a pass.
+
+`test_unversioned_empty_reservoir_fails_unfold` was specified against a certificate that had no `schema_version` attribute. `certify()` now writes `schema_version` `"0.2"` on that failure. The unfold failure, `gloss_bound` true, and `passed` false are unchanged. The loader test covers a twelve-field dict that still has no schema field.
+
+### Not specified, and not implemented
+
+- A per-symbol certified flag, and any gloss state besides `ok` / `aliased` / `quarantined` / `unknown`. The plan distinguishes a translated gloss from a certified symbol by the certificate: a full certification would need a structural pass and numerical and semantic decisions other than `UNRESOLVED`, and no symbol meets that bar. `translate_stream` state `ok` stays the weaker public gloss. The exact extra gloss fields were not defined, so none were added.
+- Putting `proto_embedding` in the digest, or declaring that unfold rather than the digest closes that gap. Section 4 names that closure as later work. The 1e-6 prototype nudge still passes. The larger prototype assignment still fails unfold and residual honesty with `gloss_bound` true.
+- Binding `confidence`, `examples`, `survival`, symbol metadata / `kappa`, `guards`, `receipts`, `parent_pack_id`, `mdl_bits`, or pack `metadata`. The plan lists them as unbound. The tests lock that.
+- A legacy mode named v0.1 that turns a missing reservoir into `passed=true`.
+- Rewording the quarantined gloss. Section 3 records that `[quarantined: symbol N is not certified unfoldable]` overclaims the reason, and says the state machine is not changed. The sentence is unchanged.
+- Changing `state=ok` when the definition is empty or a reservoir id was deleted. Those cases stay `ok` with an explicit gap string, and `certify` still fails when the structural gate fails. `tau_residual` 0.55 and `tau_kappa` 0.35 are unchanged. The production encoder, `word_sentence_svd`, farthest-first k-means, `learn_pack` clustering, and the research codecs' frozen constants are unchanged.
+- A package bump. Schema 0.2 is not a package version. The package stays 0.7.0. This repository has no changelog file; this section is the record.

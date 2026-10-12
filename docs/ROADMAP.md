@@ -4,11 +4,11 @@ Tracked plan for this repository. Statuses are `done`, `now`, `next`, and `later
 
 A milestone is `done` only when the tree matches it. `now` is empty after the varied-prose slice below. `next` is what a follow-up should pick up. `later` stays out of scope until that follow-up opens it on purpose.
 
-The audit contract does not change with the status labels: `unknown` and `quarantined` stay required states, gloss text stays inside the pack checksum, and tests stay deterministic.
+The audit contract does not change with the status labels: `unknown` and `quarantined` stay required states, gloss text stays inside the pack checksum, and tests stay deterministic. Certificate schema `0.2` does not add a gloss state. `passed` stays structural. Authority stays `RUNTIME_NOT_AUTHORIZED`.
 
 ## v0.2 directive
 
-PR-1 is plan-only. The discrepancy report and regression-test proposal are in [PR1_CERTIFICATION_DISCREPANCY.md](PR1_CERTIFICATION_DISCREPANCY.md). That note leaves `certify` as it is. Authority for a schema change, a text-to-activation reconstructor, an eval fixture, a logit lens, an SAE, a hub runtime, or a learned model stays `RUNTIME_NOT_AUTHORIZED`.
+The discrepancy report is [PR1_CERTIFICATION_DISCREPANCY.md](PR1_CERTIFICATION_DISCREPANCY.md). Certificate schema `0.2` is implemented there: `passed` stays the structural conjunction, `authority` is `RUNTIME_NOT_AUTHORIZED`, and numerical and semantic gates stay `NOT IMPLEMENTED` / `UNRESOLVED`. The package version is still 0.7.0. A text-to-activation reconstructor, an eval fixture, a logit lens, an SAE, a hub runtime, or a learned model stays `RUNTIME_NOT_AUTHORIZED`.
 
 The rank-boundary fixture is [PR1_RANK_BOUNDARY.md](PR1_RANK_BOUNDARY.md). On the frozen rank-8 word-sentence SVD it labels the weather mixture `CLUSTERING_LOSS`. `certify` stays the structural contract. The audit decision remains `RESEARCH_FAIL`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
 

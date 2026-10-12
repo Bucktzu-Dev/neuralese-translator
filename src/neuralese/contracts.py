@@ -8,6 +8,38 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 GLOSS_STATES = ("ok", "aliased", "quarantined", "unknown")
 
+# Certificate schema is not the package version. 0.2 is the certificate
+# object certify() writes. A certificate dict that omits the field loads
+# as unversioned. There is no v0.1 mode that turns a missing reservoir
+# into passed=true.
+CERTIFICATE_SCHEMA_V02 = "0.2"
+CERTIFICATE_SCHEMA_UNVERSIONED = "unversioned"
+CERTIFICATE_AUTHORITY = "RUNTIME_NOT_AUTHORIZED"
+CERTIFICATE_DECISION_RESEARCH_FAIL = "RESEARCH_FAIL"
+CERTIFICATE_DECISION_UNRESOLVED = "UNRESOLVED"
+_CERTIFICATE_SCHEMAS = frozenset(
+    {CERTIFICATE_SCHEMA_V02, CERTIFICATE_SCHEMA_UNVERSIONED}
+)
+_CERTIFICATE_DECISIONS = frozenset(
+    {CERTIFICATE_DECISION_RESEARCH_FAIL, CERTIFICATE_DECISION_UNRESOLVED}
+)
+
+# Named by the v0.2 schema as outside the digest. certify() records this
+# list. It does not add these fields to compute_checksum.
+DIGEST_DOES_NOT_BIND = (
+    "proto_embedding",
+    "confidence",
+    "examples",
+    "survival",
+    "symbol.metadata",
+    "kappa",
+    "guards",
+    "receipts",
+    "parent_pack_id",
+    "mdl_bits",
+    "pack.metadata",
+)
+
 
 def canonical_dumps(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
@@ -269,12 +301,55 @@ class AuditCertificate:
     failures: List[str]
     timestamp: float
     details: Dict[str, Any] = field(default_factory=dict)
+    schema_version: str = CERTIFICATE_SCHEMA_UNVERSIONED
+    package_version: Optional[str] = None
+    authority: str = CERTIFICATE_AUTHORITY
+    decision: str = CERTIFICATE_DECISION_UNRESOLVED
+    evidence: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.schema_version not in _CERTIFICATE_SCHEMAS:
+            raise ValueError(
+                f"unsupported certificate schema_version {self.schema_version!r}"
+            )
+        if self.authority != CERTIFICATE_AUTHORITY:
+            raise ValueError(
+                f"unsupported certificate authority {self.authority!r}"
+            )
+        if self.decision not in _CERTIFICATE_DECISIONS:
+            raise ValueError(
+                "unsupported certificate decision "
+                f"{self.decision!r}; RESEARCH_PASS is not defined"
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "AuditCertificate":
+        """Load a certificate. A missing schema_version is unversioned.
+
+        Today's twelve-field JSON still loads. schema_version is optional
+        and defaults to unversioned. An omitted decision stays UNRESOLVED
+        rather than being recomputed into a pass. authority defaults to
+        RUNTIME_NOT_AUTHORIZED. package_version is informational and is
+        not a gate; a missing copy stays None.
+        """
+        raw_evidence = data.get("evidence")
+        if raw_evidence is None:
+            evidence: Dict[str, Any] = {}
+        elif isinstance(raw_evidence, dict):
+            evidence = dict(raw_evidence)
+        else:
+            raise ValueError("certificate evidence must be an object")
+        schema_raw = data.get("schema_version")
+        if schema_raw is None or str(schema_raw).strip() == "":
+            schema_version = CERTIFICATE_SCHEMA_UNVERSIONED
+        else:
+            schema_version = str(schema_raw)
+        package_raw = data.get("package_version") if "package_version" in data else None
+        authority_raw = data.get("authority")
+        decision_raw = data.get("decision")
         return cls(
             pack_id=str(data["pack_id"]),
             pack_checksum=str(data["pack_checksum"]),
@@ -288,6 +363,19 @@ class AuditCertificate:
             failures=[str(x) for x in data.get("failures") or []],
             timestamp=float(data["timestamp"]),
             details=dict(data.get("details") or {}),
+            schema_version=schema_version,
+            package_version=None if package_raw is None else str(package_raw),
+            authority=(
+                CERTIFICATE_AUTHORITY
+                if authority_raw is None
+                else str(authority_raw)
+            ),
+            decision=(
+                CERTIFICATE_DECISION_UNRESOLVED
+                if decision_raw is None
+                else str(decision_raw)
+            ),
+            evidence=evidence,
         )
 
 

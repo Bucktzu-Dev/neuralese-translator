@@ -60,6 +60,7 @@ def test_certify_fails_when_prototype_drifts_from_reservoir():
     pack.seal()
     cert = certify(pack)
     assert not cert.unfoldable
+    assert cert.gloss_bound
     assert any("prototype" in failure for failure in cert.failures)
 
 

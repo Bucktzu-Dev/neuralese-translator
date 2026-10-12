@@ -70,6 +70,8 @@ A symbol is admitted only if it stays:
 4. **Fail-closed** — unknown, quarantined, and aliased are explicit states. A child pack keeps every parent code: a match inherits it, and an unmatched code stays quarantined with its reservoir rows. The integer is not reused for a new cluster.
 5. **Residual-honest** — reconstruction error is reported; gloss confidence may not exceed what that residual allows.
 
+`certify().passed` is that structural conjunction. The certificate schema is `0.2`, which is not the package version. `authority` is `RUNTIME_NOT_AUTHORIZED`. Numerical and semantic evidence stay `NOT IMPLEMENTED` / `UNRESOLVED`, so `passed` is not a research pass and not a runtime admission. Gloss states stay `ok`, `aliased`, `quarantined`, and `unknown`.
+
 Read [docs/DECODABILITY.md](docs/DECODABILITY.md) and [docs/AUDIT_PROTOCOL.md](docs/AUDIT_PROTOCOL.md).
 
 ## Activation dumps

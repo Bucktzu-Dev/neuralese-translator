@@ -5,7 +5,16 @@ import time
 from typing import Any, Dict, List, Mapping, Optional
 
 from neuralese.aliases import has_alias_cycle
-from neuralese.contracts import AuditCertificate, SymbolPack, iter_live_symbols
+from neuralese.contracts import (
+    CERTIFICATE_AUTHORITY,
+    CERTIFICATE_DECISION_RESEARCH_FAIL,
+    CERTIFICATE_DECISION_UNRESOLVED,
+    CERTIFICATE_SCHEMA_V02,
+    DIGEST_DOES_NOT_BIND,
+    AuditCertificate,
+    SymbolPack,
+    iter_live_symbols,
+)
 from neuralese.unfold import unfold_failures
 
 _UNGLOSSED_PREFIX = "[unglossed:"
@@ -81,6 +90,14 @@ def certify(
         failures.extend(reservoir_residual)
 
     passed = addressable and unfoldable and gloss_bound and residual_ok
+    # passed is the structural conjunction only. Numerical and semantic
+    # gates are not implemented, so they cannot promote this to
+    # RESEARCH_PASS. A structural miss is RESEARCH_FAIL. A structural
+    # pass stays UNRESOLVED.
+    if passed:
+        decision = CERTIFICATE_DECISION_UNRESOLVED
+    else:
+        decision = CERTIFICATE_DECISION_RESEARCH_FAIL
     live = list(iter_live_symbols(pack))
     return AuditCertificate(
         pack_id=pack.pack_id,
@@ -105,6 +122,17 @@ def certify(
             "mdl_bits": pack.mdl_bits,
             **reservoir_details,
         },
+        schema_version=CERTIFICATE_SCHEMA_V02,
+        package_version=_package_version(),
+        authority=CERTIFICATE_AUTHORITY,
+        decision=decision,
+        evidence=_evidence(
+            addressable=addressable,
+            unfoldable=unfoldable,
+            gloss_bound=gloss_bound,
+            residual_ok=residual_ok,
+            failures=failures,
+        ),
     )
 
 
@@ -226,3 +254,50 @@ def _learn_decision(pack: SymbolPack) -> Optional[str]:
 
 def _finite(value: float) -> bool:
     return value == value and value not in (float("inf"), float("-inf"))
+
+
+def _package_version() -> str:
+    """Informational copy. Imported lazily so audit can load during package init."""
+    from neuralese import __version__
+
+    return __version__
+
+
+def _evidence(
+    *,
+    addressable: bool,
+    unfoldable: bool,
+    gloss_bound: bool,
+    residual_ok: bool,
+    failures: List[str],
+) -> Dict[str, Any]:
+    """Schema 0.2 evidence classes. Numerical and semantic stay unimplemented."""
+    return {
+        "structural": {
+            "addressable": addressable,
+            "unfoldable": unfoldable,
+            "gloss_bound": gloss_bound,
+            "residual_ok": residual_ok,
+            "failures": list(failures),
+            "digest_does_not_bind": list(DIGEST_DOES_NOT_BIND),
+        },
+        "numerical": {
+            "status": "NOT IMPLEMENTED",
+            "decision": CERTIFICATE_DECISION_UNRESOLVED,
+            "forbidden_reading": (
+                "reservoir centroid residual, or gloss text, "
+                "scored as a reconstructed activation"
+            ),
+        },
+        "semantic": {
+            "status": "NOT IMPLEMENTED",
+            "decision": CERTIFICATE_DECISION_UNRESOLVED,
+            "forbidden_inputs": [
+                "fluency",
+                "the confidence heuristic",
+                "kappa cosine",
+                "cluster purity",
+                "cosine similarity",
+            ],
+        },
+    }

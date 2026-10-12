@@ -20,6 +20,15 @@
 | `failures` | list[str] | human-readable gate failures |
 | `timestamp` | float | unix time of certification |
 | `details` | object | counts, thresholds, residual |
+| `schema_version` | str | `"0.2"` on a certificate `certify` writes. A loaded object that omits the field is `unversioned`. This is not the package version |
+| `package_version` | str or null | informational copy of `neuralese.__version__` when `certify` writes the certificate. Not a gate. Null on a legacy object that did not store it |
+| `authority` | str | `RUNTIME_NOT_AUTHORIZED`. No other value is defined |
+| `decision` | str | `RESEARCH_FAIL` when a structural gate fails, `UNRESOLVED` when the four structural gates pass. Never `RESEARCH_PASS` while numerical and semantic gates are unimplemented |
+| `evidence` | object | `structural` (the four booleans, the failure list, and `digest_does_not_bind`), `numerical` (`NOT IMPLEMENTED` / `UNRESOLVED`), `semantic` (`NOT IMPLEMENTED` / `UNRESOLVED`) |
+
+`passed` is the structural conjunction of `addressable`, `unfoldable`, `gloss_bound`, and `residual_ok`. It is not a numerical reconstruction and it is not a semantic certificate. `evidence.numerical` forbids reading the reservoir centroid residual, or gloss text, as a reconstructed activation. `evidence.semantic` forbids fluency, the confidence heuristic, kappa cosine, cluster purity, and cosine similarity as inputs. Those two gates stay unimplemented.
+
+A certificate dict from before schema 0.2 still loads. Missing `schema_version` is `unversioned`. That loader does not turn a reservoir-less pack into `passed=true`. There is no v0.1 mode. An empty reservoir still fails unfold.
 
 CLI:
 
@@ -73,7 +82,7 @@ Quarantined symbols are allowed to lack a fold path; they must not appear as `st
 
 Checksum covers: `pack_id`, codebook, aliases, each symbol’s `class_id`, `code`, `observation_ids`, `definition`, `quarantined`, rounded `reconstruction_error`, and the reservoir (observation id, text, rounded embedding, metadata).
 
-It does **not** cover wall-clock timestamps, so certification is deterministic.
+It does **not** cover wall-clock timestamps, so certification is deterministic. It also does not cover `proto_embedding`, `confidence`, `examples`, `survival`, symbol metadata / `kappa`, `guards`, `receipts`, `parent_pack_id`, `mdl_bits`, or pack `metadata`. Schema 0.2 lists that set on `evidence.structural.digest_does_not_bind`. Unfold still compares a stored prototype to the reservoir mean (L2 ≤ 1e-5). That check is not the digest. A drift inside the tolerance can pass, and putting the prototype into the digest is not this schema.
 
 ### Residual
 
@@ -122,7 +131,9 @@ Translating a retired code yields `state=quarantined`. It does not yield `unknow
 
 | state | when | English |
 |---|---|---|
-| `ok` | resolved, not quarantined, definition present | bound definition |
+| `ok` | resolved, not quarantined | bound definition, or `[unglossed: …]` when the definition is empty |
+
+`state=ok` does not call `certify`. It is not `decision=RESEARCH_PASS`, and it is not a statement that numerical or semantic evidence is resolved. The four states above are the whole public gloss vocabulary.
 | `aliased` | input code rewritten, then ok | bound definition of the *resolved* code |
 | `quarantined` | resolved to a quarantined class | `[quarantined: …]` |
 | `unknown` | no resolution | `[undecodable: no symbol for code N]` |
