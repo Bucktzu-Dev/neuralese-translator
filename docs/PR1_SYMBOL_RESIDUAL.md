@@ -187,3 +187,5 @@ The recommendation stays `NONE` for that reason. Condition 2's admission does no
 - Fitting a new checkpoint, a new layer, or a new quantizer width and calling it this result.
 
 The text-encoder trials stay frozen. The activation-boundary verdict stays `GEOMETRY_ONLY` with recommendation `NONE`.
+
+This experimental slice is closed. RESIDUAL_DISTINCTION stands and is not revoked. No codec constant, locked accuracy, or test in this note was retuned. The next ledger is [PR1_SYMBOL_ADDRESSING.md](PR1_SYMBOL_ADDRESSING.md).
