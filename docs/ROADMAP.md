@@ -18,6 +18,8 @@ The generalization trial of those four frozen candidates on new fixtures is [PR1
 
 The evaluation-control integrity audit of that trial is [PR1_EVAL_CONTROL_INTEGRITY.md](PR1_EVAL_CONTROL_INTEGRITY.md). Production k-means is unchanged. The audit verdict is `UNRESOLVED`. The recommendation is `NONE`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
 
+The train-only encoder isolation trial is [PR1_ENCODER_ISOLATION.md](PR1_ENCODER_ISOLATION.md). Production SVD and k-means are unchanged. The trial verdict is `UNRESOLVED`. The recommendation is `NONE`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
+
 ## Done
 
 ### Reservoir, unfold, and certify
