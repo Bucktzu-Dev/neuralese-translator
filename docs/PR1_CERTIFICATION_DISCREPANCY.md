@@ -248,10 +248,12 @@ Section 5 tests that were absent are in `tests/test_pr1_certification.py`. They 
 
 The activation-source and activation-boundary tests lock a sha256 of `src/neuralese/audit.py`. That digest now names the schema 0.2 file. The encode, clustering, alphabet, package init, and `pyproject.toml` digests in those tests are unchanged. No held-out slot count, residual, or admission byte was retuned.
 
+The identity profile is specified in [PR1_DIGEST_COMPATIBILITY.md](PR1_DIGEST_COMPATIBILITY.md), accepted as the basis for a later implementation review, and not implemented here.
+
 ### Not specified, and not implemented
 
 - A per-symbol certified flag, and any gloss state besides `ok` / `aliased` / `quarantined` / `unknown`. The plan distinguishes a translated gloss from a certified symbol by the certificate: a full certification would need a structural pass and numerical and semantic decisions other than `UNRESOLVED`, and no symbol meets that bar. `translate_stream` state `ok` stays the weaker public gloss. The exact extra gloss fields were not defined, so none were added.
-- Putting `proto_embedding` in the digest, or declaring that unfold rather than the digest closes that gap. Section 4 names that closure as later work. The 1e-6 prototype nudge still passes. The larger prototype assignment still fails unfold and residual honesty with `gloss_bound` true.
+- Today's `compute_checksum` still omits `proto_embedding`. The 1e-6 prototype nudge still passes. The larger prototype assignment still fails unfold and residual honesty with `gloss_bound` true.
 - Binding `confidence`, `examples`, `survival`, symbol metadata / `kappa`, `guards`, `receipts`, `parent_pack_id`, `mdl_bits`, or pack `metadata`. The plan lists them as unbound. The tests lock that.
 - A legacy mode named v0.1 that turns a missing reservoir into `passed=true`.
 - Rewording the quarantined gloss. Section 3 records that `[quarantined: symbol N is not certified unfoldable]` overclaims the reason, and says the state machine is not changed. The sentence is unchanged.

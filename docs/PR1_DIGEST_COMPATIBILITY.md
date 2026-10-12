@@ -1,10 +1,12 @@
 # PR-1 digest compatibility
 
-Recommendation: **NONE**. Authority: **RUNTIME_NOT_AUTHORIZED**. Certificate schema **0.2** stands. Package **0.7.0** stands. The research checkpoint stands. Activation-codec experiments stay closed. This note does not add a codec, quantizer, layer, or slot-retrieval trial.
+Status: **accepted** as the specification for a later implementation review. The operator accepted this note at commit `7e645bc`. This amendment records that acceptance and the pairing rules below. This commit does not implement `identity-1`. Implementation remains subject to operator approval.
 
-This commit specifies a versioned identity digest. It does not implement it. `compute_checksum`, `seal`, `SymbolPack.to_dict`, `SymbolPack.from_dict`, reservoir canonicalization, and the bytes any current fixture writes are unchanged. The package version is unchanged.
+Recommendation: **NONE**. Authority: **RUNTIME_NOT_AUTHORIZED**. Certificate schema **0.2** stands. Package **0.7.0** stands. `pack.checksum` is unchanged. The research checkpoint stands. Activation-codec experiments stay closed. This note does not add a codec, quantizer, layer, or slot-retrieval trial.
 
-The profile name below is `digest_profile`. Today's profile is `unbound`. The proposed profile is `identity-1`. Those names are not the package version and not certificate `schema_version` `"0.2"`. [PR1_CERTIFICATION_DISCREPANCY.md](PR1_CERTIFICATION_DISCREPANCY.md) does not name a digest profile. [PR1_RESEARCH_CHECKPOINT.md](PR1_RESEARCH_CHECKPOINT.md) closes the activation-codec line at recommendation `NONE` and authority `RUNTIME_NOT_AUTHORIZED`.
+This commit does not implement the versioned identity digest. `compute_checksum`, `seal`, `SymbolPack.to_dict`, `SymbolPack.from_dict`, reservoir canonicalization, and the bytes any current fixture writes are unchanged. The package version is unchanged.
+
+The profile name below is `digest_profile`. Today's profile is `unbound`. The specified profile is `identity-1`. Those names are not the package version and not certificate `schema_version` `"0.2"`. Section 8 of [PR1_CERTIFICATION_DISCREPANCY.md](PR1_CERTIFICATION_DISCREPANCY.md) points here for the identity profile and does not define one. [PR1_RESEARCH_CHECKPOINT.md](PR1_RESEARCH_CHECKPOINT.md) closes the activation-codec line at recommendation `NONE` and authority `RUNTIME_NOT_AUTHORIZED`.
 
 ## What the current code does
 
@@ -31,7 +33,7 @@ The profile name below is `digest_profile`. Today's profile is `unbound`. The pr
 
 `PROTO_ATOL` is `1e-5` and `RESIDUAL_ATOL` is `1e-4` (`src/neuralese/unfold.py`). `unfold_failures` fails unfold when the L2 distance from `proto_embedding` to the member mean is greater than `PROTO_ATOL`. It fails residual honesty when the recomputed cluster residual is greater than the sealed `reconstruction_error` plus `RESIDUAL_ATOL`. Those comparisons are acceptability of a reconstruction. They do not ask whether the stored prototype is the sealed prototype.
 
-Section 4 of [PR1_CERTIFICATION_DISCREPANCY.md](PR1_CERTIFICATION_DISCREPANCY.md) leaves closing the prototype gap as later work. Section 8 records that `proto_embedding` was not added to `compute_checksum`, that the `1e-6` nudge still passes, and that the larger prototype assignment still fails unfold and residual honesty with `gloss_bound` true. This note is that later specification. It is not that implementation.
+Section 4 of [PR1_CERTIFICATION_DISCREPANCY.md](PR1_CERTIFICATION_DISCREPANCY.md) leaves closing the prototype gap as later work. Section 8 records that `proto_embedding` was not added to `compute_checksum`, that the `1e-6` nudge still passes, and that the larger prototype assignment still fails unfold and residual honesty with `gloss_bound` true. This note is that later specification. The operator has accepted it as the basis for a later implementation review. It is not that implementation.
 
 ## Integrity and tolerance
 
@@ -164,7 +166,7 @@ These are the schema 0.2 `digest_does_not_bind` names other than `proto_embeddin
 
 ### Rounding
 
-Reservoir embeddings and `reconstruction_error` use 8 decimals: `round(float(x), 8)`. The identity-bound prototype uses that same rounding. Identity is equality of the canonical value after that rounding. It is not L2 `<= 1e-5`.
+Reservoir embeddings and `reconstruction_error` use 8 decimals: `round(float(x), 8)`. The identity-bound prototype uses that same rounding. Canonical identity is the eight-decimal representation: equality of the value after `round(float(x), 8)`, as `canonical_dumps` writes it. It is not byte-for-byte identity of the underlying float. It is not L2 `<= 1e-5`.
 
 The last decimal place is `1e-8`. Half a unit in that place is `5e-9`. Python `round` is applied to the float. The worked object is one symbol under `canonical_dumps`, which is the function `sha16` already uses, so a change in this fragment changes any payload that contains it.
 
@@ -178,35 +180,52 @@ Coordinate `1.0`, canonical embedding `[1.0,0.0,0.0]`:
 
 Adding `1e-6` produces the float `1.00000099999999991773`. `round(..., 8)` is `1.000001`. The canonical `proto_embedding` is `[1.000001,0.0,0.0]`. `sha16` is `fe16d0fdc2b8a2e1`. The `1e-6` nudge survives 8-decimal rounding and changes the identity digest. Today's `compute_checksum()` does not change, as re-verified above. `PROTO_ATOL` still accepts the nudge. Those are different questions.
 
-Adding `1e-9` produces the float `1.00000000100000008274`. That displacement is smaller than `5e-9`. `round(..., 8)` returns `1.0`. The canonical JSON and `sha16` stay `24e6fb0ffe3617eb`. The identity digest is unchanged because the canonical value is unchanged. That is a limit of rounding to 8 decimals, not a tolerance pass.
+Adding `1e-9` produces the float `1.00000000100000008274`. That displacement is smaller than `5e-9`. `round(float, 8)` does not move: `round(..., 8)` returns `1.0`. The canonical JSON and `sha16` stay `24e6fb0ffe3617eb`. A `+1e-9` change is deliberately invisible because the eight-decimal representation does not change. The underlying float is not the same bits, and the identity digest does not claim those bits. The digest is unchanged because the canonical value is unchanged. That is the rounding rule, not a tolerance pass.
 
 ### Where the new field sits
 
-During compatibility, `pack.checksum` remains today's digest. `identity_digest` is a new optional string. `digest_profile` is a new optional label. Absent, null, or blank `digest_profile` means `unbound` and means `identity_digest` is not required.
+During compatibility, `pack.checksum` remains today's digest. `identity_digest` is a new optional string. `digest_profile` is a new optional label. Absent, null, or blank `digest_profile` means `unbound` only when `identity_digest` is also omitted, null, or blank. A non-empty `identity_digest` beside an omitted profile is the inconsistent row in the pairing rules. It is not an unbound pack, and the string is not a verified `identity-1` digest.
 
-Do not replace `pack.checksum` in place. Do not rewrite stored checksums. Current `seal()` output stays the assignment of today's checksum until a later commit adds the new field without changing that assignment.
+Do not replace `pack.checksum` in place. Do not rewrite stored checksums. Current `seal()` output stays the assignment of today's checksum. A later commit may add the new field without changing that assignment only after a separate operator approval. This amendment does not authorize that commit.
 
-## 3. Legacy profile
+## 3. Legacy profile and pairing rules
 
-`unbound` is a named profile. It is what today's packs already are. It is not a pass.
+`unbound` is a named profile. It is what today's packs already are when `identity_digest` is also omitted, null, or blank. It is not a pass.
 
-Loader rule, analogous to schema version and not a replacement for it:
+Omitted `schema_version` still loads as `unversioned` (`AuditCertificate.from_dict`). Keep that. There is still no v0.1 mode. Schema version and digest profile are independent axes. Schema `"0.2"` with `digest_profile` `unbound` and no `identity_digest` is the legacy certificate. Encoding the digest profile into `schema_version` would collide with `"0.2"` and `"unversioned"`.
 
-- Omitted `schema_version` still loads as `unversioned` (`AuditCertificate.from_dict`). Keep that. There is still no v0.1 mode.
-- Omitted, null, or blank `digest_profile` loads as `unbound`.
-- `digest_profile` `"identity-1"` selects the identity profile and requires `identity_digest`.
-- Any other `digest_profile` string is rejected.
-- The two axes are independent. Schema `"0.2"` with `digest_profile` `unbound` is the legacy certificate. Encoding the digest profile into `schema_version` would collide with `"0.2"` and `"unversioned"`.
+### Gate split
 
-A legacy pack is one whose `digest_profile` is absent or `unbound`. `certify` on that pack keeps today's structural gates. `passed` is still only those four gates. A structural pass is still `decision` `UNRESOLVED`. A structural miss is still `RESEARCH_FAIL`. `decision` is never `RESEARCH_PASS`. `authority` stays `RUNTIME_NOT_AUTHORIZED`. `package_version` stays informational `0.7.0` when `certify` writes it.
+Under `identity-1`, `identity_bound` is an additional condition for `passed`. `gloss_bound` keeps its meaning on both profiles: today's `pack.checksum` versus today's payload. A prototype-only edit can leave `gloss_bound` true while `identity_bound` is false. `passed` false in that case is the identity failure, not a rewrite of the legacy checksum.
 
-The legacy profile surfaces the missing prototype binding in the place schema 0.2 already uses: `evidence.structural.digest_does_not_bind` keeps `proto_embedding` on the list. `unbound` must not report prototype identity as satisfied. A structural `passed` true under `unbound` is the four gates. It is not an identity pass and not `RESEARCH_PASS`.
+`identity_bound` is true only on the matching `identity-1` row below. Every other row leaves `identity_bound` false. The four structural gates may still be computed and reported. They cannot make `passed` true while an unverified digest is present, while the profile is unknown, or while a named `identity-1` profile lacks a matching digest.
+
+Under `identity-1`, once a non-empty `identity_digest` is present, `digest_does_not_bind` drops `proto_embedding` and keeps every excluded name in the table above. A match sets `identity_bound` true. A mismatch leaves `identity_bound` false and does not put `proto_embedding` back on that list. On `unbound`, and on the INCONSISTENT and UNKNOWN PROFILE rows, `proto_embedding` stays on `digest_does_not_bind`.
+
+### Pairing rules
+
+An `identity_digest` string sitting next to `passed` true would be read as a verified guarantee. The loader does not ignore a digest it did not check. The rule is fail-closed rejection. "Ignored" is not a result.
+
+Null, an omitted key, and a blank string are the same absence for `digest_profile` and for `identity_digest`.
+
+| digest_profile | identity_digest | result |
+|---|---|---|
+| omitted, null, or blank | omitted, null, or blank | unbound. Today's packs. `proto_embedding` stays on `digest_does_not_bind`. `passed` is the four structural gates only. A structural pass is `decision` `UNRESOLVED`. A structural miss is `decision` `RESEARCH_FAIL`. `decision` is never `RESEARCH_PASS`. `authority` is `RUNTIME_NOT_AUTHORIZED`. Numerical and semantic evidence stay `NOT IMPLEMENTED` / `UNRESOLVED`. |
+| omitted, null, or blank | non-empty string | INCONSISTENT. Do not load as unbound. Do not set `identity_bound` true. Do not treat the string as a verified `identity-1` digest. `passed` false, `decision` `RESEARCH_FAIL`. The certificate reports the digest as unverified and the combination as inconsistent. The four structural gates may still be computed and reported, but they cannot make `passed` true while an unverified digest is present. `authority` stays `RUNTIME_NOT_AUTHORIZED`. Numerical and semantic stay `NOT IMPLEMENTED` / `UNRESOLVED`. |
+| `unbound` (the explicit word) | omitted, null, or blank | same as omitted profile: unbound. The word `unbound` is the name of the legacy profile, not a verified identity. |
+| `unbound` (explicit) | non-empty string | same INCONSISTENT failure as an omitted profile with a digest. Explicit unbound plus a digest is not a verified integrity guarantee. `passed` false, `decision` `RESEARCH_FAIL`. `identity_bound` false. The certificate reports the digest as unverified and the combination as inconsistent. |
+| `identity-1` | non-empty and equal to `sha16` of the identity payload | `identity_bound` true. `passed` is the four gates AND `identity_bound`. A structural pass with `identity_bound` true is still `decision` `UNRESOLVED`, never `RESEARCH_PASS`. `authority` `RUNTIME_NOT_AUTHORIZED`. Numerical and semantic stay `NOT IMPLEMENTED` / `UNRESOLVED`. |
+| `identity-1` | non-empty and not equal | `identity_bound` false, `passed` false, `decision` `RESEARCH_FAIL`. `gloss_bound` may still be true. |
+| `identity-1` | omitted, null, or blank | fail closed, `passed` false, `decision` `RESEARCH_FAIL`. Does not fall through to unbound. |
+| any other string | anything | UNKNOWN PROFILE. Fail closed. `passed` false, `decision` `RESEARCH_FAIL`. Do not coerce to unbound. Do not ignore the string. `identity_bound` false. `authority` `RUNTIME_NOT_AUTHORIZED`. Numerical and semantic stay `NOT IMPLEMENTED` / `UNRESOLVED`. |
+
+A legacy pack is one whose `digest_profile` is omitted, null, blank, or the word `unbound`, and whose `identity_digest` is omitted, null, or blank. `certify` on that pack keeps today's structural gates. `passed` is still only those four gates. A structural pass is still `decision` `UNRESOLVED`. A structural miss is still `RESEARCH_FAIL`. `decision` is never `RESEARCH_PASS`. `authority` stays `RUNTIME_NOT_AUTHORIZED`. `package_version` stays informational `0.7.0` when `certify` writes it.
+
+The legacy profile surfaces the missing prototype binding in the place schema 0.2 already uses: `evidence.structural.digest_does_not_bind` keeps `proto_embedding` on the list. `unbound` must not report prototype identity as satisfied. A structural `passed` true under `unbound` is the four gates. It is not an identity pass and not `RESEARCH_PASS`. An omitted profile or the word `unbound` with a non-empty `identity_digest` is not this legacy pack. That row is INCONSISTENT.
 
 Age does not create a pass. A missing reservoir still fails unfold (`missing reservoir observation …`) with `passed` false and `decision` `RESEARCH_FAIL`. Resealing an empty reservoir still does not make `passed` true. An unversioned certificate JSON still loads without recomputing an omitted `decision` into a pass; an omitted `decision` stays `UNRESOLVED`. A stored `RESEARCH_PASS` stays rejected.
 
-`evidence.numerical` and `evidence.semantic` stay `NOT IMPLEMENTED` / `UNRESOLVED` on `unbound` and on `identity-1`. An integrity match is not numerical research validity and not semantic validity.
-
-Under `identity-1`, once the digest exists, `digest_does_not_bind` drops `proto_embedding` and keeps every excluded name in the table above. `passed` is the four gates and `identity_bound`. `identity_bound` is true only when `identity_digest` is non-empty and equals `sha16` of the identity payload. A missing `identity_digest` on a named `identity-1` profile fails closed (`passed` false, `decision` `RESEARCH_FAIL`). It does not fall through to `unbound`. `gloss_bound` stays the comparison of `pack.checksum` to today's payload on both profiles, so a prototype-only edit can leave `gloss_bound` true while `identity_bound` is false.
+`evidence.numerical` and `evidence.semantic` stay `NOT IMPLEMENTED` / `UNRESOLVED` on `unbound` and on `identity-1`, and on the INCONSISTENT and UNKNOWN PROFILE rows. An integrity match is not numerical research validity and not semantic validity.
 
 ## 4. Negative tests to add later
 
@@ -229,7 +248,9 @@ Future tests, to be added only with the implementation of `identity-1`:
 | `test_identity1_sub_ulp_nudge_keeps_the_canonical_value` | `make_pack()`, `digest_profile` `identity-1`, add `1e-9` to `proto_embedding[0]`, no reseal | `round(..., 8)` stays `1.0`. `identity_digest` unchanged. `identity_bound` true. Structural `passed` true. `decision` `UNRESOLVED`. The record of this case says the digest is unchanged because the canonical value is unchanged. It does not say the nudge passed `PROTO_ATOL` |
 | `test_identity1_does_not_bind_excluded_fields` | `make_pack()`, `digest_profile` `identity-1`, edit `confidence` to `1.0`, set `metadata["kappa"]` to `0.0`, and append a receipt, no reseal | `identity_digest` unchanged, `identity_bound` true, `passed` true, `decision` `UNRESOLVED`. `digest_does_not_bind` still contains `confidence`, `kappa`, and `receipts`. Translate confidence stays `0.92` |
 | `test_identity1_missing_digest_fails_closed` | profile named `identity-1`, `identity_digest` absent or empty, prototype untouched | `passed` false, `decision` `RESEARCH_FAIL`. The pack does not load as `unbound` and does not inherit a pass from the four gates alone |
-| `test_unbound_omission_is_not_an_identity_pass` | certificate or pack dict with no `digest_profile` key, including a twelve-field certificate and a pack that fails unfold because the reservoir id is missing | loads as `unbound`. `digest_does_not_bind` still lists `proto_embedding`. Missing reservoir still fails unfold. `decision` is not `RESEARCH_PASS`. Omitted `schema_version` still loads as `unversioned` |
+| `test_unbound_omission_is_not_an_identity_pass` | certificate or pack dict with no `digest_profile` key and no `identity_digest`, including a twelve-field certificate and a pack that fails unfold because the reservoir id is missing | loads as `unbound`. `digest_does_not_bind` still lists `proto_embedding`. Missing reservoir still fails unfold. `decision` is not `RESEARCH_PASS`. Omitted `schema_version` still loads as `unversioned` |
+| `test_unbound_with_identity_digest_is_not_verified` | profile omitted, null, or blank, or the explicit word `unbound`; `identity_digest` set to any non-empty string, including a correct-looking `sha16` | `identity_bound` false. `passed` false. `decision` `RESEARCH_FAIL`. The failure says the combination is inconsistent and the digest is unverified. It does not say `identity-1` matched. The four structural gates may be reported. They do not make `passed` true. `authority` `RUNTIME_NOT_AUTHORIZED`. Numerical and semantic stay `NOT IMPLEMENTED` / `UNRESOLVED` |
+| `test_unknown_digest_profile_fails_closed` | `digest_profile` `"identity-2"` or `"legacy"` or `"v0.1"`, with any `identity_digest` including omitted. The same test file also loads a pack whose `digest_profile` and `identity_digest` are both absent | `passed` false, `decision` `RESEARCH_FAIL`. The loader does not relabel `"identity-2"`, `"legacy"`, or `"v0.1"` as `unbound`. The omitted profile in that same file still loads as unbound when `identity_digest` is also absent, so the two cases stay distinct. `identity_bound` false. `authority` `RUNTIME_NOT_AUTHORIZED`. Numerical and semantic stay `NOT IMPLEMENTED` / `UNRESOLVED` |
 
 `passed` under `identity-1` is false for the `1e-6` case because the sealed object is not the object now present. `passed` under `unbound` stays true for that case. Setting it false on the legacy profile would change today's contract, which `test_prototype_drift_inside_atol_passes` locks.
 
@@ -308,10 +329,14 @@ If `identity_digest` is an additional field and `pack.checksum` stays today's pa
 
 ## Recommendation
 
-Do not replace `pack.checksum` in place. Add the identity digest as `digest_profile` `identity-1` and field `identity_digest`. Leave `compute_checksum`, `seal`, and the current pack bytes as they are until a follow-up implements that profile and can migrate callers without rewriting the legacy meaning of the current checksum.
+Do not replace `pack.checksum` in place. The specified profile is `digest_profile` `identity-1` and field `identity_digest`, with the pairing rules in section 3. Leave `compute_checksum`, `seal`, and the current pack bytes as they are. A later implementation must not rewrite the legacy meaning of the current checksum.
 
 `identity-1` binds the fields today's checksum already binds, plus `proto_embedding` rounded to 8 decimals. It leaves `confidence`, `examples`, `survival`, symbol `metadata` / `kappa`, `guards`, `receipts`, `parent_pack_id`, `mdl_bits`, pack `metadata`, and pack `timestamp` excluded, because the certificate does not claim their identity.
 
 Under `unbound`, the `1e-6` prototype nudge keeps today's checksum, `passed` true, and `decision` `UNRESOLVED`, and `digest_does_not_bind` still lists `proto_embedding`. Under `identity-1`, that nudge changes `identity_digest`, `identity_bound` is false, and `passed` is false, while unfold still accepts the L2 distance. A nudge of `1e-9` rounds away at 8 decimals and leaves the identity digest unchanged. A prototype replaced by a far vector fails unfold and residual honesty on both profiles; `identity-1` also fails the digest; `unbound` keeps `gloss_bound` true when the rest of today's payload is intact.
 
-Recommendation **NONE**. Authority **RUNTIME_NOT_AUTHORIZED**. Schema **0.2** unchanged. Package **0.7.0** unchanged. Serialization was not changed. No tests were added.
+## Not authorized by this amendment
+
+Implementation is not authorized by this amendment. The next code change, when an operator approves it, is only the versioned identity-integrity profile in this document: the new optional fields `digest_profile` and `identity_digest`, the pairing rules in section 3, and the future tests already listed in section 4. It does not replace `pack.checksum`, does not add numerical or semantic gates, does not bump the package, and does not reopen activation experiments.
+
+Recommendation **NONE**. Authority **RUNTIME_NOT_AUTHORIZED**. Schema **0.2** unchanged. Package **0.7.0** unchanged. `pack.checksum` unchanged. Serialization was not changed. No tests were added. `identity-1` is not implemented.
