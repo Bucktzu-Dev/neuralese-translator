@@ -20,6 +20,8 @@ The evaluation-control integrity audit of that trial is [PR1_EVAL_CONTROL_INTEGR
 
 The train-only encoder isolation trial is [PR1_ENCODER_ISOLATION.md](PR1_ENCODER_ISOLATION.md). Production SVD and k-means are unchanged. The trial verdict is `UNRESOLVED`. The recommendation is `NONE`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
 
+The OOV coverage trial of train-independent hashed features on that same frozen split is [PR1_OOV_COVERAGE.md](PR1_OOV_COVERAGE.md). Production SVD and k-means are unchanged. The trial decision is `UNRESOLVED`. The recommendation is `NONE`. `RUNTIME_NOT_AUTHORIZED` is unchanged.
+
 ## Done
 
 ### Reservoir, unfold, and certify
