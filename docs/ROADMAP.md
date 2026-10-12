@@ -24,6 +24,8 @@ The OOV coverage trial of train-independent hashed features on that same frozen 
 
 The activation-source trial is [PR1_ACTIVATION_SOURCE.md](PR1_ACTIVATION_SOURCE.md). It runs the existing `learn_pack` and `certify` on hidden states captured once from EleutherAI/pythia-14m at revision `cf967c0a9a04383db6f7b1108d86b2962634b4ac`. The text-encoder trials stay frozen: the rank-boundary, clustering-isolation, clustering-generalization, evaluation-control, encoder-isolation, and OOV notes are not reopened, and `word_sentence_svd` stays the production text encoder. The trial verdict is `PASS_FOR_LATER_PR`. The recommendation is `LATER_ISOLATED_PR`. That recommendation is not production admission. `RUNTIME_NOT_AUTHORIZED` is unchanged.
 
+The activation-codec line after that capture is closed in [PR1_RESEARCH_CHECKPOINT.md](PR1_RESEARCH_CHECKPOINT.md): the boundary trial, the symbol-residual trial, and the symbolic-addressing trial. `RESIDUAL_DISTINCTION` and `QUANTIZED_MEMORY_SUFFICIENT` stay separate findings, each with recommendation `NONE` and authority `RUNTIME_NOT_AUTHORIZED`. That checkpoint does not open another codec, quantizer, layer, slot-retrieval, compositional, or unfolding experiment. Logit lens, below, stays the next milestone and is still unstarted.
+
 ## Done
 
 ### Reservoir, unfold, and certify

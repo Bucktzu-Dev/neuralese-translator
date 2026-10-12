@@ -207,3 +207,5 @@ The recommendation stays `NONE`. `QUANTIZED_MEMORY_SUFFICIENT` does not raise it
 - Fitting a new checkpoint, a new layer, or a new quantizer width and calling it this result.
 
 The text-encoder trials stay frozen. The activation-boundary verdict stays `GEOMETRY_ONLY` with recommendation `NONE`. The residual-trial verdict stays `RESIDUAL_DISTINCTION` with recommendation `NONE`.
+
+This experimental line is closed. `QUANTIZED_MEMORY_SUFFICIENT` stands and does not revoke `RESIDUAL_DISTINCTION`. The checkpoint is [PR1_RESEARCH_CHECKPOINT.md](PR1_RESEARCH_CHECKPOINT.md). No further addressing, residual, codec, quantizer, layer, or slot-retrieval trial is opened by this note.
