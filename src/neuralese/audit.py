@@ -10,9 +10,14 @@ from neuralese.contracts import (
     CERTIFICATE_DECISION_RESEARCH_FAIL,
     CERTIFICATE_DECISION_UNRESOLVED,
     CERTIFICATE_SCHEMA_V02,
-    DIGEST_DOES_NOT_BIND,
+    DIGEST_PAIRING_IDENTITY_1,
+    DIGEST_PAIRING_INCONSISTENT,
+    DIGEST_PAIRING_UNBOUND,
+    DIGEST_PAIRING_UNKNOWN,
     AuditCertificate,
     SymbolPack,
+    classify_digest_pairing,
+    digest_does_not_bind_for,
     iter_live_symbols,
 )
 from neuralese.unfold import unfold_failures
@@ -89,11 +94,39 @@ def certify(
         residual_ok = False
         failures.extend(reservoir_residual)
 
-    passed = addressable and unfoldable and gloss_bound and residual_ok
-    # passed is the structural conjunction only. Numerical and semantic
-    # gates are not implemented, so they cannot promote this to
-    # RESEARCH_PASS. A structural miss is RESEARCH_FAIL. A structural
-    # pass stays UNRESOLVED.
+    pairing = classify_digest_pairing(pack.digest_profile, pack.identity_digest)
+    identity_bound = False
+    if pairing.pairing == DIGEST_PAIRING_INCONSISTENT:
+        failures.append(
+            "inconsistent digest_profile and identity_digest; "
+            "identity digest is unverified"
+        )
+    elif pairing.pairing == DIGEST_PAIRING_UNKNOWN:
+        failures.append(f"unknown digest_profile {pairing.profile!r}")
+    elif pairing.pairing == DIGEST_PAIRING_IDENTITY_1:
+        if not pairing.identity_digest_present:
+            failures.append(
+                "identity-1 digest_profile is missing identity_digest"
+            )
+        else:
+            identity_bound = pairing.identity_digest == pack.compute_identity_digest()
+            if not identity_bound:
+                failures.append("identity digest mismatch")
+
+    structural_passed = addressable and unfoldable and gloss_bound and residual_ok
+    # Unbound: passed is the four structural gates. identity_bound is not
+    # a pass condition and is not reported true. identity-1: passed is
+    # those four gates AND identity_bound. Inconsistent, unknown, and
+    # identity-1 without a matching digest cannot be made true by the
+    # four gates. Numerical and semantic gates are not implemented, so
+    # they cannot promote this to RESEARCH_PASS. A pass stays UNRESOLVED.
+    # A miss is RESEARCH_FAIL.
+    if pairing.pairing == DIGEST_PAIRING_UNBOUND:
+        passed = structural_passed
+    elif pairing.pairing == DIGEST_PAIRING_IDENTITY_1 and identity_bound:
+        passed = structural_passed
+    else:
+        passed = False
     if passed:
         decision = CERTIFICATE_DECISION_UNRESOLVED
     else:
@@ -132,7 +165,15 @@ def certify(
             gloss_bound=gloss_bound,
             residual_ok=residual_ok,
             failures=failures,
+            identity_bound=identity_bound,
+            digest_does_not_bind=digest_does_not_bind_for(pairing),
+            digest_profile=pairing.profile,
+            identity_digest=pairing.identity_digest,
+            digest_pairing=pairing.pairing,
         ),
+        identity_bound=identity_bound,
+        digest_profile=pairing.profile,
+        identity_digest=pairing.identity_digest,
     )
 
 
@@ -270,16 +311,29 @@ def _evidence(
     gloss_bound: bool,
     residual_ok: bool,
     failures: List[str],
+    identity_bound: bool,
+    digest_does_not_bind: tuple,
+    digest_profile: Optional[str],
+    identity_digest: Optional[str],
+    digest_pairing: str,
 ) -> Dict[str, Any]:
-    """Schema 0.2 evidence classes. Numerical and semantic stay unimplemented."""
+    """Schema 0.2 evidence classes. Numerical and semantic stay unimplemented.
+
+    identity_bound is reported beside gloss_bound. It is true only for a
+    matching identity-1 digest. Unbound leaves it false.
+    """
     return {
         "structural": {
             "addressable": addressable,
             "unfoldable": unfoldable,
             "gloss_bound": gloss_bound,
             "residual_ok": residual_ok,
+            "identity_bound": identity_bound,
             "failures": list(failures),
-            "digest_does_not_bind": list(DIGEST_DOES_NOT_BIND),
+            "digest_does_not_bind": list(digest_does_not_bind),
+            "digest_profile": digest_profile,
+            "identity_digest": identity_digest,
+            "digest_pairing": digest_pairing,
         },
         "numerical": {
             "status": "NOT IMPLEMENTED",

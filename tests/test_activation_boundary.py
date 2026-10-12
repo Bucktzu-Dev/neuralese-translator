@@ -62,7 +62,7 @@ PRODUCTION_SHA256 = {
     "src/neuralese/clustering.py": "ab84a98a459ebcd720833731891b05e9e5eaf411d2c964cbde5c8b54dcb8d321",
     "src/neuralese/alphabet.py": "b2bd36b60a96a38f965a22f287fc57137dd7491675d7a4c9b15c3ed89cc405a3",
     # schema 0.2 certificate fields. Encoder, clustering, alphabet, and taus are unchanged.
-    "src/neuralese/audit.py": "0ce09954c93eff79269854e28024df10abfb394a47f38e205f4d8e288a950467",
+    "src/neuralese/audit.py": "c066e32fa313db137cee2872cfd0c65c7bb49f98f08800d4f7443408e011174b",
     "src/neuralese/__init__.py": "cda85f31c23360cd03ef5abaa7bdcdb2465d3aed0f04dd97d9f8af71cfef72af",
     "pyproject.toml": "f9ae447c44015663f31485a010162976473d0ad30f3cdb0ddbf22a6271315d73",
 }

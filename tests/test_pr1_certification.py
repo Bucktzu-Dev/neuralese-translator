@@ -1,12 +1,15 @@
 """Locks from docs/PR1_CERTIFICATION_DISCREPANCY.md section 5, plus schema 0.2.
 
-The digest is unchanged. proto_embedding, confidence, and the other fields
-named in DIGEST_DOES_NOT_BIND stay outside it. A missing reservoir still
-fails unfold. passed stays the structural conjunction.
+pack.checksum stays compute_checksum(). proto_embedding is outside that
+payload. identity-1 is an opt-in digest_profile. A missing reservoir still
+fails unfold. passed is never RESEARCH_PASS.
 """
+import json
+
 import pytest
 
 from neuralese import __version__
+from neuralese.adapters import load_pack, save_pack
 from neuralese.audit import certify
 from neuralese.contracts import (
     CERTIFICATE_AUTHORITY,
@@ -15,8 +18,15 @@ from neuralese.contracts import (
     CERTIFICATE_SCHEMA_UNVERSIONED,
     CERTIFICATE_SCHEMA_V02,
     DIGEST_DOES_NOT_BIND,
+    DIGEST_PAIRING_IDENTITY_1,
+    DIGEST_PAIRING_INCONSISTENT,
+    DIGEST_PAIRING_UNBOUND,
+    DIGEST_PAIRING_UNKNOWN,
+    DIGEST_PROFILE_IDENTITY_1,
     AuditCertificate,
+    Receipt,
     Symbol,
+    SymbolPack,
 )
 from neuralese.translator import translate_stream
 from neuralese.unfold import PROTO_ATOL
@@ -230,3 +240,407 @@ def test_structural_pass_is_schema_v02_and_not_a_research_pass():
     assert again.package_version == "0.7.0"
     assert again.evidence == cert.evidence
     assert again.passed is True
+    assert again.identity_bound is False
+    assert cert.identity_bound is False
+    assert cert.evidence["structural"]["identity_bound"] is False
+    assert "proto_embedding" in cert.evidence["structural"]["digest_does_not_bind"]
+
+
+_OMITTED = object()
+
+
+def _assert_not_admitted(cert):
+    assert cert.schema_version == CERTIFICATE_SCHEMA_V02
+    assert cert.package_version == __version__ == "0.7.0"
+    assert cert.authority == CERTIFICATE_AUTHORITY
+    assert cert.decision != "RESEARCH_PASS"
+    assert cert.evidence["numerical"]["status"] == "NOT IMPLEMENTED"
+    assert cert.evidence["numerical"]["decision"] == CERTIFICATE_DECISION_UNRESOLVED
+    assert cert.evidence["semantic"]["status"] == "NOT IMPLEMENTED"
+    assert cert.evidence["semantic"]["decision"] == CERTIFICATE_DECISION_UNRESOLVED
+
+
+def _pack_with_digest_fields(profile, digest) -> SymbolPack:
+    raw = make_pack().to_dict()
+    if profile is _OMITTED:
+        raw.pop("digest_profile", None)
+    else:
+        raw["digest_profile"] = profile
+    if digest is _OMITTED:
+        raw.pop("identity_digest", None)
+    else:
+        raw["identity_digest"] = digest
+    return SymbolPack.from_dict(raw)
+
+
+def _seal_identity(pack):
+    checksum = pack.checksum
+    pack.seal(digest_profile=DIGEST_PROFILE_IDENTITY_1)
+    assert pack.checksum == checksum
+    assert pack.compute_checksum() == checksum
+    assert pack.digest_profile == DIGEST_PROFILE_IDENTITY_1
+    assert pack.identity_digest == pack.compute_identity_digest()
+    assert "proto_embedding" not in pack._checksum_payload()["symbols"][0]
+    return pack
+
+
+def test_identity1_1e6_fails_integrity_not_atol():
+    pack = _seal_identity(make_pack())
+    sealed_checksum = pack.checksum
+    sealed_identity = pack.identity_digest
+    pack.symbols[0].proto_embedding[0] += 1e-6
+    assert round(pack.symbols[0].proto_embedding[0], 8) == 1.000001
+    assert pack.identity_payload()["symbols"][0]["proto_embedding"][0] == 1.000001
+    assert pack.compute_checksum() == sealed_checksum
+    assert pack.compute_identity_digest() != sealed_identity
+    cert = certify(pack)
+    assert cert.identity_bound is False
+    assert cert.evidence["structural"]["identity_bound"] is False
+    assert cert.passed is False
+    assert cert.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+    assert cert.gloss_bound is True
+    assert cert.unfoldable is True
+    assert cert.addressable is True
+    assert cert.residual_ok is True
+    assert any("identity digest mismatch" in failure for failure in cert.failures)
+    assert not any(
+        "prototype does not match reservoir mean" in failure for failure in cert.failures
+    )
+    assert "proto_embedding" not in cert.evidence["structural"]["digest_does_not_bind"]
+    _assert_not_admitted(cert)
+
+
+def test_identity1_far_prototype_fails_digest_and_unfold():
+    pack = _seal_identity(make_pack())
+    sealed_checksum = pack.checksum
+    pack.symbols[0].proto_embedding = [0.0, 0.0, 0.0]
+    assert pack.compute_checksum() == sealed_checksum
+    cert = certify(pack)
+    assert cert.unfoldable is False
+    assert cert.residual_ok is False
+    assert cert.identity_bound is False
+    assert cert.passed is False
+    assert cert.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+    assert cert.gloss_bound is True
+    assert any("l2=1.000000" in failure for failure in cert.failures)
+    assert any("identity digest mismatch" in failure for failure in cert.failures)
+    assert cert.details["recomputed_cluster_residual"] == pytest.approx(
+        0.7071067811865476
+    )
+    assert "proto_embedding" not in cert.evidence["structural"]["digest_does_not_bind"]
+    _assert_not_admitted(cert)
+
+
+def test_identity1_sub_ulp_nudge_keeps_the_canonical_value():
+    """+1e-9 does not change the identity digest.
+
+    The digest is unchanged because round(float, 8) keeps 1.0, so the
+    canonical value is unchanged. That is the rounding rule. It is not a
+    claim that the nudge passed PROTO_ATOL.
+    """
+    pack = _seal_identity(make_pack())
+    sealed_identity = pack.identity_digest
+    pack.symbols[0].proto_embedding[0] += 1e-9
+    assert round(float(pack.symbols[0].proto_embedding[0]), 8) == 1.0
+    assert pack.identity_payload()["symbols"][0]["proto_embedding"] == [
+        1.0,
+        0.0,
+        0.0,
+    ]
+    assert pack.compute_identity_digest() == sealed_identity
+    cert = certify(pack)
+    assert cert.identity_bound is True
+    assert cert.evidence["structural"]["identity_bound"] is True
+    assert cert.gloss_bound is True
+    assert cert.passed is True
+    assert cert.decision == CERTIFICATE_DECISION_UNRESOLVED
+    assert "proto_embedding" not in cert.evidence["structural"]["digest_does_not_bind"]
+    assert "confidence" in cert.evidence["structural"]["digest_does_not_bind"]
+    _assert_not_admitted(cert)
+
+
+def test_identity1_does_not_bind_excluded_fields():
+    pack = _seal_identity(make_pack())
+    sealed_identity = pack.identity_digest
+    sealed_checksum = pack.checksum
+    pack.symbols[0].confidence = 1.0
+    pack.symbols[0].metadata["kappa"] = 0.0
+    pack.receipts.append(Receipt(step="note", ok=True, timestamp=1.0))
+    assert pack.compute_identity_digest() == sealed_identity
+    assert pack.identity_digest == sealed_identity
+    assert pack.compute_checksum() == sealed_checksum
+    cert = certify(pack)
+    assert cert.identity_bound is True
+    assert cert.passed is True
+    assert cert.decision == CERTIFICATE_DECISION_UNRESOLVED
+    unbound = cert.evidence["structural"]["digest_does_not_bind"]
+    assert "confidence" in unbound
+    assert "kappa" in unbound
+    assert "receipts" in unbound
+    assert "proto_embedding" not in unbound
+    gloss = translate_stream(pack, [0])[0]
+    assert gloss.confidence == pytest.approx(0.92)
+    _assert_not_admitted(cert)
+
+
+def test_identity1_missing_digest_fails_closed():
+    for digest in (_OMITTED, None, "", "   "):
+        loaded = _pack_with_digest_fields(DIGEST_PROFILE_IDENTITY_1, digest)
+        assert loaded.digest_profile == DIGEST_PROFILE_IDENTITY_1
+        assert loaded.identity_digest is None
+        cert = certify(loaded)
+        assert cert.digest_profile == DIGEST_PROFILE_IDENTITY_1
+        assert cert.evidence["structural"]["digest_pairing"] == DIGEST_PAIRING_IDENTITY_1
+        assert cert.identity_bound is False
+        assert cert.passed is False
+        assert cert.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+        assert cert.addressable is True
+        assert cert.unfoldable is True
+        assert cert.gloss_bound is True
+        assert cert.residual_ok is True
+        assert "proto_embedding" in cert.evidence["structural"]["digest_does_not_bind"]
+        assert any(
+            "missing identity_digest" in failure for failure in cert.failures
+        )
+        _assert_not_admitted(cert)
+
+
+def test_unbound_omission_is_not_an_identity_pass():
+    current = certify(make_pack()).to_dict()
+    legacy = {
+        key: current[key]
+        for key in (
+            "pack_id",
+            "pack_checksum",
+            "expected_checksum",
+            "passed",
+            "addressable",
+            "unfoldable",
+            "gloss_bound",
+            "residual_ok",
+            "fail_closed",
+            "failures",
+            "timestamp",
+            "details",
+        )
+    }
+    assert "digest_profile" not in legacy
+    assert "identity_digest" not in legacy
+    assert "schema_version" not in legacy
+    loaded_cert = AuditCertificate.from_dict(legacy)
+    assert loaded_cert.schema_version == CERTIFICATE_SCHEMA_UNVERSIONED
+    assert loaded_cert.decision == CERTIFICATE_DECISION_UNRESOLVED
+    assert loaded_cert.decision != "RESEARCH_PASS"
+    assert loaded_cert.identity_bound is False
+    assert loaded_cert.digest_profile is None
+    assert loaded_cert.identity_digest is None
+    assert loaded_cert.authority == CERTIFICATE_AUTHORITY
+
+    for profile, digest in (
+        (_OMITTED, _OMITTED),
+        (None, None),
+        ("", ""),
+        ("   ", "   "),
+        ("unbound", _OMITTED),
+        ("unbound", None),
+        ("unbound", ""),
+    ):
+        loaded = _pack_with_digest_fields(profile, digest)
+        cert = certify(loaded)
+        assert cert.evidence["structural"]["digest_pairing"] == DIGEST_PAIRING_UNBOUND
+        assert cert.identity_bound is False
+        assert cert.passed is True
+        assert cert.decision == CERTIFICATE_DECISION_UNRESOLVED
+        assert "proto_embedding" in cert.evidence["structural"]["digest_does_not_bind"]
+        _assert_not_admitted(cert)
+
+    pack = make_pack()
+    del pack.observations["obs-hello"]
+    cert = certify(pack)
+    assert cert.passed is False
+    assert cert.unfoldable is False
+    assert cert.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+    assert cert.identity_bound is False
+    assert any(
+        "missing reservoir observation obs-hello" in failure for failure in cert.failures
+    )
+    assert "proto_embedding" in cert.evidence["structural"]["digest_does_not_bind"]
+    _assert_not_admitted(cert)
+
+
+def test_unbound_with_identity_digest_is_not_verified():
+    sample = make_pack()
+    correct_looking = sample.compute_identity_digest()
+    for profile in (_OMITTED, None, "", "   ", "unbound"):
+        for digest in ("not-a-verified-digest", correct_looking):
+            loaded = _pack_with_digest_fields(profile, digest)
+            cert = certify(loaded)
+            assert cert.identity_bound is False
+            assert cert.evidence["structural"]["identity_bound"] is False
+            assert cert.passed is False
+            assert cert.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+            assert cert.evidence["structural"]["digest_pairing"] == (
+                DIGEST_PAIRING_INCONSISTENT
+            )
+            assert cert.addressable is True
+            assert cert.unfoldable is True
+            assert cert.gloss_bound is True
+            assert cert.residual_ok is True
+            blob = " ".join(cert.failures)
+            assert "inconsistent" in blob
+            assert "unverified" in blob
+            assert "identity-1 matched" not in blob
+            assert "proto_embedding" in cert.evidence["structural"]["digest_does_not_bind"]
+            _assert_not_admitted(cert)
+
+
+def test_unknown_digest_profile_fails_closed():
+    for profile in ("identity-2", "legacy", "v0.1"):
+        for digest in (_OMITTED, None, "", "   ", "deadbeefdeadbeef"):
+            loaded = _pack_with_digest_fields(profile, digest)
+            assert loaded.digest_profile == profile
+            assert loaded.digest_profile != "unbound"
+            cert = certify(loaded)
+            assert cert.passed is False
+            assert cert.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+            assert cert.identity_bound is False
+            assert cert.digest_profile == profile
+            assert cert.evidence["structural"]["digest_pairing"] == DIGEST_PAIRING_UNKNOWN
+            assert "proto_embedding" in cert.evidence["structural"]["digest_does_not_bind"]
+            assert any(
+                f"unknown digest_profile {profile!r}" in failure
+                for failure in cert.failures
+            )
+            _assert_not_admitted(cert)
+            again = AuditCertificate.from_dict(cert.to_dict())
+            assert again.digest_profile == profile
+            assert again.passed is False
+            assert again.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+            assert again.identity_bound is False
+
+    omitted = SymbolPack.from_dict(make_pack().to_dict())
+    assert omitted.digest_profile is None
+    assert omitted.identity_digest is None
+    unbound = certify(omitted)
+    assert unbound.passed is True
+    assert unbound.decision == CERTIFICATE_DECISION_UNRESOLVED
+    assert unbound.identity_bound is False
+    assert unbound.evidence["structural"]["digest_pairing"] == DIGEST_PAIRING_UNBOUND
+    assert "proto_embedding" in unbound.evidence["structural"]["digest_does_not_bind"]
+
+    pack = make_pack()
+    with pytest.raises(ValueError, match="identity-1"):
+        pack.seal(digest_profile="identity-2")
+    assert pack.digest_profile is None
+    assert pack.identity_digest is None
+
+
+def test_identity_digest_serialization_roundtrip(tmp_path):
+    unbound = make_pack()
+    raw = unbound.to_dict()
+    assert "digest_profile" not in raw
+    assert "identity_digest" not in raw
+    loaded = SymbolPack.from_dict(raw)
+    assert loaded.checksum == unbound.checksum
+    assert loaded.digest_profile is None
+    assert loaded.identity_digest is None
+    unbound_cert = certify(loaded)
+    assert unbound_cert.passed is True
+    assert unbound_cert.decision == CERTIFICATE_DECISION_UNRESOLVED
+    assert unbound_cert.identity_bound is False
+
+    unbound_path = tmp_path / "unbound.json"
+    save_pack(unbound, unbound_path)
+    saved = json.loads(unbound_path.read_text(encoding="utf-8"))
+    assert "digest_profile" not in saved
+    assert "identity_digest" not in saved
+    from_disk = load_pack(unbound_path)
+    assert from_disk.checksum == unbound.checksum
+    assert from_disk.compute_checksum() == unbound.checksum
+    assert from_disk.digest_profile is None
+    assert from_disk.identity_digest is None
+
+    ident = make_pack()
+    checksum = ident.checksum
+    _seal_identity(ident)
+    assert ident.checksum == checksum
+    identity_path = tmp_path / "identity.json"
+    save_pack(ident, identity_path)
+    loaded_id = load_pack(identity_path)
+    assert loaded_id.checksum == checksum
+    assert loaded_id.digest_profile == DIGEST_PROFILE_IDENTITY_1
+    assert loaded_id.identity_digest == ident.identity_digest
+    loaded_id.symbols[0].proto_embedding[0] += 1e-6
+    assert loaded_id.compute_checksum() == loaded_id.checksum
+    edited = certify(loaded_id)
+    assert edited.identity_bound is False
+    assert edited.passed is False
+    assert edited.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+    assert edited.gloss_bound is True
+    assert any("identity digest mismatch" in failure for failure in edited.failures)
+
+
+def test_default_seal_does_not_opt_into_identity1():
+    pack = make_pack()
+    assert pack.digest_profile is None
+    assert pack.identity_digest is None
+    before = pack.to_dict()
+    pack.seal()
+    assert "digest_profile" not in pack.to_dict()
+    assert pack.to_dict().keys() == before.keys()
+    assert pack.checksum == pack.compute_checksum()
+
+    _seal_identity(pack)
+    sealed_identity = pack.identity_digest
+    pack.symbols[0].definition = "rewritten after identity seal"
+    pack.seal()
+    assert pack.digest_profile == DIGEST_PROFILE_IDENTITY_1
+    assert pack.identity_digest == sealed_identity
+    assert pack.checksum == pack.compute_checksum()
+    cert = certify(pack)
+    assert cert.gloss_bound is True
+    assert cert.identity_bound is False
+    assert cert.passed is False
+    assert cert.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+
+
+def test_identity1_empty_reservoir_is_not_a_pass():
+    pack = make_pack(
+        observations={},
+        symbols=[
+            Symbol(
+                class_id=0,
+                code=0,
+                proto_embedding=[1.0, 0.0],
+                observation_ids=["obs-1"],
+                definition="bound gloss for a missing row",
+            )
+        ],
+    )
+    _seal_identity(pack)
+    cert = certify(pack)
+    assert cert.identity_bound is True
+    assert cert.gloss_bound is True
+    assert cert.unfoldable is False
+    assert cert.passed is False
+    assert cert.decision == CERTIFICATE_DECISION_RESEARCH_FAIL
+    assert any(
+        "missing reservoir observation obs-1" in failure for failure in cert.failures
+    )
+    _assert_not_admitted(cert)
+
+
+def test_identity1_empty_prototype_is_canonical_empty_list():
+    pack = make_pack()
+    pack.symbols[0].proto_embedding = []
+    _seal_identity(pack)
+    row = pack.identity_payload()["symbols"][0]
+    assert row["proto_embedding"] == []
+    assert "proto_embedding" not in pack._checksum_payload()["symbols"][0]
+    cert = certify(pack)
+    assert cert.identity_bound is True
+    assert cert.passed is False
+    assert cert.unfoldable is False
+    pack.symbols[0].proto_embedding = [1.0, 0.0, 0.0]
+    assert pack.compute_identity_digest() != pack.identity_digest
+    assert certify(pack).identity_bound is False

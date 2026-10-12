@@ -24,8 +24,12 @@ _CERTIFICATE_DECISIONS = frozenset(
     {CERTIFICATE_DECISION_RESEARCH_FAIL, CERTIFICATE_DECISION_UNRESOLVED}
 )
 
-# Named by the v0.2 schema as outside the digest. certify() records this
-# list. It does not add these fields to compute_checksum.
+# Named by the v0.2 schema as outside today's compute_checksum. certify()
+# records this list for unbound packs and for every pairing row that does
+# not carry a non-empty identity-1 digest. identity-1 drops only
+# proto_embedding from the certificate list, and only once identity_digest
+# is present. This tuple is not rewritten, and proto_embedding is not added
+# to compute_checksum.
 DIGEST_DOES_NOT_BIND = (
     "proto_embedding",
     "confidence",
@@ -40,6 +44,16 @@ DIGEST_DOES_NOT_BIND = (
     "pack.metadata",
 )
 
+# Digest profile is not schema_version and not the package version.
+# Omitted, null, and blank are absence. The word "unbound" is the legacy
+# profile. identity-1 is opt-in. Any other string is an unknown profile.
+DIGEST_PROFILE_UNBOUND = "unbound"
+DIGEST_PROFILE_IDENTITY_1 = "identity-1"
+DIGEST_PAIRING_UNBOUND = "unbound"
+DIGEST_PAIRING_INCONSISTENT = "INCONSISTENT"
+DIGEST_PAIRING_UNKNOWN = "UNKNOWN PROFILE"
+DIGEST_PAIRING_IDENTITY_1 = "identity-1"
+
 
 def canonical_dumps(obj: Any) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
@@ -47,6 +61,77 @@ def canonical_dumps(obj: Any) -> str:
 
 def sha16(obj: Any) -> str:
     return hashlib.sha256(canonical_dumps(obj).encode("utf-8")).hexdigest()[:16]
+
+
+def digest_field_absent(value: Any) -> bool:
+    """True for omitted, null, or blank. A blank string is whitespace only."""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return value.strip() == ""
+    return False
+
+
+def canonical_digest_token(value: Any) -> Optional[str]:
+    """Normalize one digest field.
+
+    None, a missing value, and a blank string are absence (``None``).
+    Any other string is returned stripped. A non-string is stringified so
+    certify can fail closed instead of raising on a bad JSON type.
+    """
+    if digest_field_absent(value):
+        return None
+    if isinstance(value, str):
+        return value.strip()
+    token = str(value).strip()
+    return token or None
+
+
+@dataclass(frozen=True)
+class DigestPairing:
+    """Fail-closed reading of digest_profile against identity_digest.
+
+    ``profile`` and ``identity_digest`` are the normalized tokens. ``profile``
+    is None when the profile was omitted, null, or blank, and is the word
+    ``unbound`` when that word was stored. Unknown strings stay on ``profile``
+    and are not relabeled unbound.
+    """
+
+    pairing: str
+    profile: Optional[str]
+    identity_digest: Optional[str]
+
+    @property
+    def identity_digest_present(self) -> bool:
+        return self.identity_digest is not None
+
+
+def classify_digest_pairing(profile: Any, identity_digest: Any) -> DigestPairing:
+    """Apply the identity-1 pairing table. Does not coerce unknown profiles."""
+    token = canonical_digest_token(profile)
+    digest = canonical_digest_token(identity_digest)
+    if token is None or token == DIGEST_PROFILE_UNBOUND:
+        if digest is None:
+            return DigestPairing(DIGEST_PAIRING_UNBOUND, token, None)
+        return DigestPairing(DIGEST_PAIRING_INCONSISTENT, token, digest)
+    if token == DIGEST_PROFILE_IDENTITY_1:
+        return DigestPairing(DIGEST_PAIRING_IDENTITY_1, token, digest)
+    return DigestPairing(DIGEST_PAIRING_UNKNOWN, token, digest)
+
+
+def digest_does_not_bind_for(pairing: DigestPairing) -> Tuple[str, ...]:
+    """Certificate list for this pairing.
+
+    proto_embedding stays on the list for unbound, inconsistent, unknown,
+    and identity-1 with no digest. A present identity-1 digest drops only
+    that name, including when the digest does not match.
+    """
+    if (
+        pairing.pairing == DIGEST_PAIRING_IDENTITY_1
+        and pairing.identity_digest_present
+    ):
+        return tuple(name for name in DIGEST_DOES_NOT_BIND if name != "proto_embedding")
+    return DIGEST_DOES_NOT_BIND
 
 
 def _int_keyed(d: Dict[Any, Any]) -> Dict[int, int]:
@@ -167,9 +252,12 @@ class SymbolPack:
     timestamp: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
     observations: Dict[str, Observation] = field(default_factory=dict)
+    # Optional. Both absent means unbound. Default seal() does not set them.
+    digest_profile: Optional[str] = None
+    identity_digest: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        payload = {
             "pack_id": self.pack_id,
             "symbols": [s.to_dict() for s in self.symbols],
             "codebook": {str(k): int(v) for k, v in self.codebook.items()},
@@ -186,10 +274,34 @@ class SymbolPack:
             "timestamp": self.timestamp,
             "metadata": self.metadata,
         }
+        # Unbound packs omit both keys so legacy JSON keeps today's shape.
+        # A present profile or digest writes both keys. An absent side is
+        # JSON null, and from_dict reads null as absence. Null plus null is
+        # unbound. One present side is not unbound.
+        profile = canonical_digest_token(self.digest_profile)
+        digest = canonical_digest_token(self.identity_digest)
+        if profile is not None or digest is not None:
+            payload["digest_profile"] = profile
+            payload["identity_digest"] = digest
+        return payload
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SymbolPack":
+        """Load a pack. Omitted digest fields are absence, not identity-1.
+
+        Unknown digest_profile strings are stored as given. They are not
+        relabeled unbound and this loader does not raise for them. certify
+        fail-closes that pack with passed false. Blank and null are absence.
+        """
         guards_raw = data.get("guards")
+        if "digest_profile" in data:
+            digest_profile = canonical_digest_token(data.get("digest_profile"))
+        else:
+            digest_profile = None
+        if "identity_digest" in data:
+            identity_digest = canonical_digest_token(data.get("identity_digest"))
+        else:
+            identity_digest = None
         pack = cls(
             pack_id=str(data["pack_id"]),
             symbols=[Symbol.from_dict(s) for s in data.get("symbols") or []],
@@ -204,15 +316,40 @@ class SymbolPack:
             timestamp=float(data.get("timestamp") or 0.0),
             metadata=dict(data.get("metadata") or {}),
             observations=_load_observations(data.get("observations")),
+            digest_profile=digest_profile,
+            identity_digest=identity_digest,
         )
         return pack
 
-    def seal(self) -> "SymbolPack":
-        self.checksum = self.compute_checksum()
+    def seal(self, *, digest_profile: Optional[str] = None) -> "SymbolPack":
+        """Assign pack.checksum from compute_checksum().
+
+        The default call does not write digest_profile or identity_digest
+        and does not opt the pack into identity-1. Pass
+        ``digest_profile="identity-1"`` to store that profile and
+        identity_digest = sha16(identity payload). The opt-in still assigns
+        pack.checksum from compute_checksum(), so checksum bytes stay the
+        legacy digest. Any other name is rejected and writes nothing.
+        A pack that already carries an unknown profile is left unchanged
+        by a rejected opt-in; certify fail-closes it.
+        """
+        checksum = self.compute_checksum()
+        if digest_profile is None:
+            self.checksum = checksum
+            return self
+        token = canonical_digest_token(digest_profile)
+        if token != DIGEST_PROFILE_IDENTITY_1:
+            raise ValueError(
+                "seal opt-in accepts only digest_profile 'identity-1'; "
+                f"got {digest_profile!r}"
+            )
+        self.checksum = checksum
+        self.digest_profile = DIGEST_PROFILE_IDENTITY_1
+        self.identity_digest = self.compute_identity_digest()
         return self
 
-    def compute_checksum(self) -> str:
-        payload = {
+    def _checksum_payload(self) -> Dict[str, Any]:
+        return {
             "pack_id": self.pack_id,
             "codebook": {str(k): int(v) for k, v in sorted(self.codebook.items())},
             "aliases": {str(k): int(v) for k, v in sorted(self.aliases.items())},
@@ -229,7 +366,33 @@ class SymbolPack:
                 for s in sorted(self.symbols, key=lambda x: x.class_id)
             ],
         }
-        return sha16(payload)
+
+    def compute_checksum(self) -> str:
+        return sha16(self._checksum_payload())
+
+    def identity_payload(self) -> Dict[str, Any]:
+        """Checksum object plus proto_embedding rounded to 8 decimals.
+
+        Symbols stay sorted by class_id. An empty prototype is [].
+        Confidence, examples, survival, symbol metadata, guards, receipts,
+        parent_pack_id, mdl_bits, pack metadata, and timestamp are not keys.
+        """
+        payload = self._checksum_payload()
+        ordered = sorted(self.symbols, key=lambda item: item.class_id)
+        enriched: List[Dict[str, Any]] = []
+        for row, symbol in zip(payload["symbols"], ordered):
+            proto = symbol.proto_embedding or []
+            enriched.append(
+                {
+                    **row,
+                    "proto_embedding": [round(float(x), 8) for x in proto],
+                }
+            )
+        payload["symbols"] = enriched
+        return payload
+
+    def compute_identity_digest(self) -> str:
+        return sha16(self.identity_payload())
 
     @staticmethod
     def _normalize_definition(definition: Optional[str]) -> Optional[str]:
@@ -306,6 +469,11 @@ class AuditCertificate:
     authority: str = CERTIFICATE_AUTHORITY
     decision: str = CERTIFICATE_DECISION_UNRESOLVED
     evidence: Dict[str, Any] = field(default_factory=dict)
+    # Independent of gloss_bound. True only when identity-1 matches.
+    # Omitted on legacy JSON loads as False, which is not an identity pass.
+    identity_bound: bool = False
+    digest_profile: Optional[str] = None
+    identity_digest: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.schema_version not in _CERTIFICATE_SCHEMAS:
@@ -334,6 +502,12 @@ class AuditCertificate:
         rather than being recomputed into a pass. authority defaults to
         RUNTIME_NOT_AUTHORIZED. package_version is informational and is
         not a gate; a missing copy stays None.
+
+        digest_profile and identity_digest are optional. Omitted, null, and
+        blank are absence. Unknown profile strings are stored and are not
+        relabeled unbound. This loader does not raise for them and does not
+        re-run certify. identity_bound defaults to false when omitted, so a
+        legacy certificate does not become an identity pass.
         """
         raw_evidence = data.get("evidence")
         if raw_evidence is None:
@@ -350,6 +524,18 @@ class AuditCertificate:
         package_raw = data.get("package_version") if "package_version" in data else None
         authority_raw = data.get("authority")
         decision_raw = data.get("decision")
+        if "digest_profile" in data:
+            digest_profile = canonical_digest_token(data.get("digest_profile"))
+        else:
+            digest_profile = None
+        if "identity_digest" in data:
+            identity_digest = canonical_digest_token(data.get("identity_digest"))
+        else:
+            identity_digest = None
+        if "identity_bound" in data and data.get("identity_bound") is not None:
+            identity_bound = bool(data.get("identity_bound"))
+        else:
+            identity_bound = False
         return cls(
             pack_id=str(data["pack_id"]),
             pack_checksum=str(data["pack_checksum"]),
@@ -376,6 +562,9 @@ class AuditCertificate:
                 else str(decision_raw)
             ),
             evidence=evidence,
+            identity_bound=identity_bound,
+            digest_profile=digest_profile,
+            identity_digest=identity_digest,
         )
 
 

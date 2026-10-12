@@ -1,6 +1,6 @@
 # PR-1 digest compatibility
 
-Status: **accepted** as the specification for a later implementation review. The operator accepted this note at commit `7e645bc`. This amendment records that acceptance and the pairing rules below. This commit does not implement `identity-1`. Implementation remains subject to operator approval.
+Status: **accepted** as the specification for a later implementation review. The operator accepted this note at commit `7e645bc`. This amendment records that acceptance and the pairing rules below. The specification commit does not implement `identity-1`. The later implementation is recorded in [Implementation](#implementation). That section does not change the pairing rules in section 3.
 
 Recommendation: **NONE**. Authority: **RUNTIME_NOT_AUTHORIZED**. Certificate schema **0.2** stands. Package **0.7.0** stands. `pack.checksum` is unchanged. The research checkpoint stands. Activation-codec experiments stay closed. This note does not add a codec, quantizer, layer, or slot-retrieval trial.
 
@@ -340,3 +340,45 @@ Under `unbound`, the `1e-6` prototype nudge keeps today's checksum, `passed` tru
 Implementation is not authorized by this amendment. The next code change, when an operator approves it, is only the versioned identity-integrity profile in this document: the new optional fields `digest_profile` and `identity_digest`, the pairing rules in section 3, and the future tests already listed in section 4. It does not replace `pack.checksum`, does not add numerical or semantic gates, does not bump the package, and does not reopen activation experiments.
 
 Recommendation **NONE**. Authority **RUNTIME_NOT_AUTHORIZED**. Schema **0.2** unchanged. Package **0.7.0** unchanged. `pack.checksum` unchanged. Serialization was not changed. No tests were added. `identity-1` is not implemented.
+
+## Implementation
+
+Status: **IMPLEMENTATION_CANDIDATE**. Authority remains **RUNTIME_NOT_AUTHORIZED**. Recommendation **NONE**. This section records the code that follows the specification above. It does not admit a runtime, and it does not close the prototype gap for unbound packs.
+
+### What landed
+
+`SymbolPack` has optional `digest_profile` and `identity_digest`. `compute_checksum()` is still the legacy payload. `proto_embedding` is not a key of that payload. `gloss_bound` is still `compute_checksum() == pack.checksum`, plus the existing `require_gloss` definition check.
+
+`seal()` with no profile argument assigns `pack.checksum = compute_checksum()` and does not write the new fields. `seal(digest_profile="identity-1")` is the opt-in. It writes `digest_profile` `"identity-1"` and `identity_digest = sha16` of the identity payload (the checksum object plus `proto_embedding` on each symbol, each coordinate `round(float(x), 8)`, empty prototype `[]`, symbols sorted by `class_id`). It still assigns `pack.checksum` from `compute_checksum()`, so the checksum bytes do not change. Any other name passed to that argument raises `ValueError` and writes nothing.
+
+`certify` applies the section 3 pairing table. `identity_bound` is a certificate field and `evidence.structural.identity_bound`. It is true only when `identity-1` is present and `identity_digest` equals `sha16` of the identity payload. Unbound does not report `identity_bound` true, and `identity_bound` is not a pass condition on that row. Under `identity-1`, `passed` is the four structural gates and `identity_bound`. A structural pass is still `decision` `UNRESOLVED`, never `RESEARCH_PASS`. `schema_version` written by `certify` stays `"0.2"`. `package_version` stays informational `"0.7.0"`. A missing reservoir still fails unfold.
+
+When a non-empty `identity-1` digest is present, `digest_does_not_bind` drops `proto_embedding` and keeps the excluded names. A mismatch does not put `proto_embedding` back. Unbound, inconsistent, unknown, and `identity-1` with no digest keep `proto_embedding` on that list.
+
+### Migration
+
+Old packs and certificate JSON that omit both fields still load. Omitted, null, or blank `digest_profile` together with omitted, null, or blank `identity_digest` is unbound, including the explicit word `unbound` with no digest. An unbound pack's saved JSON omits both keys, so legacy serialization keeps today's shape. Explicit nulls load as absence. Null plus null is unbound. One present side is not unbound.
+
+`seal()` default is unchanged, so existing callers and `learn_pack` stay unbound. `identity-1` is opt-in. A later default `seal()` on a pack that is already `identity-1` refreshes `pack.checksum` only. It does not recompute `identity_digest`.
+
+### How unknown profiles and inconsistent pairs are reported
+
+`SymbolPack.from_dict` and `AuditCertificate.from_dict` store an unknown `digest_profile` string. They do not relabel it as unbound, and they do not raise. Blank and null become absence. This is not the `schema_version` / stored `RESEARCH_PASS` path: those still raise in `AuditCertificate.from_dict`, because that loader cannot represent them. An unknown digest profile can be represented, and the specification requires a certificate with `passed` false.
+
+`certify` does not raise for a bad profile or a bad pair. It returns a certificate:
+
+- Inconsistent (omitted, null, blank, or the word `unbound`, plus a non-empty `identity_digest`): `identity_bound` false, `passed` false, `decision` `RESEARCH_FAIL`. The failure says the combination is inconsistent and the digest is unverified. The four gates are still reported and cannot make `passed` true. `proto_embedding` stays on `digest_does_not_bind`.
+- Unknown profile (`identity-2`, `legacy`, `v0.1`, or any other string): `identity_bound` false, `passed` false, `decision` `RESEARCH_FAIL`. The profile string is kept. `authority` stays `RUNTIME_NOT_AUTHORIZED`.
+- `identity-1` with a missing or blank `identity_digest`: `passed` false, `decision` `RESEARCH_FAIL`. It does not fall through to unbound.
+
+`seal(digest_profile="identity-2")` raises before it writes. That is only the opt-in writer. A pack that already carries the bad profile, from JSON or from an attribute, still reaches `certify` and gets the fail-closed certificate.
+
+### Remaining limitations
+
+Eight-decimal rounding is blind to a change that `round(float(x), 8)` does not move. A `+1e-9` nudge leaves the canonical value, and therefore `identity_digest`, unchanged. That is rounding, not a `PROTO_ATOL` pass.
+
+`confidence`, `examples`, `survival`, symbol `metadata` / `kappa`, `guards`, `receipts`, `parent_pack_id`, `mdl_bits`, pack `metadata`, and pack `timestamp` stay out of the identity payload. `digest_does_not_bind` still names them.
+
+`evidence.numerical` and `evidence.semantic` stay `NOT IMPLEMENTED` / `UNRESOLVED` on every row, including an `identity-1` match. An integrity match is not numerical validity and not semantic validity.
+
+There is no runtime admission. Authority stays `RUNTIME_NOT_AUTHORIZED`. Recommendation stays `NONE`. The prototype gap is not closed for unbound packs: a `+1e-6` prototype nudge under unbound still leaves `pack.checksum` unchanged, `passed` true, and `decision` `UNRESOLVED`, and `digest_does_not_bind` still lists `proto_embedding`.
