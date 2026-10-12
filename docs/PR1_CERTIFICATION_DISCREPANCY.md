@@ -246,6 +246,8 @@ Section 5 tests that were absent are in `tests/test_pr1_certification.py`. They 
 
 `test_unversioned_empty_reservoir_fails_unfold` was specified against a certificate that had no `schema_version` attribute. `certify()` now writes `schema_version` `"0.2"` on that failure. The unfold failure, `gloss_bound` true, and `passed` false are unchanged. The loader test covers a twelve-field dict that still has no schema field.
 
+The activation-source and activation-boundary tests lock a sha256 of `src/neuralese/audit.py`. That digest now names the schema 0.2 file. The encode, clustering, alphabet, package init, and `pyproject.toml` digests in those tests are unchanged. No held-out slot count, residual, or admission byte was retuned.
+
 ### Not specified, and not implemented
 
 - A per-symbol certified flag, and any gloss state besides `ok` / `aliased` / `quarantined` / `unknown`. The plan distinguishes a translated gloss from a certified symbol by the certificate: a full certification would need a structural pass and numerical and semantic decisions other than `UNRESOLVED`, and no symbol meets that bar. `translate_stream` state `ok` stays the weaker public gloss. The exact extra gloss fields were not defined, so none were added.
