@@ -337,9 +337,9 @@ Under `unbound`, the `1e-6` prototype nudge keeps today's checksum, `passed` tru
 
 ## Not authorized by this amendment
 
-Implementation is not authorized by this amendment. The next code change, when an operator approves it, is only the versioned identity-integrity profile in this document: the new optional fields `digest_profile` and `identity_digest`, the pairing rules in section 3, and the future tests already listed in section 4. It does not replace `pack.checksum`, does not add numerical or semantic gates, does not bump the package, and does not reopen activation experiments.
+The amendment above specified the profile and did not implement it. The implementation section below records the opt-in that followed: optional `digest_profile` and `identity_digest`, the section 3 pairing rules, and the section 4 tests. That code does not replace `pack.checksum`, does not add numerical or semantic gates, does not bump the package, and does not reopen activation experiments. It is not a runtime admission.
 
-Recommendation **NONE**. Authority **RUNTIME_NOT_AUTHORIZED**. Schema **0.2** unchanged. Package **0.7.0** unchanged. `pack.checksum` unchanged. Serialization was not changed. No tests were added. `identity-1` is not implemented.
+Recommendation **NONE**. Authority **RUNTIME_NOT_AUTHORIZED**. Schema **0.2** unchanged. Package **0.7.0** unchanged. `pack.checksum` unchanged.
 
 ## Implementation
 
