@@ -1,0 +1,8 @@
+{"observation_id": "north-1", "text": "north wind over the ridge", "embedding": [1.0, 0.02, 0.0, 0.0]}
+{"observation_id": "north-2", "text": "north slope stayed cold", "embedding": [0.98, 0.0, 0.03, 0.0]}
+{"observation_id": "north-3", "text": "a north marker on the trail", "embedding": [1.01, 0.01, 0.0, 0.02]}
+{"observation_id": "north-4", "text": "north camp before sunrise", "embedding": [0.99, 0.0, 0.01, 0.0]}
+{"observation_id": "south-1", "text": "south field in full sun", "embedding": [0.0, 1.0, 0.02, 0.0]}
+{"observation_id": "south-2", "text": "south road toward the coast", "embedding": [0.02, 0.99, 0.0, 0.01]}
+{"observation_id": "south-3", "text": "south garden after noon", "embedding": [0.0, 1.02, 0.01, 0.0]}
+{"observation_id": "south-4", "text": "south well beside the oaks", "embedding": [0.01, 0.98, 0.0, 0.02]}
