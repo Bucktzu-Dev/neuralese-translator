@@ -73,18 +73,23 @@ def digest_field_absent(value: Any) -> bool:
 
 
 def canonical_digest_token(value: Any) -> Optional[str]:
-    """Normalize one digest field.
+    """Return an exact token, or None when the field is absent.
 
-    None, a missing value, and a blank string are absence (``None``).
-    Any other string is returned stripped. A non-string is stringified so
-    certify can fail closed instead of raising on a bad JSON type.
+    None and a blank string (empty or whitespace-only) are absence.
+    Any other string is returned unchanged. Case is not folded and
+    surrounding whitespace is not removed, so ``" identity-1"`` and
+    ``"identity-1 "`` are not ``identity-1``, and ``" unbound"`` is not
+    the legacy word ``unbound``.
+
+    A non-string is rendered as a representable token that is neither
+    ``identity-1`` nor ``unbound`` and cannot equal a sha16 digest.
+    certify then fails closed instead of raising or accepting it.
     """
     if digest_field_absent(value):
         return None
     if isinstance(value, str):
-        return value.strip()
-    token = str(value).strip()
-    return token or None
+        return value
+    return f"non-string:{type(value).__name__}:{value}"
 
 
 @dataclass(frozen=True)
@@ -107,7 +112,11 @@ class DigestPairing:
 
 
 def classify_digest_pairing(profile: Any, identity_digest: Any) -> DigestPairing:
-    """Apply the identity-1 pairing table. Does not coerce unknown profiles."""
+    """Apply the identity-1 pairing table.
+
+    Does not coerce unknown profiles. Does not strip or case-fold a
+    string into ``identity-1`` or ``unbound``.
+    """
     token = canonical_digest_token(profile)
     digest = canonical_digest_token(identity_digest)
     if token is None or token == DIGEST_PROFILE_UNBOUND:
@@ -292,6 +301,8 @@ class SymbolPack:
         Unknown digest_profile strings are stored as given. They are not
         relabeled unbound and this loader does not raise for them. certify
         fail-closes that pack with passed false. Blank and null are absence.
+        Any other string is stored exactly. A non-string is kept as a
+        representable token and is not coerced into identity-1 or unbound.
         """
         guards_raw = data.get("guards")
         if "digest_profile" in data:
@@ -325,25 +336,22 @@ class SymbolPack:
         """Assign pack.checksum from compute_checksum().
 
         The default call does not write digest_profile or identity_digest
-        and does not opt the pack into identity-1. Pass
-        ``digest_profile="identity-1"`` to store that profile and
-        identity_digest = sha16(identity payload). The opt-in still assigns
-        pack.checksum from compute_checksum(), so checksum bytes stay the
-        legacy digest. Any other name is rejected and writes nothing.
-        A pack that already carries an unknown profile is left unchanged
-        by a rejected opt-in; certify fail-closes it.
+        and does not refresh an identity_digest already stored. Pass the
+        exact string ``digest_profile="identity-1"`` to store that profile
+        and identity_digest = sha16(identity payload) for the object as it
+        is now. The opt-in still assigns pack.checksum from
+        compute_checksum(), so checksum bytes stay the legacy digest. Any
+        other value, including a different case or surrounding whitespace,
+        raises ValueError and writes nothing.
         """
-        checksum = self.compute_checksum()
-        if digest_profile is None:
-            self.checksum = checksum
-            return self
-        token = canonical_digest_token(digest_profile)
-        if token != DIGEST_PROFILE_IDENTITY_1:
+        if digest_profile is not None and digest_profile != DIGEST_PROFILE_IDENTITY_1:
             raise ValueError(
                 "seal opt-in accepts only digest_profile 'identity-1'; "
                 f"got {digest_profile!r}"
             )
-        self.checksum = checksum
+        self.checksum = self.compute_checksum()
+        if digest_profile is None:
+            return self
         self.digest_profile = DIGEST_PROFILE_IDENTITY_1
         self.identity_digest = self.compute_identity_digest()
         return self
@@ -504,10 +512,12 @@ class AuditCertificate:
         not a gate; a missing copy stays None.
 
         digest_profile and identity_digest are optional. Omitted, null, and
-        blank are absence. Unknown profile strings are stored and are not
-        relabeled unbound. This loader does not raise for them and does not
-        re-run certify. identity_bound defaults to false when omitted, so a
-        legacy certificate does not become an identity pass.
+        blank are absence. Unknown profile strings are stored exactly and
+        are not relabeled unbound, identity-1, or a stripped form of either.
+        This loader does not raise for them and does not re-run certify.
+        identity_bound defaults to false when omitted, so a legacy
+        certificate does not become an identity pass. A non-string profile
+        is kept representable and is not coerced into an accepting word.
         """
         raw_evidence = data.get("evidence")
         if raw_evidence is None:

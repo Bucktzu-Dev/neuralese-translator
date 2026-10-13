@@ -363,7 +363,7 @@ Old packs and certificate JSON that omit both fields still load. Omitted, null, 
 
 ### How unknown profiles and inconsistent pairs are reported
 
-`SymbolPack.from_dict` and `AuditCertificate.from_dict` store an unknown `digest_profile` string. They do not relabel it as unbound, and they do not raise. Blank and null become absence. This is not the `schema_version` / stored `RESEARCH_PASS` path: those still raise in `AuditCertificate.from_dict`, because that loader cannot represent them. An unknown digest profile can be represented, and the specification requires a certificate with `passed` false.
+`SymbolPack.from_dict` and `AuditCertificate.from_dict` store an unknown `digest_profile` string. They do not relabel it as unbound, and they do not raise. Blank and null become absence. Any other string is stored exactly. Different case and surrounding whitespace are not stripped or folded into `identity-1` or `unbound`. A non-string profile is kept representable and is not coerced into either word. This is not the `schema_version` / stored `RESEARCH_PASS` path: those still raise in `AuditCertificate.from_dict`, because that loader cannot represent them. An unknown digest profile can be represented, and the specification requires a certificate with `passed` false.
 
 `certify` does not raise for a bad profile or a bad pair. It returns a certificate:
 
@@ -382,3 +382,7 @@ Eight-decimal rounding is blind to a change that `round(float(x), 8)` does not m
 `evidence.numerical` and `evidence.semantic` stay `NOT IMPLEMENTED` / `UNRESOLVED` on every row, including an `identity-1` match. An integrity match is not numerical validity and not semantic validity.
 
 There is no runtime admission. Authority stays `RUNTIME_NOT_AUTHORIZED`. Recommendation stays `NONE`. The prototype gap is not closed for unbound packs: a `+1e-6` prototype nudge under unbound still leaves `pack.checksum` unchanged, `passed` true, and `decision` `UNRESOLVED`, and `digest_does_not_bind` still lists `proto_embedding`.
+
+`identity_digest` is sha16: SHA-256 truncated to 16 hexadecimal characters (64 bits). It is a compact identity fingerprint of the canonical payload, consistent with the existing checksum function. It is not a strong tamper-resistant cryptographic signature and is not an adversarial integrity guarantee.
+
+An explicit identity-1 reseal replaces the digest with one for the object as it is now; an auditor must keep the previous digest if they need to show the pre-reseal object. A default `seal()` does not refresh `identity_digest`.
