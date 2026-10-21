@@ -508,6 +508,7 @@ def test_positive_coordinate_change_is_proved_by_the_chain_rule():
     assert result.evidence["derived"]["D0"] == "(1 + t) * d/dt"
     assert result.evidence["derived"]["D1"] == "d/du"
     assert result.evidence["proved_by"] == "chain_rule"
+    assert result.evidence["inverse_identity"] == "established"
     assert result.evidence["primary"] == "chain_rule"
     assert result.evidence["paper_verified"] is False
     assert result.evidence["coordinate_index"] == "finite"
@@ -567,6 +568,7 @@ def test_rejected_euler_transformation_claim_is_disproved_by_an_in_domain_witnes
     result = verify(parsed)
     assert result.outcome == DISPROVED
     assert result.reason == "in_domain_witness"
+    assert result.evidence["inverse_identity"] == "established"
     assert result.evidence["derived"]["E0"] == "d/dt"
     assert result.evidence["derived"]["E1"] == "exp(-t) * d/du"
     assert result.evidence["primary"] == "witness"
@@ -792,6 +794,7 @@ def test_two_index_coordinate_change_is_proved_by_the_chain_rule():
     assert result.evidence["derived"]["D1"] == "d/du1"
     assert result.evidence["derived"]["D2"] == "d/du2"
     assert result.evidence["proved_by"] == "chain_rule"
+    assert result.evidence["inverse_identity"] == "established"
     assert result.evidence["coordinate_index"] == "finite"
     assert result.evidence["summed_coordinates"] == ["Y", "X1", "X2"]
     assert result.evidence["summed_coordinate_count"] == 3

@@ -2,8 +2,10 @@
 
 The claim text is not evidence. A conjugation is ``PROVED`` only when this
 module derives it from the recorded maps, under the exclusions and logarithm
-branch written on the claim. A zero commutator is recorded as a consistency
-note and is never itself a proof of the coordinate change.
+branch written on the claim, and only after both inverse identities have been
+established in the recorded direction. A supplied inverse is not evidence by
+itself. A zero commutator is recorded as a consistency note and is never
+itself a proof of the coordinate change.
 
 The checker sums over the finite coordinates written on the claim. The
 handoff's general argument is that sum over i. It does not verify the cited
@@ -1090,6 +1092,158 @@ def _commutator_evidence(claim: ClaimRecord, assumptions: Assumptions, budget: B
     return {"commutator": notes, "primary": "commutator_only"}
 
 
+def _conjugation_inverse_gate(claim: ClaimRecord, assumptions: Assumptions, budget: Budget) -> Optional[dict]:
+    """Establish Phi o Psi and Psi o Phi before a conjugation may be proved.
+
+    Phi is the recorded ``new_to_old`` pullback and Psi is its named inverse
+    candidate. The compositions are checked in that written order. A supplied
+    formula is not treated as an identity. A blocked simplification is not a
+    disproof. The inverse is not evaluated at an excluded point.
+    """
+    seen = set()
+    steps: List[dict] = []
+    unresolved_reports: List[dict] = []
+    for prop in claim.claimed_property:
+        if not isinstance(prop, ConjugationAssert):
+            continue
+        forward = _pullback_map(claim, prop.parts[0][0])
+        if forward is None or not forward.inverse_candidate:
+            continue
+        inverse = _map(claim, forward.inverse_candidate)
+        if inverse is None:
+            continue
+        key = (forward.name, inverse.name, forward.direction)
+        if key in seen:
+            continue
+        seen.add(key)
+        first = _prove_identity(
+            claim,
+            MapComposeAssert(forward.name, inverse.name, prop.span),
+            assumptions,
+            budget,
+        )
+        second = _prove_identity(
+            claim,
+            MapComposeAssert(inverse.name, forward.name, prop.span),
+            assumptions,
+            budget,
+        )
+        for report in (first, second):
+            for step in report["steps"]:
+                recorded = dict(step)
+                recorded["direction"] = forward.direction
+                steps.append(recorded)
+        for report in (first, second):
+            if report["state"] != "disproved":
+                continue
+            witness = dict(report.get("witness") or {})
+            witness["composition"] = report["operator"]
+            witness["identity"] = witness.get("claimed_output")
+            return {
+                "state": "disproved",
+                "reason": report["reason"],
+                "message": report["message"],
+                "steps": steps,
+                "operator": report["operator"],
+                "derived_print": report.get("derived_print", ""),
+                "claimed_print": report.get("claimed_print"),
+                "residual": report.get("residual"),
+                "witness": witness,
+                "primary": "witness",
+                "violated_obligation": report.get("violated_obligation", "invertibility"),
+                "evidence_extra": {
+                    "inverse_identity": "refuted",
+                    "composition": report["operator"],
+                    "inverse_evaluated_at_excluded_point": False,
+                },
+            }
+        for report in (first, second):
+            if report["state"] == "unresolved":
+                named = dict(report)
+                named["operator"] = f"{report['steps'][0]['order']}" if report.get("steps") else f"{forward.name} o {inverse.name}"
+                unresolved_reports.append(named)
+    if not seen:
+        return None
+    if unresolved_reports:
+        names = []
+        for report in unresolved_reports:
+            order = report["operator"]
+            if order not in names:
+                names.append(order)
+        return {
+            "state": "unresolved",
+            "reason": "missing_inverse_proof",
+            "message": (
+                "the inverse identity was not established for "
+                + ", ".join(names)
+                + "; a supplied inverse is not a proof"
+            ),
+            "steps": steps,
+            "blocked": [item for report in unresolved_reports for item in report.get("blocked", [])],
+            "operator": names[0],
+            "derived_print": "",
+            "evidence_extra": {
+                "inverse_identity": "not_established",
+                "missing_inverse_proof": names,
+                "inverse_evaluated_at_excluded_point": False,
+            },
+        }
+    return {
+        "state": "proved",
+        "steps": steps,
+        "evidence_extra": {
+            "inverse_identity": "established",
+            "inverse_evaluated_at_excluded_point": False,
+        },
+    }
+
+
+def _result_from_inverse_gate(claim: ClaimRecord, resource_limits: dict, gate: dict) -> VerificationResult:
+    summed = _summed_coordinates(claim)
+    derived = {}
+    if gate.get("operator") and gate.get("derived_print"):
+        derived[gate["operator"]] = gate["derived_print"]
+    evidence = {
+        "derived": derived,
+        "proved_by": None,
+        "commutator_proves_claim": False,
+        "paper_verified": False,
+        "general_argument": GENERAL_ARGUMENT,
+        "coordinate_index": "finite",
+        "summed_coordinates": summed,
+        "summed_coordinate_count": len(summed),
+        "symbolic_zero_meaning": (
+            "a simplified residual of 0 is equality inside coordinate_chain_rule_v1, not an error bound"
+        ),
+        "primary": "witness" if gate["state"] == "disproved" else "inverse_identity",
+    }
+    evidence.update(gate.get("evidence_extra") or {})
+    if gate["state"] == "unresolved":
+        evidence["blocked"] = gate.get("blocked", [])
+        return _unresolved(
+            claim.source_hash,
+            claim.assumptions,
+            resource_limits,
+            gate["reason"],
+            gate["message"],
+            evidence,
+            gate.get("steps", ()),
+        )
+    return VerificationResult(
+        outcome=DISPROVED,
+        claim_hash=claim.source_hash,
+        assumptions=claim.assumptions,
+        resource_limits=resource_limits,
+        reason=gate["reason"],
+        message=gate["message"],
+        evidence=evidence,
+        residual=gate.get("residual"),
+        witness=gate.get("witness"),
+        violated_obligation=gate.get("violated_obligation"),
+        derivation=gate.get("steps", ()),
+    )
+
+
 def _prove(claim: ClaimRecord, assumptions: Assumptions, budget: Budget, resource_limits: dict) -> VerificationResult:
     if not any(
         isinstance(prop, (ConjugationAssert, MapComposeAssert, InvertibleAssert, ApplyAssert))
@@ -1111,10 +1265,17 @@ def _prove(claim: ClaimRecord, assumptions: Assumptions, budget: Budget, resourc
     derived = {}
     failures = []
     unresolved = None
+    inverse_gate = _conjugation_inverse_gate(claim, assumptions, budget)
+    inverse_established = False
+    if inverse_gate is not None and inverse_gate["state"] != "proved":
+        return _result_from_inverse_gate(claim, resource_limits, inverse_gate)
+    if inverse_gate is not None:
+        _extend_derivation(derivation, inverse_gate["steps"])
+        inverse_established = True
     for prop in claim.claimed_property:
         if isinstance(prop, ConjugationAssert):
             report = _prove_conjugation(claim, prop, assumptions, budget)
-            derivation.extend(report["steps"])
+            _extend_derivation(derivation, report["steps"])
             derived[report["operator"]] = report["derived_print"]
             if report["state"] == "unresolved":
                 unresolved = report
@@ -1123,7 +1284,7 @@ def _prove(claim: ClaimRecord, assumptions: Assumptions, budget: Budget, resourc
                 failures.append(report)
         elif isinstance(prop, MapComposeAssert):
             report = _prove_identity(claim, prop, assumptions, budget)
-            derivation.extend(report["steps"])
+            _extend_derivation(derivation, report["steps"])
             if report["state"] == "unresolved":
                 unresolved = report
                 break
@@ -1131,7 +1292,7 @@ def _prove(claim: ClaimRecord, assumptions: Assumptions, budget: Budget, resourc
                 failures.append(report)
         elif isinstance(prop, InvertibleAssert):
             report = _prove_invertible_record(claim, prop, assumptions, budget)
-            derivation.extend(report["steps"])
+            _extend_derivation(derivation, report["steps"])
             if report["state"] == "unresolved":
                 unresolved = report
                 break
@@ -1159,6 +1320,9 @@ def _prove(claim: ClaimRecord, assumptions: Assumptions, budget: Budget, resourc
         "summed_coordinate_count": len(summed),
         "symbolic_zero_meaning": "a simplified residual of 0 is equality inside coordinate_chain_rule_v1, not an error bound",
     }
+    if inverse_established:
+        evidence["inverse_identity"] = "established"
+        evidence["inverse_evaluated_at_excluded_point"] = False
     consistency = _consistency(claim, assumptions, budget)
     if consistency is not None:
         evidence["consistency"] = consistency
@@ -1200,12 +1364,44 @@ def _prove(claim: ClaimRecord, assumptions: Assumptions, budget: Budget, resourc
         assumptions=claim.assumptions,
         resource_limits=resource_limits,
         reason=None,
-        message="derived by the chain rule under the recorded assumptions",
+        message=(
+            "derived by the chain rule after both inverse identities were established"
+            if inverse_established
+            else "derived by the chain rule under the recorded assumptions"
+        ),
         evidence=evidence,
         residual="0",
         witness=None,
         derivation=derivation,
     )
+
+
+def _extend_derivation(derivation: List[dict], steps: Sequence[dict]) -> None:
+    """Keep one inverse-identity step when the conjugation gate and an assert agree."""
+    seen = {
+        (
+            step.get("rule"),
+            step.get("order"),
+            step.get("component"),
+            step.get("output"),
+            step.get("expected"),
+        )
+        for step in derivation
+        if step.get("rule") == "inverse_composition"
+    }
+    for step in steps:
+        if step.get("rule") == "inverse_composition":
+            key = (
+                step.get("rule"),
+                step.get("order"),
+                step.get("component"),
+                step.get("output"),
+                step.get("expected"),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+        derivation.append(step)
 
 
 def _prove_conjugation(claim: ClaimRecord, prop: ConjugationAssert, assumptions: Assumptions, budget: Budget) -> dict:

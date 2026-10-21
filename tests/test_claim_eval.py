@@ -27,6 +27,7 @@ FROZEN = (
     ("e08_reversed_composition.txt", INVALID_INPUT, "illegal_operator_application"),
     ("e09_missing_direction.txt", UNRESOLVED, "missing_pullback_direction"),
     ("e11_two_index_false_target.txt", DISPROVED, "symbolic_contradiction"),
+    ("e12_wrong_inverse.txt", DISPROVED, "inverse_not_identity"),
 )
 
 
@@ -55,6 +56,7 @@ def test_unfamiliar_shear_is_derived():
     assert result.outcome == PROVED
     assert result.evidence["derived"]["V"] == "d/dp"
     assert result.evidence["proved_by"] == "chain_rule"
+    assert result.evidence["inverse_identity"] == "established"
     assert result.residual == "0"
     assert replay_derivation(parsed, result) is True
     steps = [step for step in result.derivation if step["rule"] == "chain_rule_coefficient"]
@@ -113,6 +115,103 @@ def test_malformed_eval_input_has_a_span_and_no_verdict_on_the_parse():
     assert result.span.start == 0
 
 
+def test_wrong_inverse_is_not_trusted():
+    """E12 was frozen as DISPROVED before the checker stopped trusting Psi.
+
+    The chart is x = p with the supplied inverse p = x + 1. The claim does
+    not assert the inverse identities. The chain rule, if it trusts that
+    Psi, emits d/dp, which is the claimed image. Phi o Psi sends x to 1 + x.
+    """
+    text = _load("e12_wrong_inverse.txt")
+    parsed = parse_claim(text)
+    assert parsed.syntax_error is None
+    assert parsed.claim is not None
+    assert not any(
+        getattr(prop, "outer", None) == "Phi" and getattr(prop, "inner", None) == "Psi"
+        for prop in parsed.claim.claimed_property
+    )
+    assert not hasattr(parsed, "outcome")
+    assert not hasattr(parsed, "Error_Bound")
+    result = verify(parsed)
+    assert result.outcome == DISPROVED
+    assert result.outcome != PROVED
+    assert result.reason == "inverse_not_identity"
+    assert result.evidence["proved_by"] is None
+    assert result.evidence["inverse_identity"] == "refuted"
+    assert result.evidence["inverse_evaluated_at_excluded_point"] is False
+    witness = result.witness
+    assert witness["composition"] == "Phi o Psi"
+    assert witness["function"] == "x"
+    assert witness["actual_output"] == "1 + x"
+    assert witness["claimed_output"] == "x"
+    assert witness["identity"] == "x"
+    assert witness["residual"] == "1"
+    assert witness["kind"] == "symbolic"
+    assert "point" not in witness
+    identities = [
+        (step["order"], step["component"], step["output"], step["expected"], step["direction"])
+        for step in result.derivation
+        if step["rule"] == "inverse_composition"
+    ]
+    assert ("Phi o Psi", "x", "1 + x", "x", "new_to_old") in identities
+    assert ("Psi o Phi", "p", "1 + p", "p", "new_to_old") in identities
+    assert result.evidence["derived"]["Phi o Psi"] == "1 + x"
+
+
+def test_true_inverse_is_proved_without_a_separate_identity_assertion():
+    text = _load("e12_wrong_inverse.txt").replace("p = x + 1", "p = x")
+    parsed = parse_claim(text)
+    result = verify(parsed)
+    assert result.outcome == PROVED
+    assert result.evidence["inverse_identity"] == "established"
+    assert result.evidence["proved_by"] == "chain_rule"
+    assert result.evidence["derived"]["D"] == "d/dp"
+    assert result.residual == "0"
+    assert result.evidence["inverse_evaluated_at_excluded_point"] is False
+    identities = {
+        (step["order"], step["component"], step["output"])
+        for step in result.derivation
+        if step["rule"] == "inverse_composition"
+    }
+    assert ("Phi o Psi", "x", "x") in identities
+    assert ("Psi o Phi", "p", "p") in identities
+    assert replay_derivation(parsed, result) is True
+
+
+def test_identity_only_claim_keeps_its_meaning_without_a_conjugation():
+    wrong = _load("e12_wrong_inverse.txt").replace(
+        "assert T o D o T^-1 = image_D",
+        "assert Phi o Psi = id\nassert Psi o Phi = id",
+    )
+    refused = verify(parse_claim(wrong))
+    assert refused.outcome == DISPROVED
+    assert refused.reason == "inverse_not_identity"
+    assert refused.witness["actual_output"] == "1 + x"
+    assert refused.witness["claimed_output"] == "x"
+    held = wrong.replace("p = x + 1", "p = x")
+    proved = verify(parse_claim(held))
+    assert proved.outcome == PROVED
+    assert proved.residual == "0"
+
+
+def test_unresolved_inverse_is_not_a_conjugation_proof():
+    text = _load("e12_wrong_inverse.txt").replace("p = x + 1", "p = 1 / (x + 1)")
+    parsed = parse_claim(text)
+    result = verify(parsed)
+    assert result.outcome == UNRESOLVED
+    assert result.outcome != PROVED
+    assert result.reason == "missing_inverse_proof"
+    assert result.evidence["proved_by"] is None
+    assert result.evidence["inverse_identity"] == "not_established"
+    assert result.evidence["inverse_evaluated_at_excluded_point"] is False
+    assert result.evidence["missing_inverse_proof"] == ["Phi o Psi", "Psi o Phi"]
+    assert result.witness is None
+    assert any(
+        step["rule"] == "inverse_composition" and step["blocked"]
+        for step in result.derivation
+    )
+
+
 def test_two_index_pair():
     proved = verify(parse_claim(_load("two_index_coordinate_change.txt")))
     assert proved.outcome == PROVED
@@ -121,9 +220,11 @@ def test_two_index_pair():
     assert proved.evidence["derived"]["D2"] == "d/du2"
     assert proved.evidence["summed_coordinates"] == ["Y", "X1", "X2"]
     assert proved.evidence["summed_coordinate_count"] == 3
+    assert proved.evidence["inverse_identity"] == "established"
     assert proved.residual == "0"
     false = verify(parse_claim(_load("e11_two_index_false_target.txt")))
     assert false.outcome == DISPROVED
+    assert false.evidence["inverse_identity"] == "established"
     assert false.evidence["derived"]["D0"] == "(1 + t) * d/dt"
     assert false.evidence["derived"]["D1"] == "d/du1"
     assert false.evidence["derived"]["D2"] == "d/du2"

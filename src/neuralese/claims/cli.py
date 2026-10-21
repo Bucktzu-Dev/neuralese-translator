@@ -235,6 +235,13 @@ def _clarification(result: VerificationResult) -> str:
         return "simplification did not decide the claim; this is not a counterexample"
     if reason == "unknown_symbol":
         return "a symbol has no recorded meaning"
+    if reason == "missing_inverse_proof":
+        missing = ", ".join(result.evidence.get("missing_inverse_proof") or [])
+        return (
+            "the inverse identity was not established"
+            + (f" ({missing})" if missing else "")
+            + "; a supplied inverse is not a proof"
+        )
     return "the checker cannot decide this well-formed claim"
 
 
@@ -257,6 +264,8 @@ def _counterexample_lines(result: VerificationResult) -> List[str]:
     lines = []
     witness = result.witness or {}
     if witness:
+        if witness.get("composition"):
+            lines.append(f"  composition: {witness.get('composition')}")
         lines.append(f"  function: {witness.get('function')}")
         lines.append(f"  actual: {witness.get('actual_output')}")
         lines.append(f"  claimed: {witness.get('claimed_output')}")

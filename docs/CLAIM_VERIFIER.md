@@ -85,7 +85,18 @@ If no such symbol is written, the gap is `an exclusion line`, not a supplied
 `Y != 0`.
 
 A claimed equality is `PROVED` only when this derivation succeeds under the
-exclusions and logarithm branch written on the claim. A well-formed false
+exclusions and logarithm branch written on the claim. A conjugation is
+`PROVED` only after both inverse identities have also been established:
+`Phi` then `Psi`, and `Psi` then `Phi`, in the recorded `new_to_old`
+direction. A supplied inverse is not evidence by itself. If either
+composition is refuted inside the domain, the conjugation is `DISPROVED`
+and the witness names the composition, the actual image, and the identity.
+The inverse is not evaluated at an excluded point. If an identity cannot be
+established or refuted, the conjugation is `UNRESOLVED` with reason
+`missing_inverse_proof`, not `PROVED`. A failed simplification is not a
+disproof. A claim that only asks for the inverse identities, with no
+conjugation, is unchanged: `PROVED` if they hold, `DISPROVED` if they fail,
+`UNRESOLVED` if the checker cannot decide. A well-formed false
 claim is `DISPROVED` when the checker finds an in-domain witness or a
 symbolic contradiction. Failure to prove is `UNRESOLVED`. Malformed syntax,
 incompatible types, and ill-typed operator application are `INVALID_INPUT`
@@ -141,7 +152,7 @@ that stalls, or a symbol that is well-formed but has no recorded meaning is
 
 | Outcome | When the checker returns it |
 | --- | --- |
-| `PROVED` | The chain rule derives the claim under the recorded assumptions. |
+| `PROVED` | The chain rule derives the claim under the recorded assumptions. A conjugation also requires both inverse identities to have been established. A supplied inverse is not evidence by itself. |
 | `DISPROVED` | A well-formed claim has an in-domain witness or a symbolic contradiction. |
 | `UNRESOLVED` | An assumption, direction, meaning, or supported theory is missing, or simplification stalled. |
 | `INVALID_INPUT` | The input is malformed, ill-typed, or forbidden by the grammar. The result names a span and a reason. |
@@ -367,17 +378,17 @@ ast:
   - MapCompose Psi o Phi = id span 1327..1348
 result
 outcome: PROVED
-message: derived by the chain rule under the recorded assumptions
+message: derived by the chain rule after both inverse identities were established
 residual: 0
 derivation:
-  D0.t: (D Psi) compose Phi :: Y -> 1 + t
-  D0.u: (D Psi) compose Phi :: 0 -> 0
-  D1.t: (D Psi) compose Phi :: 0 -> 0
-  D1.u: (D Psi) compose Phi :: 1 -> 1
   Phi o Psi Y: Y
   Phi o Psi X: X
   Psi o Phi t: t
   Psi o Phi u: u
+  D0.t: (D Psi) compose Phi :: Y -> 1 + t
+  D0.u: (D Psi) compose Phi :: 0 -> 0
+  D1.t: (D Psi) compose Phi :: 0 -> 0
+  D1.u: (D Psi) compose Phi :: 1 -> 1
 ```
 
 The two-index file uses the same command:
@@ -387,9 +398,11 @@ python3 -m neuralese.claims examples/claims/two_index_coordinate_change.txt
 ```
 
 Its result, copied from that run, is `PROVED` with residual `0`. The
-derivation is `D0.t: Y -> 1 + t`, `D0.u1 -> 0`, `D0.u2 -> 0`, `D1.u1: 1 ->
-1`, `D2.u2: 1 -> 1`, and both inverse compositions are the identity on
-`Y, X1, X2` and `t, u1, u2`. The printed formulas are `Y = 1 + t`,
+message is `derived by the chain rule after both inverse identities were
+established`. The derivation leads with those identities, `Phi o Psi` on
+`Y, X1, X2` and `Psi o Phi` on `t, u1, u2`, and then the coefficients
+`D0.t: Y -> 1 + t`, `D0.u1 -> 0`, `D0.u2 -> 0`, `D1.u1: 1 -> 1`, and
+`D2.u2: 1 -> 1`. The printed formulas are `Y = 1 + t`,
 `Xi = ci + ui + log(1 + t)`, `t = Y - 1`, and `ui = Xi - ci - log(Y)`.
 
 `python3 -m neuralese.claims -` reads stdin. A missing path exits `2` and
@@ -402,9 +415,14 @@ the exit code.
 python3 -m pytest -q
 ```
 
-The run after this checker reported `216 passed`. The count before the
-finite-index command and the evaluation cases was `193 passed`. Evaluation
-labels and observed outcomes are in `docs/CLAIM_EVAL.md`.
+The run after the inverse-identity requirement reported `220 passed` in
+20.37s. The count before that requirement was `216 passed`. The count before
+the finite-index command and the evaluation cases was `193 passed`.
+Evaluation labels and observed outcomes are in `docs/CLAIM_EVAL.md`. Actions
+run `39546214849` had reported 204 passed and 12 failed because it installed
+NumPy 2.5.4 instead of the reference-BLAS NumPy 1.26.4 those locks use. The
+workflow install was aligned with that measurement. Production tolerances
+were not lowered.
 
 ## What remains unimplemented
 

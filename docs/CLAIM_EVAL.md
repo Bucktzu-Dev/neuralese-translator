@@ -163,13 +163,121 @@ coordinate `t` is a witness: derived value `0`, claimed value `1`, residual
 `-1`. That disagreement is inside the stated germ. A zero commutator is not
 the evidence.
 
+### E12 wrong inverse, no identity assertion
+
+The expected outcome was fixed before running the checker. `Phi` then `Psi`
+sends `x` to `1 + x`, which is not `x`, so the inverse is refutable and the
+label is `DISPROVED`. It was not changed after the pre-fix run returned
+`PROVED`.
+
+Exact input, `examples/claims/eval/e12_wrong_inverse.txt`:
+
+```text
+source "eval-wrong-inverse"
+assume translation chart whose supplied inverse is shifted and is not asserted to be an identity
+space old
+kind coordinates
+coordinates x
+ring analytic_germs
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+space new
+kind coordinates
+coordinates p
+ring analytic_germs
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+map Phi
+source new
+target old
+direction new_to_old
+inverse Psi
+obligations domain_compatibility, invertibility
+x = p
+end
+map Psi
+source old
+target new
+direction old_to_new
+inverse Phi
+obligations domain_compatibility, invertibility
+p = x + 1
+end
+operator D
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula d/dx
+end
+operator image_D
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/dp
+end
+define T pullback of Phi
+assert T o D o T^-1 = image_D
+```
+
+The true inverse of `x = p` is `p = x`. The supplied formula is `p = x + 1`.
+There is no `assert Phi o Psi = id` and no `assert Psi o Phi = id`. Direction
+`new_to_old` is written. `exclude x = 0` is written, so this is not the
+missing-exclusion case, and the inverse is not evaluated at `x = 0`. The
+claimed image is `d/dp`, which is what the chain rule emits if it trusts the
+shifted `Psi`, because `d/dx (x + 1) = 1`.
+
+`Phi o Psi` sends `x` to `1 + x`. `Psi o Phi` sends `p` to `1 + p`. Both
+residuals are `1`. That is a symbolic contradiction inside the domain.
+
+Expected outcome: `DISPROVED`.
+
+Reason: `inverse_not_identity`. The witness is `Phi o Psi` on `x`: actual
+`1 + x`, identity `x`, residual `1`.
+
+Pre-fix execution, checker at `03e0a35`, before the inverse-identity
+requirement, same file: `PROVED`, residual `0`, `proved_by` `chain_rule`,
+derived `D = d/dp`. The derivation was only `D.p: (D Psi) compose Phi :: 1 ->
+1`. It contained no inverse-composition step. That was a false acceptance.
+The frozen label stayed `DISPROVED`.
+
 ## Observed run
 
-Command: `python3 -m pytest -q tests/test_claim_eval.py tests/test_claim_verifier.py tests/test_claim_cli.py`, then the full `python3 -m pytest -q`.
+Command: `python3 -m pytest -q tests/test_claim_eval.py tests/test_claim_verifier.py tests/test_claim_cli.py` (38 passed), then the full `python3 -m pytest -q`.
 
-The full suite reported `216 passed`. The frozen outcome column was not
-edited after this run. The checker computed each row. `verify` does not
-contain these source ids.
+The full suite reported `220 passed` in 20.37s. The earlier local report of
+`216 passed` was this suite before the E12 case and the inverse-identity
+tests. Frozen expected labels were not retuned after the pre-fix run. E12
+was labeled `DISPROVED` before that run returned `PROVED`. The checker
+computed each row. `verify` does not contain these source ids.
+
+GitHub Actions run `39546214849` on this branch reported 204 passed and 12
+failed. Those twelve tests pass here. The Test step ran `pip install -e
+".[dev]"` under `actions/setup-python`, which installed NumPy 2.5.4. The
+locks were measured with Ubuntu 24.04's NumPy 1.26.4 and reference
+BLAS/LAPACK 3.12 (`libblas.so.3.12.0`, `liblapack.so.3.12.0`). The wheel's
+OpenBLAS subspace moves the SVD and k-means results, and its loaded-library
+list does not contain `libblas`. The workflow now installs that system NumPy,
+selects reference BLAS/LAPACK, and does not let pip replace NumPy. The
+varied-prose job step had still been asserting the other host's 8 live
+clusters and the `0.6594` floor; it now uses the same reference-BLAS lock as
+the pytest (7 live, worst purity `29/64`, size-weighted `204/319`). Production
+`tau_residual` `0.55` and `tau_kappa` `0.35` are unchanged. The twelve tests
+were `test_generalization_locks_recommendation_and_per_fixture_bits`,
+`test_clustering_isolation_locks_verdict_purity_and_controls`,
+`test_trial_is_unresolved_and_does_not_replace_production`,
+`test_per_fixture_gates_and_control_inequalities`,
+`test_uneven_cause_is_unresolved_because_two_diagnostics_fire`,
+`test_corrected_scores_and_original_controls`,
+`test_production_word_sentence_svd_is_unchanged`,
+`test_split_and_arm1_match_the_encoder_isolation_table`,
+`test_rank_boundary_locks_gap_distances_and_clustering_loss`,
+`test_parent_counts_and_three_arm_ledger`,
+`test_word_sentence_svd_certifies_varied_prose_at_library_defaults`, and
+`test_cli_report_and_certify_varied_prose`.
 
 | Id | Expected | Observed | What the checker reported |
 | --- | --- | --- | --- |
@@ -183,16 +291,25 @@ contain these source ids.
 | E8 | `INVALID_INPUT` | `INVALID_INPUT` | `illegal_operator_application`. Order not reordered. |
 | E9 | `UNRESOLVED` | `UNRESOLVED` | `missing_pullback_direction`. Direction left absent. |
 | E10 | `PROVED` | `PROVED` | `D0 = (1 + t) d/dt`, `D1 = d/du1`, `D2 = d/du2`. Summed coordinates `Y, X1, X2`. Residual `0`. |
-| E11 | `DISPROVED` | `DISPROVED` | Derived `D1 = d/du1`. On `g = t`, actual `0`, claimed `1`, residual `-1`. |
+| E11 | `DISPROVED` | `DISPROVED` | Derived `D1 = d/du1`. On `g = t`, actual `0`, claimed `1`, residual `-1`. Inverse identities established. |
+| E12 | `DISPROVED` | `DISPROVED` | `Phi o Psi` sends `x` to `1 + x`, residual `1`. `Psi o Phi` sends `p` to `1 + p`. Inverse not evaluated at `x = 0`. |
 
-False acceptances: none. No frozen `DISPROVED`, `UNRESOLVED`, or
+False acceptances on this run: none. No frozen `DISPROVED`, `UNRESOLVED`, or
 `INVALID_INPUT` row was returned as `PROVED`.
 
-False rejections: none. E1 and E10 were `PROVED`, matching the frozen labels.
-The one-index paper chart in `tests/test_claim_verifier.py` was also
-`PROVED`, and the rejected Euler transformation claim was `DISPROVED` by the
-in-domain witness `g = t` (actual `1`, claimed `1 + t`, residual `-t`, and
-at `t = 1` the values `1` and `2`).
+False acceptance before the inverse-identity requirement, reported
+separately: E12 returned `PROVED` at `03e0a35`. The same file is `DISPROVED`
+after the checker establishes `Phi o Psi` and `Psi o Phi` before accepting a
+conjugation. `verify` still has no table from these ids to outcomes.
+
+False rejections: none. E1 and E10 were `PROVED`, matching the frozen labels,
+because the checker established both inverse identities and the chain rule
+matched. They were not proved by trusting a supplied `Psi`. The one-index
+paper chart in `tests/test_claim_verifier.py` was also `PROVED` on that same
+derivation, and the rejected Euler transformation claim was `DISPROVED` by
+the in-domain witness `g = t` (actual `1`, claimed `1 + t`, residual `-t`, and
+at `t = 1` the values `1` and `2`). The Euler chart's inverse identities were
+established; the false statement is the rejected transformation claim.
 
 Interpretation errors: none on this list. Directions, domains, and the
 logarithm branch that were written stayed as written. Omitted direction was
@@ -204,5 +321,7 @@ They were counted, not relabeled.
 Supported-case coverage: two correct claims inside the theory were proved
 (E1, the shear, and E10, the two-index chart), and the one-index reference
 chart was proved. The checker did not refuse every claim. False claims E2,
-E7, and E11 were disproved rather than left open. E11's disproof is the
-derived operator, not a table from the fixture id.
+E7, E11, and E12 were disproved rather than left open. E11's disproof is the
+derived operator, not a table from the fixture id. E12's disproof is the
+refuted inverse identity, not a coefficient table. E7 still does not evaluate
+the inverse at `Y = 0`.
