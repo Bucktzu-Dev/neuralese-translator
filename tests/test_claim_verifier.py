@@ -555,7 +555,7 @@ def test_zero_commutator_is_not_a_proof():
     assert result.evidence["proves_coordinate_change"] is False
 
 
-def test_euler_chart_is_disproved_by_an_in_domain_witness():
+def test_rejected_euler_transformation_claim_is_disproved_by_an_in_domain_witness():
     """The rejected Euler transformation claim fails; the Euler chart stays valid.
 
     The witness disproves the proposed targets (1 + t) d/dt and d/du.
