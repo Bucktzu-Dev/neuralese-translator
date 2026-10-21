@@ -108,7 +108,10 @@ d/dt`, `T D1 T^{-1} = d/du`, and both inverse compositions equal the
 identity. `[D0, D1] = 0` is stored as a consistency note. A claim whose only
 evidence mode is the commutator stays `UNRESOLVED`.
 
-The rejected Euler chart is not the positive case. The claim that
+The rejected Euler transformation claim is not the positive case. The chart
+is valid: `t = log Y`, `u = X / Y`, the operators `E0` and `E1`, and the map
+are a well-formed coordinate change. The witness disproves the proposed
+target operators in the claim that
 
 ```text
 E0 = Y d/dY + X d/dX
@@ -116,13 +119,14 @@ E1 = d/dX
 t = log Y,  u = X / Y
 ```
 
-maps to `(1 + t) d/dt` and `d/du` is false. The checker derives `T E0
-T^{-1} = d/dt` and `T E1 T^{-1} = exp(-t) d/du`. On `g(t, u) = t` the
-derived output is `1` and the claimed output is `1 + t`. The residual is
-`-t`. The recorded domain contains `t = 1`, where those outputs are `1` and
-`2`. That witness is the disproof. `[E0, E1] = -E1`, and the transformed
-bracket is `-exp(-t) d/du`; that note also disagrees with the claim and is
-not the primary evidence.
+sends `T E0 T^{-1}` and `T E1 T^{-1}` to `(1 + t) d/dt` and `d/du`. The
+checker derives the actual images `T E0 T^{-1} = d/dt` and `T E1 T^{-1} =
+exp(-t) d/du` on that valid chart. On `g(t, u) = t` the derived output is
+`1` and the claimed output is `1 + t`. The residual is `-t`. The recorded
+domain contains `t = 1`, where those outputs are `1` and `2`. That witness
+is the disproof. `[E0, E1] = -E1`, and the transformed bracket is
+`-exp(-t) d/du`; that note also disagrees with the claim and is not the
+primary evidence.
 
 A wrong coefficient, including a missing chain-rule factor, is `DISPROVED`
 with the witness or the symbolic residual attached. A claim that asserts

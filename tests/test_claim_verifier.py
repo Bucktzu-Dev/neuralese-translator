@@ -103,8 +103,11 @@ assert Phi o Psi = id
 assert Psi o Phi = id
 '''
 
+# The chart t = log Y, u = X / Y, the operators E0 and E1, and the map are
+# valid. The rejected Euler transformation claim is that T E0 T^{-1} and
+# T E1 T^{-1} equal (1 + t) d/dt and d/du.
 EULER = f'''source "{PAPER_PROVENANCE_URL}"
-assume rejected Euler chart t = log Y and u = X / Y
+assume rejected Euler transformation claim: the chart t = log Y and u = X / Y is valid
 space old
 kind coordinates
 coordinates Y, X
@@ -553,6 +556,11 @@ def test_zero_commutator_is_not_a_proof():
 
 
 def test_euler_chart_is_disproved_by_an_in_domain_witness():
+    """The rejected Euler transformation claim fails; the Euler chart stays valid.
+
+    The witness disproves the proposed targets (1 + t) d/dt and d/du.
+    The checker derives d/dt and exp(-t) d/du on the chart t = log Y, u = X / Y.
+    """
     parsed = _assert_parse_has_no_verdict(EULER)
     result = verify(parsed)
     assert result.outcome == DISPROVED
