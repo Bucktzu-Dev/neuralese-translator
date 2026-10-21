@@ -27,7 +27,11 @@ jobs:
           python3 -m pip install --break-system-packages 'pytest>=7.4'
           python3 -m pip install --break-system-packages --no-deps -e .
           python3 - << 'PY'
+          import math
+          import os
           import numpy as np
+          from neuralese.factorization import pin_blas_threads
+          pin_blas_threads(1)
           np.linalg.svd(np.eye(2))
           loaded = []
           for line in open("/proc/self/maps", encoding="utf-8", errors="replace"):
@@ -36,17 +40,66 @@ jobs:
                   path = line.split()[-1]
                   if path.startswith("/") and path not in loaded:
                       loaded.append(path)
+          flags = ""
+          try:
+              for line in open("/proc/cpuinfo", encoding="utf-8", errors="replace"):
+                  if line.startswith("flags"):
+                      flags = line
+                      break
+          except OSError:
+              flags = ""
+          ratio = 39 / 5
           print("numpy", np.__version__)
           print("numpy_file", np.__file__)
           print("libraries", loaded)
+          print("cpu_count", os.cpu_count())
+          print("OMP_NUM_THREADS", os.environ.get("OMP_NUM_THREADS"))
+          print("OPENBLAS_NUM_THREADS", os.environ.get("OPENBLAS_NUM_THREADS"))
+          print("MKL_NUM_THREADS", os.environ.get("MKL_NUM_THREADS"))
+          print("avx512f", "avx512f" in flags)
+          print("np_log_39_over_5", float(np.log(ratio)).hex())
+          print("math_log_39_over_5", math.log(ratio).hex())
           joined = " ".join(loaded)
           assert np.__version__.startswith("1.26."), np.__version__
           assert "dist-packages" in np.__file__, np.__file__
           assert "libblas" in joined and "libopenblas" not in joined, joined
           assert "liblapack" in joined, joined
+          assert os.environ.get("OMP_NUM_THREADS") == "1"
           PY
       - name: Test
-        run: python3 -m pytest -q
+        run: |
+          python3 - << 'PY'
+          import math
+          import os
+          import numpy as np
+          from neuralese.factorization import pin_blas_threads
+          pin_blas_threads(1)
+          np.linalg.svd(np.eye(2))
+          loaded = []
+          for line in open("/proc/self/maps", encoding="utf-8", errors="replace"):
+              lower = line.lower()
+              if any(token in lower for token in ("libblas", "liblapack", "libopenblas")):
+                  path = line.split()[-1]
+                  if path.startswith("/") and path not in loaded:
+                      loaded.append(path)
+          flags = ""
+          for line in open("/proc/cpuinfo", encoding="utf-8", errors="replace"):
+              if line.startswith("flags"):
+                  flags = line
+                  break
+          ratio = 39 / 5
+          print("test_process_numpy", np.__version__)
+          print("test_process_numpy_file", np.__file__)
+          print("test_process_libraries", loaded)
+          print("test_process_cpu_count", os.cpu_count())
+          print("test_process_OMP_NUM_THREADS", os.environ.get("OMP_NUM_THREADS"))
+          print("test_process_OPENBLAS_NUM_THREADS", os.environ.get("OPENBLAS_NUM_THREADS"))
+          print("test_process_MKL_NUM_THREADS", os.environ.get("MKL_NUM_THREADS"))
+          print("test_process_avx512f", "avx512f" in flags)
+          print("test_process_np_log_39_over_5", float(np.log(ratio)).hex())
+          print("test_process_math_log_39_over_5", math.log(ratio).hex())
+          PY
+          python3 -m pytest -q
       - name: Public pack
         run: |
           python3 -m neuralese adapt examples/public_domain/hidden_states.jsonl -o /tmp/public-obs.jsonl --layout vectors

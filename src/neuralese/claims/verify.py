@@ -284,6 +284,7 @@ def _structural_issue(claim: ClaimRecord) -> Optional[VerificationResult]:
                 space.span,
                 "domain_consistency",
             )
+    omitted_coordinates = []
     for item in claim.maps:
         if item.source_space and _space(claim, item.source_space) is None:
             return _invalid(claim.source_hash, claim.assumptions, limits, "unbound_reference", f"unknown space {item.source_space}", item.span, "domain_compatibility")
@@ -315,6 +316,32 @@ def _structural_issue(claim: ClaimRecord) -> Optional[VerificationResult]:
                         item.span,
                         "coordinate_assignment",
                     )
+        if target is not None and target.coordinates:
+            # A map between coordinate spaces defines every target coordinate.
+            # The inverse is the map whose target is the other space, so both
+            # spaces are covered. Checking only the written formulas is not
+            # an identity, and an omitted formula is not filled in.
+            defined = {name for name, _expr in item.formulas}
+            missing = [name for name in target.coordinates if name not in defined]
+            if missing:
+                omitted_coordinates.append((item, target, missing))
+    if omitted_coordinates:
+        parts = []
+        named = []
+        for item, target, missing in omitted_coordinates:
+            listed = ", ".join(missing)
+            parts.append(f"map {item.name} does not define {listed} on target space {target.name}")
+            named.append({"map": item.name, "space": target.name, "coordinates": list(missing)})
+        return _invalid(
+            claim.source_hash,
+            claim.assumptions,
+            limits,
+            "missing_coordinate_formula",
+            "; ".join(parts) + ". The omitted formula was not supplied",
+            omitted_coordinates[0][0].span,
+            "map_type",
+            {"omitted_coordinates": named, "repaired": False},
+        )
     for item in claim.operators:
         if _space(claim, item.domain) is None or _space(claim, item.codomain) is None:
             return _invalid(claim.source_hash, claim.assumptions, limits, "unbound_reference", f"operator {item.name} names an unknown space", item.span, "operator_domain")

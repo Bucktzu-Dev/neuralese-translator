@@ -28,6 +28,7 @@ FROZEN = (
     ("e09_missing_direction.txt", UNRESOLVED, "missing_pullback_direction"),
     ("e11_two_index_false_target.txt", DISPROVED, "symbolic_contradiction"),
     ("e12_wrong_inverse.txt", DISPROVED, "inverse_not_identity"),
+    ("e13_incomplete_coordinate_map.txt", INVALID_INPUT, "missing_coordinate_formula"),
 )
 
 
@@ -116,11 +117,12 @@ def test_malformed_eval_input_has_a_span_and_no_verdict_on_the_parse():
 
 
 def test_wrong_inverse_is_not_trusted():
-    """E12 was frozen as DISPROVED before the checker stopped trusting Psi.
+    """E12 disproves the supplied inverse and therefore the complete claim bundle.
 
-    The chart is x = p with the supplied inverse p = x + 1. The claim does
-    not assert the inverse identities. The chain rule, if it trusts that
-    Psi, emits d/dp, which is the claimed image. Phi o Psi sends x to 1 + x.
+    For the identity chart x = p, the operator image d/dp itself is correct.
+    The false part is the inverse p = x + 1, not the operator image of the
+    true identity. The claim does not assert the inverse identities.
+    Phi o Psi sends x to 1 + x.
     """
     text = _load("e12_wrong_inverse.txt")
     parsed = parse_claim(text)
@@ -210,6 +212,54 @@ def test_unresolved_inverse_is_not_a_conjugation_proof():
         step["rule"] == "inverse_composition" and step["blocked"]
         for step in result.derivation
     )
+
+
+def test_incomplete_coordinate_map_is_not_proved():
+    """E13 was frozen as INVALID_INPUT before this checker run.
+
+    The checker at 1d91340 returned PROVED for this file. The label was not
+    changed to PROVED. Spaces name y and q. Phi writes only x = p. Psi writes
+    only p = x. No formula for the omitted coordinate is supplied.
+    """
+    text = _load("e13_incomplete_coordinate_map.txt")
+    parsed = parse_claim(text)
+    assert parsed.syntax_error is None
+    assert parsed.claim is not None
+    assert not hasattr(parsed, "outcome")
+    assert not hasattr(parsed, "Error_Bound")
+    formulas = {
+        item.name: [name for name, _expr in item.formulas] for item in parsed.claim.maps
+    }
+    assert formulas == {"Phi": ["x"], "Psi": ["p"]}
+    result = verify(parsed)
+    assert result.outcome == INVALID_INPUT
+    assert result.outcome != PROVED
+    assert result.reason == "missing_coordinate_formula"
+    assert result.violated_obligation == "map_type"
+    assert result.evidence["repaired"] is False
+    assert result.evidence.get("proved_by") is None
+    assert result.residual is None
+    assert result.span is not None
+    assert result.derivation == ()
+    omitted = {
+        (item["map"], tuple(item["coordinates"]))
+        for item in result.evidence["omitted_coordinates"]
+    }
+    assert ("Phi", ("y",)) in omitted
+    assert ("Psi", ("q",)) in omitted
+    assert "y" in result.message
+    assert "q" in result.message
+    assert "y =" not in result.message
+    assert "q =" not in result.message
+    shear = _load("e01_shear.txt")
+    missing_y = verify(parse_claim(shear.replace("y = q + p\n", "")))
+    assert missing_y.outcome == INVALID_INPUT
+    assert missing_y.reason == "missing_coordinate_formula"
+    assert any(item["coordinates"] == ["y"] for item in missing_y.evidence["omitted_coordinates"])
+    missing_q = verify(parse_claim(shear.replace("q = y - x\n", "")))
+    assert missing_q.outcome == INVALID_INPUT
+    assert missing_q.reason == "missing_coordinate_formula"
+    assert any(item["coordinates"] == ["q"] for item in missing_q.evidence["omitted_coordinates"])
 
 
 def test_two_index_pair():

@@ -226,9 +226,12 @@ assert T o D o T^-1 = image_D
 The true inverse of `x = p` is `p = x`. The supplied formula is `p = x + 1`.
 There is no `assert Phi o Psi = id` and no `assert Psi o Phi = id`. Direction
 `new_to_old` is written. `exclude x = 0` is written, so this is not the
-missing-exclusion case, and the inverse is not evaluated at `x = 0`. The
-claimed image is `d/dp`, which is what the chain rule emits if it trusts the
-shifted `Psi`, because `d/dx (x + 1) = 1`.
+missing-exclusion case, and the inverse is not evaluated at `x = 0`.
+
+E12 disproves the supplied inverse and therefore the complete claim bundle.
+For the identity chart `x = p`, the operator image `d/dp` itself is correct.
+The false part is the inverse `p = x + 1`, not the operator image of the
+true identity. The Euler chart stays valid.
 
 `Phi o Psi` sends `x` to `1 + x`. `Psi o Phi` sends `p` to `1 + p`. Both
 residuals are `1`. That is a symbolic contradiction inside the domain.
@@ -242,17 +245,106 @@ Pre-fix execution, checker at `03e0a35`, before the inverse-identity
 requirement, same file: `PROVED`, residual `0`, `proved_by` `chain_rule`,
 derived `D = d/dp`. The derivation was only `D.p: (D Psi) compose Phi :: 1 ->
 1`. It contained no inverse-composition step. That was a false acceptance.
-The frozen label stayed `DISPROVED`.
+The frozen label stayed `DISPROVED`. The pre-fix derivation emitted `d/dp`
+because it trusted the shifted `Psi`. That image is also the operator image
+of the true identity `x = p`. The false part of the bundle is `p = x + 1`.
+
+### E13 incomplete coordinate map
+
+The expected outcome was fixed before running the checker. An incomplete map
+must not be `PROVED`. Spaces name `y` and `q`, and neither formula is
+written. The label is `INVALID_INPUT`. It was not changed after the pre-fix
+run returned `PROVED`.
+
+Exact input, `examples/claims/eval/e13_incomplete_coordinate_map.txt`:
+
+```text
+source "eval-incomplete-coordinate-map"
+assume plane chart that writes one formula on each space and leaves the other coordinate unwritten
+space old
+kind coordinates
+coordinates x, y
+ring analytic_germs
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+space new
+kind coordinates
+coordinates p, q
+ring analytic_germs
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+map Phi
+source new
+target old
+direction new_to_old
+inverse Psi
+obligations domain_compatibility, invertibility
+x = p
+end
+map Psi
+source old
+target new
+direction old_to_new
+inverse Phi
+obligations domain_compatibility, invertibility
+p = x
+end
+operator D
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula d/dx
+end
+operator image_D
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/dp
+end
+define T pullback of Phi
+assert T o D o T^-1 = image_D
+```
+
+`Phi` writes `x = p` and omits `y`. `Psi` writes `p = x` and omits `q`.
+Direction `new_to_old` is written. `exclude x = 0` is written, so this is
+not the missing-exclusion case. The claim asserts `T o D o T^{-1} = d/dp`
+for `D = d/dx`. It does not assert a formula for `y` or `q`, and the checker
+does not supply one.
+
+The grammar accepts a map block that omits an equation, so the text parses
+and the parser assigns no verdict. The outcome is still `INVALID_INPUT`.
+The spaces name a coordinate the map does not define, so the map does not
+have the type it claims. Reason `missing_coordinate_formula` names `y` on
+`Phi` and `q` on `Psi`.
+
+Expected outcome: `INVALID_INPUT`.
+
+Reason: `missing_coordinate_formula`.
+
+Pre-fix execution, checker at `1d91340`, same file, before this type check:
+`PROVED`, residual `0`, `proved_by` `chain_rule`, `inverse_identity`
+`established`, derived `D = d/dp`. The message was `derived by the chain rule
+after both inverse identities were established`. The derivation checked
+`Phi o Psi` on `x` and `Psi o Phi` on `p` only, then `D.p` with output `1`.
+`y` and `q` were absent. That was a false acceptance. The frozen label stayed
+`INVALID_INPUT`.
 
 ## Observed run
 
-Command: `python3 -m pytest -q tests/test_claim_eval.py tests/test_claim_verifier.py tests/test_claim_cli.py` (38 passed), then the full `python3 -m pytest -q`.
+Command: `python3 -m pytest -q tests/test_claim_eval.py tests/test_claim_verifier.py tests/test_claim_cli.py` (39 passed), then the full `python3 -m pytest -q`.
 
-The full suite reported `220 passed` in 20.37s. The earlier local report of
-`216 passed` was this suite before the E12 case and the inverse-identity
-tests. Frozen expected labels were not retuned after the pre-fix run. E12
-was labeled `DISPROVED` before that run returned `PROVED`. The checker
-computed each row. `verify` does not contain these source ids.
+The full suite reported `221 passed` in 20.61s. The count before the
+coordinate-formula requirement was `220 passed` in 20.37s. The earlier local
+report of `216 passed` was this suite before the E12 case and the
+inverse-identity tests. Frozen expected labels were not retuned after the
+pre-fix runs. E12 was labeled `DISPROVED` before that run returned `PROVED`.
+E13 was labeled `INVALID_INPUT` before the run at `1d91340` returned
+`PROVED`. The checker computed each row. `verify` does not contain these
+source ids.
 
 GitHub Actions run `39546214849` on this branch reported 204 passed and 12
 failed. Those twelve tests pass here. The Test step ran `pip install -e
@@ -279,6 +371,23 @@ were `test_generalization_locks_recommendation_and_per_fixture_bits`,
 `test_word_sentence_svd_certifies_varied_prose_at_library_defaults`, and
 `test_cli_report_and_certify_varied_prose`.
 
+GitHub Actions run `39549106578` on head `1d91340596d644c8e762856b6e001bc4387fa22f`
+is the completed run after that workflow change, and it is the latest
+completed run on this branch. The Test step reported `1 failed, 219 passed`.
+The failing test is
+`tests/test_eval_control_integrity.py::test_corrected_scores_and_original_controls`.
+The assertion is `leakage["train_ari_full_vs_train_only"]` against
+`LEAKAGE["overlapping"]["train_ari"]`. Obtained `0.8414648893519251`. Locked
+`0.7222354745271766`. The locked number was not replaced. The Install step of
+that run printed `numpy 1.26.4`,
+`numpy_file /usr/lib/python3/dist-packages/numpy/__init__.py`, and
+`libraries ['/usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.12.0', '/usr/lib/x86_64-linux-gnu/blas/libblas.so.3.12.0']`.
+The same packages on this machine, with AVX512 visible to NumPy, still return
+`0.7222354745271766` for that field. The explanation is in
+`docs/PR1_EVAL_CONTROL_INTEGRITY.md`. The workflow prints NumPy version, the
+BLAS library path, the thread count, and `np.log(39/5)` beside `math.log(39/5)`
+in the Install step and again in the Test process.
+
 | Id | Expected | Observed | What the checker reported |
 | --- | --- | --- | --- |
 | E1 | `PROVED` | `PROVED` | `V` derived as `d/dp`. Coefficients `p: 1`, `q: 0`. Residual `0`. |
@@ -292,7 +401,8 @@ were `test_generalization_locks_recommendation_and_per_fixture_bits`,
 | E9 | `UNRESOLVED` | `UNRESOLVED` | `missing_pullback_direction`. Direction left absent. |
 | E10 | `PROVED` | `PROVED` | `D0 = (1 + t) d/dt`, `D1 = d/du1`, `D2 = d/du2`. Summed coordinates `Y, X1, X2`. Residual `0`. |
 | E11 | `DISPROVED` | `DISPROVED` | Derived `D1 = d/du1`. On `g = t`, actual `0`, claimed `1`, residual `-1`. Inverse identities established. |
-| E12 | `DISPROVED` | `DISPROVED` | `Phi o Psi` sends `x` to `1 + x`, residual `1`. `Psi o Phi` sends `p` to `1 + p`. Inverse not evaluated at `x = 0`. |
+| E12 | `DISPROVED` | `DISPROVED` | `Phi o Psi` sends `x` to `1 + x`, residual `1`. `Psi o Phi` sends `p` to `1 + p`. Inverse not evaluated at `x = 0`. The operator image `d/dp` of the identity `x = p` is correct. The false part is `p = x + 1`. |
+| E13 | `INVALID_INPUT` | `INVALID_INPUT` | `missing_coordinate_formula`. `Phi` omits `y`. `Psi` omits `q`. No formula was supplied. |
 
 False acceptances on this run: none. No frozen `DISPROVED`, `UNRESOLVED`, or
 `INVALID_INPUT` row was returned as `PROVED`.
@@ -301,6 +411,11 @@ False acceptance before the inverse-identity requirement, reported
 separately: E12 returned `PROVED` at `03e0a35`. The same file is `DISPROVED`
 after the checker establishes `Phi o Psi` and `Psi o Phi` before accepting a
 conjugation. `verify` still has no table from these ids to outcomes.
+
+False acceptance before the coordinate-formula requirement, reported
+separately: E13 returned `PROVED` at `1d91340`. The same file is
+`INVALID_INPUT` after a map must define every coordinate of its target
+space. The pre-fix derivation established identities only for `x` and `p`.
 
 False rejections: none. E1 and E10 were `PROVED`, matching the frozen labels,
 because the checker established both inverse identities and the chain rule
@@ -313,7 +428,8 @@ established; the false statement is the rejected transformation claim.
 
 Interpretation errors: none on this list. Directions, domains, and the
 logarithm branch that were written stayed as written. Omitted direction was
-not filled in. The reversed composition was not reordered.
+not filled in. Omitted coordinates `y` and `q` were not filled in. The
+reversed composition was not reordered.
 
 Unresolved cases: E3, E5, E6, and E9. Each was already labeled `UNRESOLVED`.
 They were counted, not relabeled.
@@ -322,6 +438,9 @@ Supported-case coverage: two correct claims inside the theory were proved
 (E1, the shear, and E10, the two-index chart), and the one-index reference
 chart was proved. The checker did not refuse every claim. False claims E2,
 E7, E11, and E12 were disproved rather than left open. E11's disproof is the
-derived operator, not a table from the fixture id. E12's disproof is the
-refuted inverse identity, not a coefficient table. E7 still does not evaluate
-the inverse at `Y = 0`.
+derived operator, not a table from the fixture id. E12 disproves the supplied
+inverse and therefore the complete claim bundle. For the identity chart
+`x = p`, the operator image `d/dp` itself is correct. The false part is the
+inverse `p = x + 1`, not the operator image of the true identity. E13 is
+`INVALID_INPUT` because `y` and `q` have no formula. E7 still does not
+evaluate the inverse at `Y = 0`.

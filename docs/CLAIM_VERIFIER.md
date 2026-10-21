@@ -102,6 +102,24 @@ symbolic contradiction. Failure to prove is `UNRESOLVED`. Malformed syntax,
 incompatible types, and ill-typed operator application are `INVALID_INPUT`
 and carry a source span and a reason.
 
+Every coordinate declared on a coordinate space that a map names as its
+target must have a formula on that map before an inverse identity can be
+established. The inverse is the map whose target is the other space, so
+both the source space and the target space are covered. Checking only the
+formulas that were written is not a complete identity. The grammar still
+accepts a map block that omits an equation, and the parser still assigns
+no verdict. `verify` returns `INVALID_INPUT` with reason
+`missing_coordinate_formula`, names each omitted coordinate, and does not
+supply a formula. The spaces name a coordinate the map does not define, so
+the map does not have the type it claims. The partial formulas are not
+treated as `Phi` and `Psi` and then used to prove a conjugation.
+
+E12 disproves the supplied inverse and therefore the complete claim bundle.
+For the identity chart `x = p`, the operator image `d/dp` itself is correct.
+The false part is the inverse `p = x + 1`, not the operator image of the
+true identity. E12 stays `DISPROVED`. The Euler chart stays valid. The false
+statement on that chart is the rejected transformation claim.
+
 ## Supported language
 
 Blocks end with `end`. `#` comments are ignored outside quoted source ids.
@@ -136,8 +154,9 @@ field is absent, or the written direction is neither `new_to_old` nor
 `old_to_new`, the claim is `UNRESOLVED`. The checker does not fill in a
 missing domain, a missing `log(1) = 0` branch, or a missing direction.
 Ambiguous input stays `UNRESOLVED` and the command prints a clarification.
-It does not invent the missing field. A simplification that stalls is
-`UNRESOLVED`, not `DISPROVED`.
+It does not invent the missing field. It does not invent a formula for a
+coordinate the spaces declare and the map leaves out. A simplification that
+stalls is `UNRESOLVED`, not `DISPROVED`.
 
 The supported algebraic theory is `coordinate_chain_rule_v1`: first-order
 vector fields, the chain rule above, and the inverse compositions on the
@@ -155,7 +174,7 @@ that stalls, or a symbol that is well-formed but has no recorded meaning is
 | `PROVED` | The chain rule derives the claim under the recorded assumptions. A conjugation also requires both inverse identities to have been established. A supplied inverse is not evidence by itself. |
 | `DISPROVED` | A well-formed claim has an in-domain witness or a symbolic contradiction. |
 | `UNRESOLVED` | An assumption, direction, meaning, or supported theory is missing, or simplification stalled. |
-| `INVALID_INPUT` | The input is malformed, ill-typed, or forbidden by the grammar. The result names a span and a reason. |
+| `INVALID_INPUT` | The input is malformed, ill-typed, or forbidden by the grammar. A map that omits a formula for a coordinate its target space declares is ill-typed (`missing_coordinate_formula`). The result names a span and a reason. |
 
 ## Fixtures
 
@@ -415,9 +434,13 @@ the exit code.
 python3 -m pytest -q
 ```
 
-The run after the inverse-identity requirement reported `220 passed` in
-20.37s. The count before that requirement was `216 passed`. The count before
-the finite-index command and the evaluation cases was `193 passed`.
+The run after the coordinate-formula requirement reported `221 passed` in
+20.61s. The claim files
+`tests/test_claim_eval.py`, `tests/test_claim_verifier.py`, and
+`tests/test_claim_cli.py` reported `39 passed`. The count before that
+requirement was `220 passed` in 20.37s. The count before the inverse-identity
+requirement was `216 passed`. The count before the finite-index command and
+the evaluation cases was `193 passed`.
 Evaluation labels and observed outcomes are in `docs/CLAIM_EVAL.md`. Actions
 run `39546214849` had reported 204 passed and 12 failed because it installed
 NumPy 2.5.4 instead of the reference-BLAS NumPy 1.26.4 those locks use. The

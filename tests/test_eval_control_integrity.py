@@ -166,6 +166,10 @@ LEAKAGE = {
         "eval_token_occurrences": 66,
         "eval_only_token_occurrences": 52,
         "eval_only_token_types": 51,
+        # AVX512 np.log measurement of train_ari_full_vs_train_only.
+        # The same field under libm np.log is 0.8414648893519251.
+        # The locked value stays 0.7222354745271766.
+        # See docs/PR1_EVAL_CONTROL_INTEGRITY.md.
         "train_ari": 0.7222354745271766,
         "eval_ari": 0.24999999999999994,
         "correlation": 0.7212291143117482,
@@ -376,6 +380,44 @@ def test_audit_reruns_candidates_and_stays_unresolved(report):
     ]
 
 
+def _numeric_environment() -> str:
+    """NumPy, BLAS, thread count, and the log kernel this lock reads."""
+    import math
+    import os
+
+    import numpy as np
+
+    loaded = []
+    try:
+        for line in open("/proc/self/maps", encoding="utf-8", errors="replace"):
+            lower = line.lower()
+            if any(token in lower for token in ("libblas", "liblapack", "libopenblas")):
+                path = line.split()[-1]
+                if path.startswith("/") and path not in loaded:
+                    loaded.append(path)
+    except OSError:
+        loaded = []
+    flags = ""
+    try:
+        for line in open("/proc/cpuinfo", encoding="utf-8", errors="replace"):
+            if line.startswith("flags"):
+                flags = line
+                break
+    except OSError:
+        flags = ""
+    ratio = 39 / 5
+    return (
+        f"numpy {np.__version__} file {np.__file__} libraries {loaded} "
+        f"cpu_count {os.cpu_count()} "
+        f"OMP_NUM_THREADS={os.environ.get('OMP_NUM_THREADS')} "
+        f"OPENBLAS_NUM_THREADS={os.environ.get('OPENBLAS_NUM_THREADS')} "
+        f"MKL_NUM_THREADS={os.environ.get('MKL_NUM_THREADS')} "
+        f"avx512f={'avx512f' in flags} "
+        f"np.log(39/5)={float(np.log(ratio)).hex()} "
+        f"math.log(39/5)={math.log(ratio).hex()}"
+    )
+
+
 def test_corrected_scores_and_original_controls(report):
     for fixture in report["fixtures"]:
         fixture_id = fixture["fixture_id"]
@@ -438,7 +480,11 @@ def test_corrected_scores_and_original_controls(report):
         assert leakage["eval_token_occurrences"] == locked["eval_token_occurrences"]
         assert leakage["eval_only_token_occurrences"] == locked["eval_only_token_occurrences"]
         assert leakage["eval_only_token_types"] == locked["eval_only_token_types"]
-        assert leakage["train_ari_full_vs_train_only"] == pytest.approx(locked["train_ari"], abs=ABS)
+        got_train_ari = leakage["train_ari_full_vs_train_only"]
+        assert got_train_ari == pytest.approx(locked["train_ari"], abs=ABS), (
+            f"{fixture_id} train_ari_full_vs_train_only {got_train_ari!r} "
+            f"against locked {locked['train_ari']!r}; {_numeric_environment()}"
+        )
         assert leakage["eval_ari_full_vs_train_only"] == pytest.approx(locked["eval_ari"], abs=ABS)
         assert leakage["train_pairwise_distance_correlation"] == pytest.approx(
             locked["correlation"],

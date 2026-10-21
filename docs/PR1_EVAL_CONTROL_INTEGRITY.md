@@ -116,6 +116,69 @@ It is material. A comparison embedding uses train texts only: train document fre
 
 The materiality bar frozen with the revised definition is train adjusted Rand below `0.90`. Every fixture is below it. Overlapping is the closest, at 0.7222, and its eval assignment agreement is 0.25. Most eval content-token occurrences are words the train split never sees, so an eval row in the joint SVD is not a coordinate in a train-defined basis, and the train rows move as well.
 
+### Overlapping train ARI on GitHub Actions
+
+The locked overlapping train ARI is `0.7222354745271766`. It is
+`leakage["train_ari_full_vs_train_only"]` in `audit_eval_controls`: the
+adjusted Rand index between production k-means on the full-matrix train rows
+and production k-means on the train-only embedding of the same rows. The test
+`tests/test_eval_control_integrity.py::test_corrected_scores_and_original_controls`
+reads that field and compares it with `LEAKAGE["overlapping"]["train_ari"]`.
+The CI value is that same field.
+
+Run `39549106578` (head `1d91340596d644c8e762856b6e001bc4387fa22f`, 21 October
+2026, the latest completed run on `cursor/unfold-reservoir-0d9f`) reported
+`1 failed, 219 passed`. The failure is that one assertion. Obtained
+`0.8414648893519251`. Expected `0.7222354745271766`. The expected number stays
+`0.7222354745271766`.
+
+The Install step of that run printed NumPy `1.26.4` from
+`/usr/lib/python3/dist-packages/numpy/__init__.py` and the loaded libraries
+`/usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.12.0` and
+`/usr/lib/x86_64-linux-gnu/blas/libblas.so.3.12.0`. Those are the Ubuntu 24.04
+packages `python3-numpy 1:1.26.4+ds-6ubuntu1`, `libblas3 3.12.0-3build1.1`, and
+`liblapack3 3.12.0-3build1.1`. The reference BLAS selection in the workflow
+held for that process.
+
+A local run with those same three packages returns `0.7222354745271766` for
+overlapping, and the other three fixtures match their locks as well
+(uneven `0.2971403038427167`, ambiguous `0.3232177014940806`, balanced
+`0.3008570540432524`). `pin_blas_threads(1)` sets `OMP_NUM_THREADS`,
+`OPENBLAS_NUM_THREADS`, and `MKL_NUM_THREADS` to `1` before either SVD. The
+local CPU is an Intel Xeon, model 173, and `/proc/cpuinfo` includes `avx512f`.
+NumPy 1.26.4's AVX512 log of `39/5` is `0x1.06ed86c91473cp+1`
+(`2.054123733695546`). `math.log(39/5)` is `0x1.06ed86c91473dp+1`
+(`2.0541237336955462`).
+
+`_train_only_embedding` builds IDF with `np.log`. `word_sentence_tfidf` and
+`word_sentence_svd` use `math.log`. The helper then accepts the train block
+when `np.allclose` matches `word_sentence_tfidf`. On this AVX512 host the
+maximum absolute gap is `5.55e-17`. Three overlapping train tokens, `clock`,
+`pipe`, and `pump`, have document frequency 5 in 39 train rows, so their IDF
+uses `log(39/5)`. The rank-8 singular values of that train matrix sit near
+`1.127137143471583` and `1.126081482704378`. With the AVX512 log, overlapping's
+train ARI is `0.7222354745271766`. With AVX512 disabled in
+`NPY_DISABLE_CPU_FEATURES`, `np.log(39/5)` matches `math.log(39/5)` bit for
+bit, the train TF-IDF matches `word_sentence_tfidf` bit for bit, and the same
+field is `0.8414648893519251`. That is the value run `39549106578` obtained.
+The full-matrix `word_sentence_svd` hash is unchanged across the two
+dispatches. Uneven and balanced stay on their locks in both dispatches.
+Ambiguous's train ARI moves with the same log kernel, from the locked
+`0.3232177014940806` to `0.4507805623755037`, and overlapping's eval ARI moves
+from `0.24999999999999994` to `0.3661971830985915`. The failing test stops at
+the overlapping train comparison, so those later rows were not the reported
+failure.
+
+GitHub-hosted `ubuntu-24.04` does not offer a selector for an AVX512 log
+kernel. Forcing the feature on a runner whose CPUID omits it faults. The
+workflow keeps reference BLAS and prints, in the Install step and in the Test
+process, the NumPy version, the NumPy file, the loaded BLAS and LAPACK paths,
+`cpu_count`, `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`,
+whether `avx512f` is in `/proc/cpuinfo`, and the hex of `np.log(39/5)` beside
+`math.log(39/5)`. The local reference-BLAS run still produces
+`0.7222354745271766`, so the lock stays. The recorded trial value is that
+AVX512 measurement.
+
 This audit does not change `word_sentence_svd`. The corrected candidate scores below still use the full-matrix embedding. They are a rescoring of the same leaky vectors. They are not an out-of-sample semantic measurement. `SVD_MATERIAL_TRAIN_ARI` is not an admission threshold and it was not used to drop a candidate.
 
 ## Map used at eval
