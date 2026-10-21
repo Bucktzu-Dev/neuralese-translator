@@ -1,0 +1,45 @@
+source "eval-missing-exclusion"
+space old
+kind coordinates
+coordinates Y
+ring analytic
+regularity analytic
+neighborhood germ
+log_branch log(1) = 0
+end
+space new
+kind coordinates
+coordinates t
+ring analytic
+regularity analytic
+neighborhood germ
+log_branch log(1) = 0
+end
+map Phi
+source new
+target old
+direction new_to_old
+inverse Psi
+Y = exp(t)
+end
+map Psi
+source old
+target new
+direction old_to_new
+inverse Phi
+t = log(Y)
+end
+operator D
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula Y * d/dY
+end
+operator image
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/dt
+end
+define T pullback of Phi
+assert T o D o T^-1 = image

@@ -13,8 +13,9 @@ does not attach a certificate and it has no ``Error_Bound`` field. A later
 assertion is not evidence. One checker, ``coordinate_chain_rule_v1``,
 derives the chain rule under the assumptions written on the claim.
 
-The executable checker uses one coordinate index. The handoff's general
-argument is the sum over ``i``. A coordinate change preserves dimension.
+The executable checker sums over the finite coordinates written on the claim.
+The handoff's general argument is that sum over ``i``. A coordinate change
+preserves dimension.
 This module does not verify the cited paper. The OpenAI ``interpolation.tex``
 URL is stored as provenance text and is not fetched.
 

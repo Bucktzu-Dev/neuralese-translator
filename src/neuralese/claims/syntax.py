@@ -1096,11 +1096,11 @@ def _parse_claim_text(text: str) -> ClaimRecord:
 
     if not builder.interpretations:
         builder.interpretations.append(
-            "one coordinate index is the supported reading; the handoff's general argument is the sum over i"
+            "finite coordinate indices are the supported reading; the chain-rule argument is the sum over i"
         )
     else:
         builder.interpretations.append(
-            "one coordinate index is the supported reading; the handoff's general argument is the sum over i"
+            "finite coordinate indices are the supported reading; the chain-rule argument is the sum over i"
         )
     # Preserve order and drop duplicate interpretation sentences.
     seen = set()

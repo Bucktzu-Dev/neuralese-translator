@@ -5,9 +5,9 @@ module derives it from the recorded maps, under the exclusions and logarithm
 branch written on the claim. A zero commutator is recorded as a consistency
 note and is never itself a proof of the coordinate change.
 
-The checker uses one coordinate index. The handoff's general argument is the
-sum over i. It does not verify the cited paper, and it does not fetch the
-mutable main-branch URL stored as provenance.
+The checker sums over the finite coordinates written on the claim. The
+handoff's general argument is that sum over i. It does not verify the cited
+paper, and it does not fetch the mutable main-branch URL stored as provenance.
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ INVALID_INPUT = "INVALID_INPUT"
 OUTCOMES = (PROVED, DISPROVED, UNRESOLVED, INVALID_INPUT)
 
 CHECKER_VERSION = "chain-rule-v1"
-TACTIC_VERSION = "coordinate-germ-one-index-1"
+TACTIC_VERSION = "coordinate-germ-finite-index-1"
 SUPPORTED_THEORY = "coordinate_chain_rule_v1"
 PAPER_PROVENANCE_URL = (
     "https://github.com/openai/math/blob/main/preprints/"
@@ -81,11 +81,11 @@ PAPER_PROVENANCE_URL = (
 )
 TRUST_BOUNDARY = (
     "Independent stdlib checker coordinate_chain_rule_v1. "
-    "The parsed claim is not evidence. One coordinate index; the handoff's "
-    "general argument is the sum over i. This result does not verify the cited paper."
+    "The parsed claim is not evidence. Finite coordinate indices; the identity "
+    "is the sum over i. This result does not verify the cited paper."
 )
 GENERAL_ARGUMENT = (
-    "one coordinate index; the handoff's general m-coordinate identity is the sum over i"
+    "finite coordinate indices; the handoff's general m-coordinate identity is the sum over i"
 )
 
 DEFAULT_LIMITS = {"max_steps": 20000, "max_nodes": 20000}
@@ -382,6 +382,46 @@ def _structural_issue(claim: ClaimRecord) -> Optional[VerificationResult]:
             if _map(claim, prop.map_name) is None:
                 return _invalid(claim.source_hash, claim.assumptions, limits, "unbound_reference", f"unknown map {prop.map_name}", prop.span, "invertibility")
     return None
+
+
+def _symbols_requiring_exclusion(claim: ClaimRecord) -> List[str]:
+    """Symbols that a written logarithm or denominator needs to keep off zero.
+
+    The names come from the formulas. A missing exclusion is not filled in,
+    and a claim that never mentions ``Y`` is not reported as missing ``Y``.
+    """
+    needed: List[str] = []
+    seen = set()
+    for item in claim.maps:
+        for _name, expr in item.formulas:
+            for arg in log_arguments(expr):
+                if isinstance(arg, Symbol) and arg.name not in seen:
+                    seen.add(arg.name)
+                    needed.append(arg.name)
+            for name in sorted(denominator_symbols(expr)):
+                if name not in seen:
+                    seen.add(name)
+                    needed.append(name)
+    return needed
+
+
+def _summed_coordinates(claim: ClaimRecord) -> List[str]:
+    """Coordinates the chain rule sums over, in the written order."""
+    for prop in claim.claimed_property:
+        if isinstance(prop, ConjugationAssert) and len(prop.parts) >= 2:
+            operator = _operator(claim, prop.parts[1][0])
+            if operator is not None:
+                space = _space(claim, operator.domain)
+                if space is not None:
+                    return list(space.coordinates)
+    for item in claim.operators:
+        space = _space(claim, item.domain)
+        if space is not None and space.coordinates:
+            return list(space.coordinates)
+    for space in claim.spaces:
+        if space.kind == "coordinates" and space.coordinates:
+            return list(space.coordinates)
+    return []
 
 
 def _needs_domain(claim: ClaimRecord) -> bool:
@@ -901,13 +941,16 @@ def _verify_claim(claim: ClaimRecord, budget: Budget, resource_limits: dict) -> 
             witness=None,
         )
     if _needs_domain(claim) and not assumptions.recorded_exclusions:
+        named = _symbols_requiring_exclusion(claim)
+        not_supplied = [f"{name} != 0" for name in named] or ["an exclusion line"]
         return _unresolved(
             claim.source_hash,
             claim.assumptions,
             resource_limits,
             "missing_domain",
-            "no exclusion was written on the claim; Y != 0 was not supplied",
-            {"not_supplied": ["Y != 0"], "paper_verified": False},
+            "no exclusion was written on the claim; the checker did not supply "
+            + ", ".join(not_supplied),
+            {"not_supplied": not_supplied, "paper_verified": False},
         )
     if _needs_domain(claim) and _formulas_need_log(claim) and not assumptions.log1_is_0:
         return _unresolved(
@@ -954,6 +997,28 @@ def _type_conjugations(claim: ClaimRecord):
             )
         status, arrow, detail = _composition_type(claim, prop.parts)
         if status == "missing":
+            pullback_map = _pullback_map(claim, prop.parts[0][0])
+            if (
+                pullback_map is not None
+                and pullback_map.direction is not None
+                and pullback_map.direction not in {"new_to_old", "old_to_new"}
+            ):
+                return _unresolved(
+                    claim.source_hash,
+                    claim.assumptions,
+                    dict(DEFAULT_LIMITS),
+                    "unrecognized_pullback_direction",
+                    (
+                        f"map {pullback_map.name} has direction {pullback_map.direction}; "
+                        "only new_to_old and old_to_new are supported, and neither was inferred"
+                    ),
+                    {
+                        "map": pullback_map.name,
+                        "direction": pullback_map.direction,
+                        "repaired": False,
+                        "paper_verified": False,
+                    },
+                )
             return None
         if status == "illegal":
             return (
@@ -1026,6 +1091,22 @@ def _commutator_evidence(claim: ClaimRecord, assumptions: Assumptions, budget: B
 
 
 def _prove(claim: ClaimRecord, assumptions: Assumptions, budget: Budget, resource_limits: dict) -> VerificationResult:
+    if not any(
+        isinstance(prop, (ConjugationAssert, MapComposeAssert, InvertibleAssert, ApplyAssert))
+        for prop in claim.claimed_property
+    ):
+        return _unresolved(
+            claim.source_hash,
+            claim.assumptions,
+            resource_limits,
+            "no_claimed_equality",
+            "the claim states no equality, conjugation, or invertibility to check",
+            {
+                "paper_verified": False,
+                "general_argument": GENERAL_ARGUMENT,
+                "coordinate_index": "finite",
+            },
+        )
     derivation: List[dict] = []
     derived = {}
     failures = []
@@ -1066,13 +1147,16 @@ def _prove(claim: ClaimRecord, assumptions: Assumptions, budget: Budget, resourc
                 prop.span,
                 "operator_domain",
             )
+    summed = _summed_coordinates(claim)
     evidence = {
         "derived": derived,
         "proved_by": None if failures or unresolved else "chain_rule",
         "commutator_proves_claim": False,
         "paper_verified": False,
         "general_argument": GENERAL_ARGUMENT,
-        "coordinate_index": "one",
+        "coordinate_index": "finite",
+        "summed_coordinates": summed,
+        "summed_coordinate_count": len(summed),
         "symbolic_zero_meaning": "a simplified residual of 0 is equality inside coordinate_chain_rule_v1, not an error bound",
     }
     consistency = _consistency(claim, assumptions, budget)

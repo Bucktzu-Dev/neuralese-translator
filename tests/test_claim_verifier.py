@@ -510,7 +510,9 @@ def test_positive_coordinate_change_is_proved_by_the_chain_rule():
     assert result.evidence["proved_by"] == "chain_rule"
     assert result.evidence["primary"] == "chain_rule"
     assert result.evidence["paper_verified"] is False
-    assert result.evidence["coordinate_index"] == "one"
+    assert result.evidence["coordinate_index"] == "finite"
+    assert result.evidence["summed_coordinates"] == ["Y", "X"]
+    assert result.evidence["summed_coordinate_count"] == 2
     assert "sum over i" in result.evidence["general_argument"]
     assert result.residual == "0"
     assert result.witness is None
@@ -775,3 +777,185 @@ def test_serialization_preserves_composition_order_and_direction():
     assert second.variable == "X"
     phi = next(item for item in positive.claim.maps if item.name == "Phi")
     assert phi.direction == "new_to_old"
+
+
+TWO_INDEX = (
+    Path(__file__).resolve().parents[1] / "examples" / "claims" / "two_index_coordinate_change.txt"
+).read_text(encoding="utf-8")
+
+
+def test_two_index_coordinate_change_is_proved_by_the_chain_rule():
+    parsed = _assert_parse_has_no_verdict(TWO_INDEX)
+    result = verify(parsed)
+    assert result.outcome == PROVED
+    assert result.evidence["derived"]["D0"] == "(1 + t) * d/dt"
+    assert result.evidence["derived"]["D1"] == "d/du1"
+    assert result.evidence["derived"]["D2"] == "d/du2"
+    assert result.evidence["proved_by"] == "chain_rule"
+    assert result.evidence["coordinate_index"] == "finite"
+    assert result.evidence["summed_coordinates"] == ["Y", "X1", "X2"]
+    assert result.evidence["summed_coordinate_count"] == 3
+    assert result.residual == "0"
+    steps = [step for step in result.derivation if step["rule"] == "chain_rule_coefficient"]
+    by_key = {(step["operator"], step["component"]): step for step in steps}
+    assert by_key[("D0", "t")]["before_substitution"] == "Y"
+    assert by_key[("D0", "t")]["output"] == "1 + t"
+    assert by_key[("D0", "u1")]["output"] == "0"
+    assert by_key[("D0", "u2")]["output"] == "0"
+    assert by_key[("D1", "u1")]["before_substitution"] == "1"
+    assert by_key[("D1", "u1")]["output"] == "1"
+    assert by_key[("D1", "t")]["output"] == "0"
+    assert by_key[("D2", "u2")]["output"] == "1"
+    identities = {
+        (step["order"], step["component"], step["output"])
+        for step in result.derivation
+        if step["rule"] == "inverse_composition"
+    }
+    assert ("Phi o Psi", "Y", "Y") in identities
+    assert ("Phi o Psi", "X1", "X1") in identities
+    assert ("Phi o Psi", "X2", "X2") in identities
+    assert ("Psi o Phi", "t", "t") in identities
+    assert ("Psi o Phi", "u1", "u1") in identities
+    assert ("Psi o Phi", "u2", "u2") in identities
+    assert result.evidence["commutator_proves_claim"] is False
+    assert replay_derivation(parsed, result) is True
+
+
+def test_two_index_round_trip_preserves_order_direction_domain_and_branch():
+    parsed = _assert_parse_has_no_verdict(TWO_INDEX)
+    again = deserialize_claim(serialize_claim(parsed))
+    assert again.claim.source_text == parsed.claim.source_text
+    assert again.claim.assumptions == parsed.claim.assumptions
+    spaces = {space.name: space for space in again.claim.spaces}
+    assert spaces["old"].coordinates == ("Y", "X1", "X2")
+    assert spaces["new"].coordinates == ("t", "u1", "u2")
+    assert spaces["old"].log_branch == "log(1) = 0"
+    assert spaces["new"].log_branch == "log(1) = 0"
+    assert spaces["old"].exclusions == (("Y", "0"),)
+    maps = {item.name: item for item in again.claim.maps}
+    assert maps["Phi"].source_space == "new"
+    assert maps["Phi"].target_space == "old"
+    assert maps["Phi"].direction == "new_to_old"
+    assert maps["Psi"].source_space == "old"
+    assert maps["Psi"].target_space == "new"
+    assert maps["Psi"].direction == "old_to_new"
+    operators = {item.name: item for item in again.claim.operators}
+    assert operators["D0"].domain == "old"
+    assert operators["D0"].codomain == "old"
+    assert operators["image_D1"].domain == "new"
+    d0 = operators["D0"].formula
+    assert d0.to_data()["kind"] == "OperatorSum"
+    y_term, x1_term, x2_term = d0.terms
+    assert [part.to_data()["kind"] for part in y_term.parts] == [
+        "MultiplyCoefficient",
+        "Partial",
+    ]
+    assert y_term.parts[1].variable == "Y"
+    assert x1_term.to_data()["kind"] == "Partial"
+    assert x1_term.variable == "X1"
+    assert x2_term.variable == "X2"
+    assert operators["D1"].formula.variable == "X1"
+    assert operators["D2"].formula.variable == "X2"
+    assert verify(again).outcome == PROVED
+    assert verify(again).evidence["derived"]["D1"] == "d/du1"
+
+
+def test_two_index_false_target_is_disproved_by_the_chain_rule():
+    text = TWO_INDEX.replace("formula d/du1", "formula d/dt", 1)
+    parsed = _assert_parse_has_no_verdict(text)
+    result = verify(parsed)
+    assert result.outcome == DISPROVED
+    assert result.reason == "symbolic_contradiction"
+    assert result.evidence["derived"]["D1"] == "d/du1"
+    assert result.evidence["proved_by"] is None
+    witness = result.witness
+    assert witness["function"] == "t"
+    assert witness["actual_output"] == "0"
+    assert witness["claimed_output"] == "1"
+    assert witness["residual"] == "-1"
+    assert replay_derivation(parsed, result) is True
+
+
+def test_two_index_zero_commutator_is_not_a_proof():
+    parsed = _assert_parse_has_no_verdict("evidence commutator_only\n" + TWO_INDEX)
+    result = verify(parsed)
+    assert result.outcome == UNRESOLVED
+    assert result.reason == "commutator_is_not_a_proof"
+    note = result.evidence["commutator"][0]
+    assert note["is_zero"] is True
+    assert note["proves_coordinate_change"] is False
+    assert result.evidence["proved_by"] is None
+
+
+def test_unrecognized_direction_is_not_treated_as_a_pullback():
+    text = POSITIVE.replace("direction new_to_old\n", "direction sideways\n", 1)
+    parsed = _assert_parse_has_no_verdict(text)
+    assert parsed.claim.maps[0].direction == "sideways"
+    result = verify(parsed)
+    assert result.outcome == UNRESOLVED
+    assert result.reason == "unrecognized_pullback_direction"
+    assert result.evidence["repaired"] is False
+    assert result.evidence["direction"] == "sideways"
+    assert result.residual is None
+
+
+def test_claim_without_an_equality_is_unresolved():
+    result = verify(parse_claim('source "empty"\n'))
+    assert result.outcome == UNRESOLVED
+    assert result.reason == "no_claimed_equality"
+    assert result.residual is None
+    assert result.evidence.get("proved_by") is None
+
+
+def test_missing_exclusion_does_not_invent_a_coordinate_name():
+    text = '''source "shear-no-exclusion"
+space old
+kind coordinates
+coordinates x, y
+ring analytic
+regularity analytic
+neighborhood germ
+end
+space new
+kind coordinates
+coordinates p, q
+ring analytic
+regularity analytic
+neighborhood germ
+end
+map Phi
+source new
+target old
+direction new_to_old
+inverse Psi
+x = p
+y = q + p
+end
+map Psi
+source old
+target new
+direction old_to_new
+inverse Phi
+p = x
+q = y - x
+end
+operator V
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula d/dx
+end
+operator image
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/dp
+end
+define T pullback of Phi
+assert T o V o T^-1 = image
+'''
+    result = verify(parse_claim(text))
+    assert result.outcome == UNRESOLVED
+    assert result.reason == "missing_domain"
+    assert result.evidence["not_supplied"] == ["an exclusion line"]
+    assert "Y" not in " ".join(result.evidence["not_supplied"])

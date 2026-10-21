@@ -1,0 +1,70 @@
+source "https://github.com/openai/math/blob/main/preprints/The-irrationality-exponent-of-pi-is-2-September-24-2026/build/sections/interpolation.tex"
+constant c
+assume analytic germs near Y = 1, log(1) = 0, neighborhood excludes Y = 0
+space old
+kind coordinates
+coordinates Y, X
+ring analytic_germs
+regularity analytic
+center Y = 1, X = c
+neighborhood germ
+exclude Y = 0
+log_branch log(1) = 0
+end
+space new
+kind coordinates
+coordinates t, u
+ring analytic_germs
+regularity analytic
+center t = 0
+neighborhood germ
+exclude Y = 0
+log_branch log(1) = 0
+end
+map Phi
+source new
+target old
+direction new_to_old
+inverse Psi
+obligations domain_compatibility, invertibility
+Y = 1 + t
+X = c + u + log(1 + t)
+end
+map Psi
+source old
+target new
+direction old_to_new
+inverse Phi
+obligations domain_compatibility, invertibility
+t = Y - 1
+u = X - c - log(Y)
+end
+operator D0
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula Y * d/dY + d/dX
+end
+operator D1
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula d/dX
+end
+operator image_D0
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula (1 + t) * d/dt
+end
+operator image_D1
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/du
+end
+define T pullback of Phi
+assert T o D0 o T^-1 = image_D0
+assert T o D1 o T^-1 = image_D1
+assert Phi o Psi = id
+assert Psi o Phi = id

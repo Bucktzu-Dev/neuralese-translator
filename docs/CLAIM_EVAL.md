@@ -162,3 +162,47 @@ Reason: the chain rule still sends `D1` to `d/du1`. Against `d/dt`, the
 coordinate `t` is a witness: derived value `0`, claimed value `1`, residual
 `-1`. That disagreement is inside the stated germ. A zero commutator is not
 the evidence.
+
+## Observed run
+
+Command: `python3 -m pytest -q tests/test_claim_eval.py tests/test_claim_verifier.py tests/test_claim_cli.py`, then the full `python3 -m pytest -q`.
+
+The full suite reported `216 passed`. The frozen outcome column was not
+edited after this run. The checker computed each row. `verify` does not
+contain these source ids.
+
+| Id | Expected | Observed | What the checker reported |
+| --- | --- | --- | --- |
+| E1 | `PROVED` | `PROVED` | `V` derived as `d/dp`. Coefficients `p: 1`, `q: 0`. Residual `0`. |
+| E2 | `DISPROVED` | `DISPROVED` | Derived `d/dp`. On `g = p`, actual `1`, claimed `2`, residual `-1`. Symbolic. |
+| E3 | `UNRESOLVED` | `UNRESOLVED` | `unsupported_operator`. Second order is not a vector field. |
+| E4 | `INVALID_INPUT` | `INVALID_INPUT` | `malformed_claim`. Parse has no claim and no verdict. Span starts at `0`. |
+| E5 | `UNRESOLVED` | `UNRESOLVED` | `missing_log_branch`. Not supplied: `log(1) = 0`. |
+| E6 | `UNRESOLVED` | `UNRESOLVED` | `missing_domain`. Not supplied: `Y != 0`, the written logarithm argument. |
+| E7 | `DISPROVED` | `DISPROVED` | `inverse_undefined_at_included_point`. Inverse not evaluated at `Y = 0`. |
+| E8 | `INVALID_INPUT` | `INVALID_INPUT` | `illegal_operator_application`. Order not reordered. |
+| E9 | `UNRESOLVED` | `UNRESOLVED` | `missing_pullback_direction`. Direction left absent. |
+| E10 | `PROVED` | `PROVED` | `D0 = (1 + t) d/dt`, `D1 = d/du1`, `D2 = d/du2`. Summed coordinates `Y, X1, X2`. Residual `0`. |
+| E11 | `DISPROVED` | `DISPROVED` | Derived `D1 = d/du1`. On `g = t`, actual `0`, claimed `1`, residual `-1`. |
+
+False acceptances: none. No frozen `DISPROVED`, `UNRESOLVED`, or
+`INVALID_INPUT` row was returned as `PROVED`.
+
+False rejections: none. E1 and E10 were `PROVED`, matching the frozen labels.
+The one-index paper chart in `tests/test_claim_verifier.py` was also
+`PROVED`, and the rejected Euler transformation claim was `DISPROVED` by the
+in-domain witness `g = t` (actual `1`, claimed `1 + t`, residual `-t`, and
+at `t = 1` the values `1` and `2`).
+
+Interpretation errors: none on this list. Directions, domains, and the
+logarithm branch that were written stayed as written. Omitted direction was
+not filled in. The reversed composition was not reordered.
+
+Unresolved cases: E3, E5, E6, and E9. Each was already labeled `UNRESOLVED`.
+They were counted, not relabeled.
+
+Supported-case coverage: two correct claims inside the theory were proved
+(E1, the shear, and E10, the two-index chart), and the one-index reference
+chart was proved. The checker did not refuse every claim. False claims E2,
+E7, and E11 were disproved rather than left open. E11's disproof is the
+derived operator, not a table from the fixture id.
