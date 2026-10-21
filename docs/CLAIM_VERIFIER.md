@@ -8,6 +8,51 @@ runtime. It does not change the certificate in `neuralese.audit`. That
 certificate stays `RUNTIME_NOT_AUTHORIZED`. The package version stays
 `0.7.0`. Nothing here emits `RESEARCH_PASS`.
 
+## Baseline inspection
+
+Observed before any further change to this checker, on commit `ea4ac03`
+(`Name the disproof as the rejected Euler transformation claim`). The newer
+wording commits `bfb3993` and `ea4ac03` stay in the history. They were not
+reset.
+
+Command: `python3 -m pytest -q`.
+
+Result: `193 passed` in 20.35s. The suite was green. There were no failures.
+The previously reported count of 193 matches this run; it is no longer an
+unverified report.
+
+Assumptions this inspection found:
+
+1. One coordinate index. The writeup, the interpretation sentence, and
+   `evidence["coordinate_index"]` say the executable checker has one index.
+   The chain-rule code itself sums every coordinate written on the operator
+   and on the inverse. A two-index probe with `D0 = Y d/dY + d/dX1 + d/dX2`,
+   `Di = d/dXi`, `Y = 1 + t`, `Xi = ci + ui + log(1 + t)`, and
+   `t = Y - 1`, `ui = Xi - ci - log(Y)`, under the germ assumptions, already
+   returned `PROVED` with images `(1 + t) d/dt` and `d/dui`. The "one index"
+   label is a scope sentence, not a second proof.
+2. A commutator is not a proof. `evidence commutator_only` stays
+   `UNRESOLVED` when the bracket is zero.
+3. The parser has no verdict. `parse_claim` does not assign `PROVED`,
+   `DISPROVED`, `UNRESOLVED`, or `INVALID_INPUT`.
+4. `Error_Bound` is absent. It is not a field of a parse result, and a later
+   `verify` call does not add it to that result.
+5. Explicit reseal of identity-1 is unrelated and must stay untouched. That
+   path is the certificate profile in `audit.py` and `contracts.py`. Those
+   files, `encode.py`, `clustering.py`, `alphabet.py`, the translator, the
+   production taus, and package version `0.7.0` are outside this checker.
+
+Questionable behavior found in the same inspection, still unchanged at the
+time of this note:
+
+- A text that states no equality is `PROVED`, with residual `0` and
+  `proved_by` `chain_rule`. No equality was established.
+- Direction `sideways` is not `new_to_old` or `old_to_new`. The checker still
+  proved `T o D o T^-1`. An unrecognized direction was treated as the
+  supported pullback.
+- A missing exclusion always reports `not_supplied: ["Y != 0"]`, including
+  when the claim never mentions `Y`.
+
 ## What was implemented
 
 The parser records provenance and an abstract syntax tree. It does not assign
