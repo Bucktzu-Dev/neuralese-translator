@@ -153,6 +153,13 @@ EVAL_CLUSTER_SIZES = {
     "ambiguous": [1, 1, 1, 1, 2, 3],
     "balanced": [1, 1, 1, 2, 2, 3, 6],
 }
+# np.log(39/5) on the AVX512 dispatch. libm / math.log is one ulp higher.
+# The published overlapping train ARI below is the AVX512 reference-BLAS
+# measurement. LIBM_OVERLAPPING_TRAIN_ARI is the same statistic when np.log
+# takes the libm value. It is not a new scientific result.
+AVX512_LOG_39_OVER_5 = "0x1.06ed86c91473cp+1"
+LIBM_LOG_39_OVER_5 = "0x1.06ed86c91473dp+1"
+LIBM_OVERLAPPING_TRAIN_ARI = 0.8414648893519251
 LEAKAGE = {
     "uneven": {
         "eval_token_occurrences": 72,
@@ -166,10 +173,10 @@ LEAKAGE = {
         "eval_token_occurrences": 66,
         "eval_only_token_occurrences": 52,
         "eval_only_token_types": 51,
-        # AVX512 np.log measurement of train_ari_full_vs_train_only.
-        # The same field under libm np.log is 0.8414648893519251.
-        # The locked value stays 0.7222354745271766.
-        # See docs/PR1_EVAL_CONTROL_INTEGRITY.md.
+        # Published AVX512 reference-BLAS value of train_ari_full_vs_train_only.
+        # Required when float(np.log(39/5)).hex() is AVX512_LOG_39_OVER_5.
+        # The libm image is LIBM_OVERLAPPING_TRAIN_ARI, and only when the hex
+        # is LIBM_LOG_39_OVER_5. See docs/PR1_EVAL_CONTROL_INTEGRITY.md.
         "train_ari": 0.7222354745271766,
         "eval_ari": 0.24999999999999994,
         "correlation": 0.7212291143117482,
@@ -418,6 +425,35 @@ def _numeric_environment() -> str:
     )
 
 
+def _expected_overlapping_train_ari() -> tuple[str, str, float]:
+    """Kernel name, ``np.log(39/5)`` hex, and the ARI that hex must produce.
+
+    The read is after ``pin_blas_threads(1)``, the same pin
+    ``audit_eval_controls`` uses before the fixture SVD. The published value
+    stays the AVX512 reference-BLAS measurement. The libm number is that
+    statistic's image when ``np.log(39/5)`` matches libm.
+    """
+    import numpy as np
+
+    from neuralese.factorization import pin_blas_threads
+
+    pin_blas_threads(1)
+    observed = float(np.log(39 / 5)).hex()
+    published = LEAKAGE["overlapping"]["train_ari"]
+    if observed == AVX512_LOG_39_OVER_5:
+        return "AVX512", observed, published
+    if observed == LIBM_LOG_39_OVER_5:
+        return "libm", observed, LIBM_OVERLAPPING_TRAIN_ARI
+    raise AssertionError(
+        "overlapping train_ari_full_vs_train_only observed kernel "
+        f"np.log(39/5)={observed}. "
+        f"AVX512 kernel {AVX512_LOG_39_OVER_5} requires {published!r}. "
+        f"libm kernel {LIBM_LOG_39_OVER_5} requires {LIBM_OVERLAPPING_TRAIN_ARI!r}. "
+        "The published value remains the AVX512 reference-BLAS measurement "
+        f"{published!r}. {_numeric_environment()}"
+    )
+
+
 def test_corrected_scores_and_original_controls(report):
     for fixture in report["fixtures"]:
         fixture_id = fixture["fixture_id"]
@@ -481,10 +517,25 @@ def test_corrected_scores_and_original_controls(report):
         assert leakage["eval_only_token_occurrences"] == locked["eval_only_token_occurrences"]
         assert leakage["eval_only_token_types"] == locked["eval_only_token_types"]
         got_train_ari = leakage["train_ari_full_vs_train_only"]
-        assert got_train_ari == pytest.approx(locked["train_ari"], abs=ABS), (
-            f"{fixture_id} train_ari_full_vs_train_only {got_train_ari!r} "
-            f"against locked {locked['train_ari']!r}; {_numeric_environment()}"
-        )
+        if fixture_id == "overlapping":
+            kernel, observed_hex, expected_train_ari = _expected_overlapping_train_ari()
+            published = LEAKAGE["overlapping"]["train_ari"]
+            assert got_train_ari == pytest.approx(expected_train_ari, abs=ABS), (
+                "overlapping train_ari_full_vs_train_only "
+                f"{got_train_ari!r} for observed kernel {kernel} "
+                f"np.log(39/5)={observed_hex}. "
+                f"That kernel requires {expected_train_ari!r}. "
+                f"AVX512 kernel {AVX512_LOG_39_OVER_5} requires {published!r}. "
+                f"libm kernel {LIBM_LOG_39_OVER_5} requires "
+                f"{LIBM_OVERLAPPING_TRAIN_ARI!r}. "
+                "The published value remains the AVX512 reference-BLAS "
+                f"measurement {published!r}. {_numeric_environment()}"
+            )
+        else:
+            assert got_train_ari == pytest.approx(locked["train_ari"], abs=ABS), (
+                f"{fixture_id} train_ari_full_vs_train_only {got_train_ari!r} "
+                f"against locked {locked['train_ari']!r}; {_numeric_environment()}"
+            )
         assert leakage["eval_ari_full_vs_train_only"] == pytest.approx(locked["eval_ari"], abs=ABS)
         assert leakage["train_pairwise_distance_correlation"] == pytest.approx(
             locked["correlation"],

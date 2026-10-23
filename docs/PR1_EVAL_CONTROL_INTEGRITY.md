@@ -123,8 +123,8 @@ The locked overlapping train ARI is `0.7222354745271766`. It is
 adjusted Rand index between production k-means on the full-matrix train rows
 and production k-means on the train-only embedding of the same rows. The test
 `tests/test_eval_control_integrity.py::test_corrected_scores_and_original_controls`
-reads that field and compares it with `LEAKAGE["overlapping"]["train_ari"]`.
-The CI value is that same field.
+reads that field. `LEAKAGE["overlapping"]["train_ari"]` is the published
+AVX512 reference-BLAS value of that field. The CI value is that same field.
 
 Run `39549106578` (head `1d91340596d644c8e762856b6e001bc4387fa22f`, 21 October
 2026, the latest completed run on `cursor/unfold-reservoir-0d9f`) reported
@@ -176,8 +176,19 @@ process, the NumPy version, the NumPy file, the loaded BLAS and LAPACK paths,
 `cpu_count`, `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`,
 whether `avx512f` is in `/proc/cpuinfo`, and the hex of `np.log(39/5)` beside
 `math.log(39/5)`. The local reference-BLAS run still produces
-`0.7222354745271766`, so the lock stays. The recorded trial value is that
-AVX512 measurement.
+`0.7222354745271766`. That remains the published value. The recorded trial
+value is that AVX512 measurement.
+
+The assertion is kernel-conditioned. After `pin_blas_threads(1)`, the test
+reads `float(np.log(39/5)).hex()`. Hex `0x1.06ed86c91473cp+1` requires the
+published AVX512 reference-BLAS value `0.7222354745271766`. Hex
+`0x1.06ed86c91473dp+1` requires `0.8414648893519251`. That second number is
+what this statistic returns when `np.log(39/5)` matches libm. It was recorded
+because it was measured. Any other hex fails the test. The message names the
+observed kernel and includes both hex values and both ARIs. The published
+value remains the AVX512 one. Neither value is a claim-verifier result.
+`coordinate_chain_rule_v1` did not cause the split. No other locked residual,
+purity, ARI, or admission byte is retuned for this branch.
 
 This audit does not change `word_sentence_svd`. The corrected candidate scores below still use the full-matrix embedding. They are a rescoring of the same leaky vectors. They are not an out-of-sample semantic measurement. `SVD_MATERIAL_TRAIN_ARI` is not an admission threshold and it was not used to drop a candidate.
 

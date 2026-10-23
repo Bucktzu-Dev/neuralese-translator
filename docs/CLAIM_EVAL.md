@@ -388,6 +388,13 @@ The same packages on this machine, with AVX512 visible to NumPy, still return
 BLAS library path, the thread count, and `np.log(39/5)` beside `math.log(39/5)`
 in the Install step and again in the Test process.
 
+The assertion is kernel-conditioned. After the test's thread pin, it reads
+`float(np.log(39/5)).hex()`. The published value remains the AVX512 one,
+`0.7222354745271766`, required when that hex is `0x1.06ed86c91473cp+1`.
+`0.8414648893519251` is what this statistic returns when `np.log(39/5)`
+matches libm (`0x1.06ed86c91473dp+1`). Neither value is a claim-verifier
+result. `coordinate_chain_rule_v1` did not cause the split.
+
 | Id | Expected | Observed | What the checker reported |
 | --- | --- | --- | --- |
 | E1 | `PROVED` | `PROVED` | `V` derived as `d/dp`. Coefficients `p: 1`, `q: 0`. Residual `0`. |
