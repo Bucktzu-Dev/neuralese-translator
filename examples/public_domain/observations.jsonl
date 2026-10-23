@@ -1,0 +1,12 @@
+{"observation_id": "harbor-1", "text": "The harbor bell marked the evening tide.", "embedding": [1.02, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.0]}
+{"observation_id": "harbor-2", "text": "Fishing boats returned to the stone harbor.", "embedding": [1.0, 0.01, 0.0, 0.0, 0.02, 0.0, 0.0, 0.0]}
+{"observation_id": "harbor-3", "text": "A gray tide lifted the harbor ropes.", "embedding": [0.99, 0.0, 0.02, 0.0, 0.0, 0.0, 0.01, 0.0]}
+{"observation_id": "harbor-4", "text": "Lanterns lined the harbor wall at dusk.", "embedding": [1.01, -0.02, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0]}
+{"observation_id": "orchard-1", "text": "The orchard rows were heavy with apples.", "embedding": [0.0, 1.02, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0]}
+{"observation_id": "orchard-2", "text": "She picked ripe apples from the orchard.", "embedding": [0.01, 1.0, 0.0, 0.02, 0.0, 0.0, 0.0, 0.0]}
+{"observation_id": "orchard-3", "text": "Bees moved between the orchard blossoms.", "embedding": [0.0, 0.99, 0.0, 0.0, 0.0, 0.0, 0.02, 0.0]}
+{"observation_id": "orchard-4", "text": "Wooden crates filled with orchard fruit.", "embedding": [0.0, 1.01, 0.01, 0.0, 0.0, 0.0, 0.0, 0.02]}
+{"observation_id": "ledger-1", "text": "The ledger listed every sealed receipt.", "embedding": [0.0, 0.0, 1.02, 0.0, 0.01, 0.0, 0.0, 0.0]}
+{"observation_id": "ledger-2", "text": "Clerks checked the ledger against the pack.", "embedding": [0.02, 0.0, 1.0, 0.0, 0.0, 0.0, 0.01, 0.0]}
+{"observation_id": "ledger-3", "text": "A missing line in the ledger failed the audit.", "embedding": [0.0, 0.01, 0.99, 0.0, 0.0, 0.02, 0.0, 0.0]}
+{"observation_id": "ledger-4", "text": "The ledger total matched the receipt sum.", "embedding": [0.0, 0.0, 1.01, 0.02, 0.0, 0.0, 0.0, 0.0]}

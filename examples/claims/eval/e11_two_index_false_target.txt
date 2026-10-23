@@ -1,0 +1,85 @@
+source "eval-two-index-false"
+constant c1, c2
+assume analytic germs near Y = 1, log(1) = 0, neighborhood excludes Y = 0
+space old
+kind coordinates
+coordinates Y, X1, X2
+ring analytic_germs
+regularity analytic
+center Y = 1, X1 = c1, X2 = c2
+neighborhood germ
+exclude Y = 0
+log_branch log(1) = 0
+end
+space new
+kind coordinates
+coordinates t, u1, u2
+ring analytic_germs
+regularity analytic
+center t = 0
+neighborhood germ
+exclude Y = 0
+log_branch log(1) = 0
+end
+map Phi
+source new
+target old
+direction new_to_old
+inverse Psi
+obligations domain_compatibility, invertibility
+Y = 1 + t
+X1 = c1 + u1 + log(1 + t)
+X2 = c2 + u2 + log(1 + t)
+end
+map Psi
+source old
+target new
+direction old_to_new
+inverse Phi
+obligations domain_compatibility, invertibility
+t = Y - 1
+u1 = X1 - c1 - log(Y)
+u2 = X2 - c2 - log(Y)
+end
+operator D0
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula Y * d/dY + d/dX1 + d/dX2
+end
+operator D1
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula d/dX1
+end
+operator D2
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula d/dX2
+end
+operator image_D0
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula (1 + t) * d/dt
+end
+operator image_D1
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/dt
+end
+operator image_D2
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/du2
+end
+define T pullback of Phi
+assert T o D0 o T^-1 = image_D0
+assert T o D1 o T^-1 = image_D1
+assert T o D2 o T^-1 = image_D2
+assert Phi o Psi = id
+assert Psi o Phi = id

@@ -1,0 +1,48 @@
+source "eval-incomplete-coordinate-map"
+assume plane chart that writes one formula on each space and leaves the other coordinate unwritten
+space old
+kind coordinates
+coordinates x, y
+ring analytic_germs
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+space new
+kind coordinates
+coordinates p, q
+ring analytic_germs
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+map Phi
+source new
+target old
+direction new_to_old
+inverse Psi
+obligations domain_compatibility, invertibility
+x = p
+end
+map Psi
+source old
+target new
+direction old_to_new
+inverse Phi
+obligations domain_compatibility, invertibility
+p = x
+end
+operator D
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula d/dx
+end
+operator image_D
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/dp
+end
+define T pullback of Phi
+assert T o D o T^-1 = image_D

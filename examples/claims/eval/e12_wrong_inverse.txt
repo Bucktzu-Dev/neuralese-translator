@@ -1,0 +1,48 @@
+source "eval-wrong-inverse"
+assume translation chart whose supplied inverse is shifted and is not asserted to be an identity
+space old
+kind coordinates
+coordinates x
+ring analytic_germs
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+space new
+kind coordinates
+coordinates p
+ring analytic_germs
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+map Phi
+source new
+target old
+direction new_to_old
+inverse Psi
+obligations domain_compatibility, invertibility
+x = p
+end
+map Psi
+source old
+target new
+direction old_to_new
+inverse Phi
+obligations domain_compatibility, invertibility
+p = x + 1
+end
+operator D
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula d/dx
+end
+operator image_D
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/dp
+end
+define T pullback of Phi
+assert T o D o T^-1 = image_D
