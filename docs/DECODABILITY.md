@@ -26,7 +26,7 @@ Every live code must resolve to a class through the current codebook **or** a fi
 - Old streams stay readable by rewriting `old_code → new_code`.
 - Alias cycles and dangling aliases fail closed.
 
-Deletion is not an inverse. If a class dies, either quarantine it or issue a new forward commit. Do not pretend the old code never existed.
+Deletion is not an inverse. A child pack keeps every parent code. A matched prototype inherits that code. An unmatched code is carried forward as a quarantined symbol, including the reservoir rows that minted it. A new cluster takes a fresh integer. Old alias keys are copied onto the surviving code.
 
 ### 2. Unfoldable
 
@@ -75,10 +75,11 @@ A fluent sentence with a large residual is not more true. It is more confident t
 When you mint or accept a pack:
 
 1. Every codebook entry points at a symbol object.
-2. Every non-quarantined symbol has ≥1 observation id.
-3. Every non-quarantined symbol has a bound English string **or** an explicit unglossed marker recorded in the pack (not invented at read time).
-4. Checksum covers codebook, aliases, observation ids, definitions, residual.
-5. `certify(pack)` returns `passed=true` before you ship the pack to another team.
+2. Every non-quarantined symbol has ≥1 observation id, and those ids resolve to embeddings stored on the pack. The member mean matches the prototype.
+3. Every non-quarantined symbol has a bound English string **or** the explicit marker `[unglossed: class N]` stored in the pack at learn time.
+4. Checksum covers codebook, aliases, observation ids, definitions, residual. It does not bind the prototype embedding, confidence, examples, survival, symbol metadata / kappa, guards, receipts, parent pack id, description length, or pack metadata. Schema 0.2 lists that omission. Unfold checks the prototype against the reservoir mean; that check is not the digest.
+5. `certify(pack)` returns `passed=true` before you ship the pack to another team. `passed` is the structural conjunction. Schema 0.2 sets `authority` to `RUNTIME_NOT_AUTHORIZED`. Numerical and semantic decisions stay `UNRESOLVED`, so `passed` is not a research pass and not a runtime authorization.
+6. `neuralese report` prints the measurement (`n_live`, residual, unfold failures, gloss coverage, and the rest). It is not a second gate. `--topics` may add a `cluster_purity` diagnostic. That block is not a certify input.
 
 When you translate a stream:
 
@@ -93,6 +94,7 @@ When you translate a stream:
 - “We deleted the old codes to tidy the vocab.”
 - Confidence 1.0 on a pack whose residual is large.
 - A decoder that always produces grammatical English for every integer.
+- A gloss in state `ok` treated as a certified symbol. The public states stay `ok`, `aliased`, `quarantined`, and `unknown`. A certified symbol, in the schema 0.2 sense, would also need numerical and semantic decisions other than `UNRESOLVED`. Those gates are not implemented.
 
 Those are how inner language becomes mythology: the map is lossy, the reservoir was dropped, and a sentence was generated anyway.
 

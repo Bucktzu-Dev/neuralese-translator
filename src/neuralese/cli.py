@@ -1,4 +1,4 @@
-"""CLI: neuralese learn | translate | audit | certify."""
+"""CLI: neuralese learn | adapt | translate | unfold | audit | certify | report."""
 from __future__ import annotations
 
 import argparse
@@ -7,10 +7,19 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from neuralese.adapters import load_observations_jsonl, load_pack, load_stream, save_pack
+from neuralese.activations import load_activation_dump
+from neuralese.adapters import (
+    load_observations_jsonl,
+    load_pack,
+    load_stream,
+    save_observations_jsonl,
+    save_pack,
+)
 from neuralese.alphabet import LearnConfig, learn_pack
-from neuralese.audit import certify
+from neuralese.encode import ENCODER_CHAR_TRIGRAM, ENCODERS
+from neuralese.audit import certify, decodability_report
 from neuralese.translator import translate_stream
+from neuralese.unfold import recomputed_cluster_residual, unfold_code
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -24,10 +33,38 @@ def main(argv: Optional[List[str]] = None) -> int:
     learn_p.add_argument("observations", type=Path)
     learn_p.add_argument("-o", "--output", type=Path, required=True)
     learn_p.add_argument("--n-symbols", type=int, default=8)
+    learn_p.add_argument(
+        "--encoder",
+        choices=list(ENCODERS),
+        default=ENCODER_CHAR_TRIGRAM,
+        help=(
+            "how to embed rows that have text and no vector. "
+            "char_trigram is the hashed n-gram default. "
+            "word_sentence_svd is a deterministic local TF-IDF SVD of this file "
+            "after a fixed English stop list, not a model hidden state. "
+            "Its width is --n-symbols."
+        ),
+    )
     learn_p.add_argument("--parent", type=Path, default=None, help="previous SymbolPack for aliases/ΔMDL")
     learn_p.add_argument("--min-cluster-size", type=int, default=2)
     learn_p.add_argument("--tau-residual", type=float, default=0.55)
     learn_p.add_argument("--seed", type=int, default=0)
+    learn_p.add_argument(
+        "--mdl-exception",
+        default=None,
+        help="why a description-length increase vs the parent pack is admitted",
+    )
+
+    adapt_p = sub.add_parser("adapt", help="convert a hidden-state dump into observation JSONL")
+    adapt_p.add_argument("dump", type=Path)
+    adapt_p.add_argument("-o", "--output", type=Path, required=True)
+    adapt_p.add_argument(
+        "--layout",
+        choices=["vectors", "tokens", "layers", "hf_layers", "hf_stack"],
+        default=None,
+    )
+    adapt_p.add_argument("--layer", type=int, default=-1)
+    adapt_p.add_argument("--pool", choices=["last", "mean"], default="last")
 
     tr_p = sub.add_parser("translate", help="gloss a code stream using a sealed pack")
     tr_p.add_argument("pack", type=Path)
@@ -44,6 +81,33 @@ def main(argv: Optional[List[str]] = None) -> int:
     cert_p.add_argument("--tau-residual", type=float, default=0.55)
     cert_p.add_argument("--allow-unglossed", action="store_true")
 
+    unfold_p = sub.add_parser("unfold", help="unfold codes back to reservoir observations")
+    unfold_p.add_argument("pack", type=Path)
+    unfold_p.add_argument(
+        "--code",
+        type=int,
+        action="append",
+        dest="codes",
+        help="code to unfold; repeat for several. Default: every symbol code",
+    )
+
+    report_p = sub.add_parser(
+        "report",
+        help="print a machine-readable decodability summary for a sealed pack",
+    )
+    report_p.add_argument("pack", type=Path)
+    report_p.add_argument(
+        "--topics",
+        type=Path,
+        default=None,
+        help=(
+            "optional diagnostic file of corpus topic labels. "
+            "JSONL observations with metadata.topic, or a JSON object of "
+            "observation_id to topic. Not read by certify and not an input "
+            "to the embedding. Adds cluster_purity to the report."
+        ),
+    )
+
     args = parser.parse_args(argv)
 
     if args.cmd == "learn":
@@ -56,6 +120,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 min_cluster_size=args.min_cluster_size,
                 tau_residual=args.tau_residual,
                 seed=args.seed,
+                mdl_exception=args.mdl_exception,
+                encoder=args.encoder,
             ),
             previous=parent,
         )
@@ -63,11 +129,51 @@ def main(argv: Optional[List[str]] = None) -> int:
         print(json.dumps({"pack_id": pack.pack_id, "checksum": pack.checksum, "n_symbols": len(pack.symbols)}, indent=2))
         return 0
 
+    if args.cmd == "adapt":
+        rows = load_activation_dump(
+            args.dump,
+            layout=args.layout,
+            layer=args.layer,
+            pool=args.pool,
+        )
+        save_observations_jsonl(rows, args.output)
+        print(json.dumps({"n_observations": len(rows), "output": str(args.output)}, indent=2))
+        return 0
+
     if args.cmd == "translate":
         pack = load_pack(args.pack)
         codes = load_stream(args.stream)
         glosses = translate_stream(pack, codes)
         print(json.dumps([g.to_dict() for g in glosses], indent=2))
+        return 0
+
+    if args.cmd == "unfold":
+        pack = load_pack(args.pack)
+        codes = args.codes if args.codes else [symbol.code for symbol in pack.symbols]
+        reports = [unfold_code(pack, code).to_dict() for code in codes]
+        print(
+            json.dumps(
+                {
+                    "pack_id": pack.pack_id,
+                    "pack_checksum": pack.checksum,
+                    "reservoir_size": len(pack.observations),
+                    "recomputed_cluster_residual": recomputed_cluster_residual(pack),
+                    "symbols": reports,
+                },
+                indent=2,
+            )
+        )
+        return 0
+
+    if args.cmd == "report":
+        pack = load_pack(args.pack)
+        topic_labels = None
+        if args.topics is not None:
+            if not args.topics.is_file():
+                print(f"topic label file not found: {args.topics}", file=sys.stderr)
+                return 2
+            topic_labels = _load_topic_labels(args.topics)
+        print(json.dumps(decodability_report(pack, topic_labels=topic_labels), indent=2, sort_keys=True))
         return 0
 
     pack = load_pack(args.pack)
@@ -80,6 +186,49 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.cmd == "certify" and args.fail_on_undecodable and not cert.passed:
         return 1
     return 0
+
+
+def _load_topic_labels(path: Path) -> dict:
+    """Read observation-id topic labels. Does not read filenames or cluster ids."""
+    raw = path.read_text(encoding="utf-8")
+    parsed = None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = None
+    if (
+        isinstance(parsed, dict)
+        and parsed
+        and "observation_id" not in parsed
+        and all(isinstance(value, str) for value in parsed.values())
+    ):
+        return {str(key): value.strip() for key, value in parsed.items() if value.strip()}
+    if isinstance(parsed, dict) and "observation_id" in parsed:
+        rows = [parsed]
+    elif isinstance(parsed, list):
+        rows = parsed
+    else:
+        rows = []
+        for line_no, line in enumerate(raw.splitlines(), start=1):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{path}:{line_no} invalid JSON") from exc
+    labels = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        obs_id = row.get("observation_id")
+        topic = row.get("topic")
+        metadata = row.get("metadata")
+        if not isinstance(topic, str) and isinstance(metadata, dict):
+            topic = metadata.get("topic")
+        if isinstance(obs_id, str) and isinstance(topic, str) and topic.strip():
+            labels[obs_id] = topic.strip()
+    return labels
 
 
 if __name__ == "__main__":

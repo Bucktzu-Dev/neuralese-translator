@@ -1,0 +1,52 @@
+source "eval-reversed-order"
+assume plane shear germ with no logarithm
+space old
+kind coordinates
+coordinates x, y
+ring analytic_germs
+regularity analytic
+center x = 0, y = 0
+neighborhood germ
+exclude x = 0
+end
+space new
+kind coordinates
+coordinates p, q
+ring analytic_germs
+regularity analytic
+center p = 0, q = 0
+neighborhood germ
+exclude x = 0
+end
+map Phi
+source new
+target old
+direction new_to_old
+inverse Psi
+obligations domain_compatibility, invertibility
+x = p
+y = q + p
+end
+map Psi
+source old
+target new
+direction old_to_new
+inverse Phi
+obligations domain_compatibility, invertibility
+p = x
+q = y - x
+end
+operator V
+domain old
+codomain old
+theory coordinate_chain_rule_v1
+formula d/dx + d/dy
+end
+operator image_V
+domain new
+codomain new
+theory coordinate_chain_rule_v1
+formula d/dp
+end
+define T pullback of Phi
+assert Phi^-1 o V o Phi = image_V

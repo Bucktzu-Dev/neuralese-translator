@@ -1,0 +1,45 @@
+source "eval-second-order"
+space line
+kind coordinates
+coordinates x
+ring analytic
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+space sline
+kind coordinates
+coordinates s
+ring analytic
+regularity analytic
+neighborhood germ
+exclude x = 0
+end
+map Phi
+source sline
+target line
+direction new_to_old
+inverse Psi
+x = s
+end
+map Psi
+source line
+target sline
+direction old_to_new
+inverse Phi
+s = x
+end
+operator D
+domain line
+codomain line
+theory coordinate_chain_rule_v1
+formula d/dx o d/dx
+end
+operator image
+domain sline
+codomain sline
+theory coordinate_chain_rule_v1
+formula d/ds
+end
+define T pullback of Phi
+assert T o D o T^-1 = image

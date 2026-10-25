@@ -35,6 +35,29 @@ def test_cli_learn_translate_certify(tmp_path, capsys):
     assert cert["passed"] is True
 
 
+def test_cli_unfold_reads_reservoir(tmp_path, capsys):
+    pack_path = tmp_path / "pack.json"
+    rc = main(
+        [
+            "learn",
+            str(TOY_DIR / "observations.jsonl"),
+            "-o",
+            str(pack_path),
+            "--n-symbols",
+            "3",
+        ]
+    )
+    assert rc == 0
+    capsys.readouterr()
+    rc = main(["unfold", str(pack_path), "--code", "0"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["reservoir_size"] == 12
+    assert payload["symbols"][0]["code"] == 0
+    assert payload["symbols"][0]["missing_ids"] == []
+    assert payload["symbols"][0]["prototype_l2"] < 1e-5
+
+
 def test_cli_certify_fails_on_undecodable(tmp_path, capsys):
     pack_path = tmp_path / "pack.json"
     main(

@@ -1,4 +1,8 @@
-"""Observation and pack I/O. No event bus; JSONL and JSON only."""
+"""Observation and pack I/O. No event bus; JSONL and JSON packs.
+
+Activation dumps are loaded by ``neuralese.activations`` and written back here
+as ordinary observation JSONL.
+"""
 from __future__ import annotations
 
 import hashlib
@@ -57,6 +61,16 @@ def load_observations_jsonl(path: PathLike) -> List[Observation]:
     if not rows:
         raise ValueError(f"no observations in {path}")
     return rows
+
+
+def save_observations_jsonl(observations: Sequence[Observation], path: PathLike) -> None:
+    lines = [
+        json.dumps(obs.to_dict(), ensure_ascii=True, sort_keys=True) for obs in observations
+    ]
+    text = "\n".join(lines)
+    if text:
+        text += "\n"
+    Path(path).write_text(text, encoding="utf-8")
 
 
 def load_stream(path: PathLike) -> List[int]:
