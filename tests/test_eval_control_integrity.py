@@ -154,12 +154,13 @@ EVAL_CLUSTER_SIZES = {
     "balanced": [1, 1, 1, 2, 2, 3, 6],
 }
 # np.log(39/5) on the AVX512 dispatch. libm / math.log is one ulp higher.
-# The published overlapping train ARI below is the AVX512 reference-BLAS
-# measurement. LIBM_OVERLAPPING_TRAIN_ARI is the same statistic when np.log
-# takes the libm value. It is not a new scientific result.
+# The published overlapping train and eval ARIs below are the AVX512
+# reference-BLAS measurements. The LIBM_* numbers are those same statistics
+# when np.log takes the libm value. They are not new scientific results.
 AVX512_LOG_39_OVER_5 = "0x1.06ed86c91473cp+1"
 LIBM_LOG_39_OVER_5 = "0x1.06ed86c91473dp+1"
 LIBM_OVERLAPPING_TRAIN_ARI = 0.8414648893519251
+LIBM_OVERLAPPING_EVAL_ARI = 0.3661971830985915
 LEAKAGE = {
     "uneven": {
         "eval_token_occurrences": 72,
@@ -178,6 +179,8 @@ LEAKAGE = {
         # The libm image is LIBM_OVERLAPPING_TRAIN_ARI, and only when the hex
         # is LIBM_LOG_39_OVER_5. See docs/PR1_EVAL_CONTROL_INTEGRITY.md.
         "train_ari": 0.7222354745271766,
+        # Published AVX512 reference-BLAS value of eval_ari_full_vs_train_only.
+        # The libm image is LIBM_OVERLAPPING_EVAL_ARI, on the same hex rule.
         "eval_ari": 0.24999999999999994,
         "correlation": 0.7212291143117482,
     },
@@ -454,6 +457,30 @@ def _expected_overlapping_train_ari() -> tuple[str, str, float]:
     )
 
 
+def _expected_overlapping_eval_ari() -> tuple[str, str, float]:
+    """Kernel name, ``np.log(39/5)`` hex, and the eval ARI that hex must produce.
+
+    Same two hexes as the overlapping train ARI. The published value stays
+    the AVX512 reference-BLAS measurement. The libm number is that
+    statistic's image when ``np.log(39/5)`` matches libm. Run 39888775181
+    obtained it on that hex.
+    """
+    kernel, observed, _train_ari = _expected_overlapping_train_ari()
+    published = LEAKAGE["overlapping"]["eval_ari"]
+    if observed == AVX512_LOG_39_OVER_5:
+        return kernel, observed, published
+    if observed == LIBM_LOG_39_OVER_5:
+        return kernel, observed, LIBM_OVERLAPPING_EVAL_ARI
+    raise AssertionError(
+        "overlapping eval_ari_full_vs_train_only observed kernel "
+        f"np.log(39/5)={observed}. "
+        f"AVX512 kernel {AVX512_LOG_39_OVER_5} requires {published!r}. "
+        f"libm kernel {LIBM_LOG_39_OVER_5} requires {LIBM_OVERLAPPING_EVAL_ARI!r}. "
+        "The published value remains the AVX512 reference-BLAS measurement "
+        f"{published!r}. {_numeric_environment()}"
+    )
+
+
 def test_corrected_scores_and_original_controls(report):
     for fixture in report["fixtures"]:
         fixture_id = fixture["fixture_id"]
@@ -536,7 +563,23 @@ def test_corrected_scores_and_original_controls(report):
                 f"{fixture_id} train_ari_full_vs_train_only {got_train_ari!r} "
                 f"against locked {locked['train_ari']!r}; {_numeric_environment()}"
             )
-        assert leakage["eval_ari_full_vs_train_only"] == pytest.approx(locked["eval_ari"], abs=ABS)
+        got_eval_ari = leakage["eval_ari_full_vs_train_only"]
+        if fixture_id == "overlapping":
+            kernel, observed_hex, expected_eval_ari = _expected_overlapping_eval_ari()
+            published_eval = LEAKAGE["overlapping"]["eval_ari"]
+            assert got_eval_ari == pytest.approx(expected_eval_ari, abs=ABS), (
+                "overlapping eval_ari_full_vs_train_only "
+                f"{got_eval_ari!r} for observed kernel {kernel} "
+                f"np.log(39/5)={observed_hex}. "
+                f"That kernel requires {expected_eval_ari!r}. "
+                f"AVX512 kernel {AVX512_LOG_39_OVER_5} requires {published_eval!r}. "
+                f"libm kernel {LIBM_LOG_39_OVER_5} requires "
+                f"{LIBM_OVERLAPPING_EVAL_ARI!r}. "
+                "The published value remains the AVX512 reference-BLAS "
+                f"measurement {published_eval!r}. {_numeric_environment()}"
+            )
+        else:
+            assert got_eval_ari == pytest.approx(locked["eval_ari"], abs=ABS)
         assert leakage["train_pairwise_distance_correlation"] == pytest.approx(
             locked["correlation"],
             abs=ABS,

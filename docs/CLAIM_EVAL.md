@@ -372,8 +372,8 @@ were `test_generalization_locks_recommendation_and_per_fixture_bits`,
 `test_cli_report_and_certify_varied_prose`.
 
 GitHub Actions run `39549106578` on head `1d91340596d644c8e762856b6e001bc4387fa22f`
-is the completed run after that workflow change, and it is the latest
-completed run on this branch. The Test step reported `1 failed, 219 passed`.
+is the completed run after that workflow change. It was the latest completed
+run on this branch until `39888775181`. The Test step reported `1 failed, 219 passed`.
 The failing test is
 `tests/test_eval_control_integrity.py::test_corrected_scores_and_original_controls`.
 The assertion is `leakage["train_ari_full_vs_train_only"]` against
@@ -388,12 +388,26 @@ The same packages on this machine, with AVX512 visible to NumPy, still return
 BLAS library path, the thread count, and `np.log(39/5)` beside `math.log(39/5)`
 in the Install step and again in the Test process.
 
-The assertion is kernel-conditioned. After the test's thread pin, it reads
+The train-ARI assertion is kernel-conditioned. After the test's thread pin, it reads
 `float(np.log(39/5)).hex()`. The published value remains the AVX512 one,
 `0.7222354745271766`, required when that hex is `0x1.06ed86c91473cp+1`.
 `0.8414648893519251` is what this statistic returns when `np.log(39/5)`
 matches libm (`0x1.06ed86c91473dp+1`). Neither value is a claim-verifier
 result. `coordinate_chain_rule_v1` did not cause the split.
+
+GitHub Actions run `39888775181` on head `dff58c5501602b9f29575aff791bb22c2d13aae8`
+is the latest completed run on this branch. The Test step reported
+`1 failed, 220 passed`. The failing test is the same one. The hex in that
+process was the libm value `0x1.06ed86c91473dp+1` (`avx512f False`), so the
+train comparison required `0.8414648893519251` and passed. The assertion that
+failed is overlapping `leakage["eval_ari_full_vs_train_only"]`. Obtained
+`0.3661971830985915`. Expected the published AVX512 value
+`0.24999999999999994`. That obtained number was already the measured libm
+image of this statistic. The published eval ARI was not replaced. The
+eval-ARI assertion is now kernel-conditioned on the same two hexes:
+`0x1.06ed86c91473cp+1` requires `0.24999999999999994`, and
+`0x1.06ed86c91473dp+1` requires `0.3661971830985915`. Any other hex fails.
+The detail is in `docs/PR1_EVAL_CONTROL_INTEGRITY.md`.
 
 | Id | Expected | Observed | What the checker reported |
 | --- | --- | --- | --- |

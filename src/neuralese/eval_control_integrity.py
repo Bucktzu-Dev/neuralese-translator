@@ -666,7 +666,9 @@ def _train_only_embedding(
             for token, count in counts.items():
                 # np.log follows NumPy's CPU dispatch. word_sentence_tfidf uses
                 # math.log, and allclose below accepts one ulp. The overlapping
-                # train-ARI lock is this call's AVX512 result. See
+                # train-ARI and eval-ARI locks are this call's AVX512 result
+                # on the AVX512 hex, and the recorded libm images when
+                # np.log(39/5) matches math.log. See
                 # docs/PR1_EVAL_CONTROL_INTEGRITY.md.
                 idf = float(np.log(n_train / document_frequency[token]) + 1.0)
                 matrix[row_index, index[token]] = float(count) * idf

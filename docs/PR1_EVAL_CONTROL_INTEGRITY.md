@@ -164,10 +164,10 @@ field is `0.8414648893519251`. That is the value run `39549106578` obtained.
 The full-matrix `word_sentence_svd` hash is unchanged across the two
 dispatches. Uneven and balanced stay on their locks in both dispatches.
 Ambiguous's train ARI moves with the same log kernel, from the locked
-`0.3232177014940806` to `0.4507805623755037`, and overlapping's eval ARI moves
-from `0.24999999999999994` to `0.3661971830985915`. The failing test stops at
-the overlapping train comparison, so those later rows were not the reported
-failure.
+`0.3232177014940806` to `0.45078056237550373`, and overlapping's eval ARI moves
+from `0.24999999999999994` to `0.3661971830985915`. Run `39549106578` stopped
+at the overlapping train comparison, so those later rows were not the
+reported failure of that run.
 
 GitHub-hosted `ubuntu-24.04` does not offer a selector for an AVX512 log
 kernel. Forcing the feature on a runner whose CPUID omits it faults. The
@@ -179,7 +179,7 @@ whether `avx512f` is in `/proc/cpuinfo`, and the hex of `np.log(39/5)` beside
 `0.7222354745271766`. That remains the published value. The recorded trial
 value is that AVX512 measurement.
 
-The assertion is kernel-conditioned. After `pin_blas_threads(1)`, the test
+The train-ARI assertion is kernel-conditioned. After `pin_blas_threads(1)`, the test
 reads `float(np.log(39/5)).hex()`. Hex `0x1.06ed86c91473cp+1` requires the
 published AVX512 reference-BLAS value `0.7222354745271766`. Hex
 `0x1.06ed86c91473dp+1` requires `0.8414648893519251`. That second number is
@@ -189,6 +189,35 @@ observed kernel and includes both hex values and both ARIs. The published
 value remains the AVX512 one. Neither value is a claim-verifier result.
 `coordinate_chain_rule_v1` did not cause the split. No other locked residual,
 purity, ARI, or admission byte is retuned for this branch.
+
+Run `39888775181` (head `dff58c5501602b9f29575aff791bb22c2d13aae8`, 23 October
+2026) is the latest completed run on `cursor/unfold-reservoir-0d9f`. It
+reported `1 failed, 220 passed`. The Install step and the Test process both
+printed `avx512f False` and `np.log(39/5)` `0x1.06ed86c91473dp+1`, the libm
+hex, beside the same `math.log` hex. NumPy was `1.26.4` from
+`/usr/lib/python3/dist-packages/numpy/__init__.py`, with
+`/usr/lib/x86_64-linux-gnu/lapack/liblapack.so.3.12.0` and
+`/usr/lib/x86_64-linux-gnu/blas/libblas.so.3.12.0`. The overlapping train
+comparison therefore required `0.8414648893519251` and passed. The failure is
+the next assertion in
+`tests/test_eval_control_integrity.py::test_corrected_scores_and_original_controls`:
+`leakage["eval_ari_full_vs_train_only"]` for overlapping. Obtained
+`0.3661971830985915`. Expected the published AVX512 value
+`0.24999999999999994`. That obtained number is the libm image already measured
+above. It is not a third kernel and not a third train ARI.
+
+The published overlapping eval ARI stays `0.24999999999999994`. The eval-ARI
+assertion is now kernel-conditioned on the same hex. `0x1.06ed86c91473cp+1`
+requires `0.24999999999999994`. `0x1.06ed86c91473dp+1` requires
+`0.3661971830985915`. Any other hex fails. On this AVX512 host,
+`NPY_DISABLE_CPU_FEATURES=AVX512F` makes `np.log(39/5)` the libm hex and
+returns that same eval ARI. The same reproduction also moves overlapping's
+train pairwise distance correlation from `0.7212291143117482` to
+`0.808035700074246`, ambiguous's train ARI from `0.3232177014940806` to
+`0.45078056237550373`, and ambiguous's correlation from
+`0.38942027980065236` to `0.517007726774036`. Those three locks were not
+retuned. Uneven and balanced stay on their locks under that hex. The
+published overlapping train ARI stays `0.7222354745271766`.
 
 This audit does not change `word_sentence_svd`. The corrected candidate scores below still use the full-matrix embedding. They are a rescoring of the same leaky vectors. They are not an out-of-sample semantic measurement. `SVD_MATERIAL_TRAIN_ARI` is not an admission threshold and it was not used to drop a candidate.
 
